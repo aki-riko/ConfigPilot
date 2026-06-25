@@ -83,14 +83,15 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 PLIST
 echo "[OK] app bundle 组装完成: $APP_BUNDLE"
 
-# 3) ad-hoc 签名(整体签,不用 --deep;先签内部 dylib 再签 bundle)
+# 3) ad-hoc 签名(不用 --deep;先签内部 dylib/so,再签整个 bundle)
 echo "[INFO] 开始 ad-hoc 签名..."
-# 先逐个签嵌套的 .dylib/.so/.framework 二进制(避免 bundle 签名时内部未签报错)
+# 先逐个签嵌套的 .dylib/.so(避免 bundle 签名时内部未签报错)
 while IFS= read -r -d '' f; do
   codesign --force --sign - --timestamp=none "$f"
 done < <(find "$APP_BUNDLE/Contents/MacOS" \( -name "*.dylib" -o -name "*.so" \) -type f -print0)
-# 再签可执行文件和整个 bundle
-codesign --force --sign - --timestamp=none "$MACOS_DIR/$APP_NAME"
+# 不单独签 Contents/MacOS/ 下的主可执行文件(codesign 会因 Info.plist 的 CFBundleExecutable
+# 指向它而报 "bundle format unrecognized"——主程序由签整个 bundle 时自动处理)
+# 直接签整个 .app bundle
 codesign --force --sign - --timestamp=none "$APP_BUNDLE"
 echo "[INFO] 验证签名:"
 codesign --verify --verbose=2 "$APP_BUNDLE" || { echo "[ERROR] 签名验证失败"; exit 1; }

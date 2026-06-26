@@ -9,7 +9,7 @@ on:
       app_ver:
         description: "应用版本号 (写入 bundle / dmg 文件名)"
         required: false
-        default: "1.0.0"
+        default: "1.0.1"
 
 # 让 Attach to release 步骤能创建 Release(默认 GITHUB_TOKEN 只读)
 permissions:
@@ -43,7 +43,7 @@ jobs:
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "app_ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "app_ver=${{ github.event.inputs.app_ver || '1.0.0' }}" >> "$GITHUB_OUTPUT"
+            echo "app_ver=${{ github.event.inputs.app_ver || '1.0.1' }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies
@@ -93,7 +93,7 @@ jobs:
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "app_ver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
-            echo "app_ver=${{ github.event.inputs.app_ver || '1.0.0' }}" >> "$GITHUB_OUTPUT"
+            echo "app_ver=${{ github.event.inputs.app_ver || '1.0.1' }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies
@@ -131,7 +131,8 @@ jobs:
           ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
           [ -f "$ISCC" ] || ISCC="/c/Program Files/Inno Setup 6/ISCC.exe"
           # 直接 sed 改 .iss 里的版本号,避开 Git-bash 对 /D 参数的路径转换坑
-          sed -i 's/AppVer "1.0.0"/AppVer "${{ steps.ver.outputs.app_ver }}"/' CodexConfig.iss
+          # 正则匹配任意旧版本号(版本无关),以后升版本只改 .iss + 打 tag,此处不用动
+          sed -i 's/AppVer "[0-9][0-9.]*"/AppVer "${{ steps.ver.outputs.app_ver }}"/' CodexConfig.iss
           grep -n AppVer CodexConfig.iss
           "$ISCC" CodexConfig.iss
           ls -la installer/

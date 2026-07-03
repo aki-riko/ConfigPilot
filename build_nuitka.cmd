@@ -1,14 +1,21 @@
 @echo off
+setlocal
 chcp 65001 >nul
-REM Codex 配置助手 —— Nuitka 打包(独立 venv: quicksketch\.venv, prismqml 0.2.15)
-cd /d "%~dp0"
-set PY=.venv\Scripts\python.exe
-set FQ=.venv\Lib\site-packages\prismqml
 
-REM 换参数前先删 build 防 getWindowsShortPathName 崩(记忆经验)
+cd /d "%~dp0"
+
+set "PY=.venv\Scripts\python.exe"
+set "FQ=.venv\Lib\site-packages\prismqml"
+set "APP_VER=1.0.3"
+
+if not exist "%PY%" (
+  echo [ERROR] Missing %PY%
+  exit /b 1
+)
+
 if exist build rmdir /s /q build
 
-"%PY%" -m nuitka ^
+call "%PY%" -m nuitka ^
   --standalone ^
   --assume-yes-for-downloads ^
   --enable-plugin=pyside6 ^
@@ -24,9 +31,11 @@ if exist build rmdir /s /q build
   --output-dir=build ^
   --output-filename=CodexConfig.exe ^
   --company-name=9li ^
-  --product-name=Codex配置助手 ^
-  --file-version=1.0.2 ^
+  --product-name=CodexConfig ^
+  --file-version=%APP_VER% ^
   main.py
 
+if errorlevel 1 exit /b %errorlevel%
+
 echo.
-echo ===== 打包结束,产物在 build\main.dist\ =====
+echo ===== Build complete: build\main.dist\ =====

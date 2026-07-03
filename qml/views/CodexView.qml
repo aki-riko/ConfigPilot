@@ -35,6 +35,7 @@ Item {
     }
 
     function useGpt55LongContext() {
+        fModel = "gpt-5.5"
         fContextWindow = "1050000"
         fAutoCompactLimit = "900000"
         fToolOutputLimit = "6000"

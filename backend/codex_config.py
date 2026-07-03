@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 
 try:
     import tomllib  # py3.11+
@@ -20,6 +21,10 @@ from PySide6.QtCore import QObject, Signal, Slot, Property
 
 DEFAULT_WIRE_API = "responses"
 DEFAULT_MODEL = "gpt-5.5"
+GPT55_LONG_CONTEXT_WINDOW = 1050000
+GPT55_LONG_AUTO_COMPACT_LIMIT = 900000
+GPT55_LONG_TOOL_OUTPUT_LIMIT = 6000
+GPT55_LONG_CONTEXT_CATALOG = "gpt-5.5-1m.json"
 _KEEP = object()
 
 
@@ -55,6 +60,7 @@ class CodexConfig(QObject):
         self._model_context_window = ""
         self._model_auto_compact_token_limit = ""
         self._tool_output_token_limit = ""
+        self._model_catalog_json = ""
         self._available_models = []
         self._presets = []
         self._load_presets()
@@ -131,6 +137,10 @@ class CodexConfig(QObject):
     def toolOutputTokenLimit(self):
         return self._tool_output_token_limit
 
+    @Property(str, notify=changed)
+    def modelCatalogJson(self):
+        return self._model_catalog_json
+
     @Property("QVariantList", notify=modelsChanged)
     def availableModels(self):
         return self._available_models
@@ -156,6 +166,7 @@ class CodexConfig(QObject):
         self._model_context_window = ""
         self._model_auto_compact_token_limit = ""
         self._tool_output_token_limit = ""
+        self._model_catalog_json = ""
         if tomllib and os.path.isfile(self._config_path):
             try:
                 with open(self._config_path, "rb") as f:
@@ -167,6 +178,7 @@ class CodexConfig(QObject):
                 self._model_context_window = self._number_to_text(data.get("model_context_window"))
                 self._model_auto_compact_token_limit = self._number_to_text(data.get("model_auto_compact_token_limit"))
                 self._tool_output_token_limit = self._number_to_text(data.get("tool_output_token_limit"))
+                self._model_catalog_json = str(data.get("model_catalog_json", ""))
                 prov = data.get("model_providers", {}).get(self._provider, {})
                 self._base_url = str(prov.get("base_url", ""))
                 self._wire_api = str(prov.get("wire_api", ""))
@@ -210,6 +222,47 @@ class CodexConfig(QObject):
         return f'{key} = {rhs}\n' + text
 
     @staticmethod
+    def _set_top_toml_string(text, key, value):
+        if value is None:
+            return re.sub(rf'(?m)^\s*{re.escape(key)}\s*=.*\n?', '', text, count=1)
+        rhs = json.dumps(str(value), ensure_ascii=False)
+        if re.search(rf'(?m)^\s*{re.escape(key)}\s*=', text):
+            return re.sub(rf'(?m)^(\s*{re.escape(key)}\s*=\s*).*$',
+                          lambda m: m.group(1) + rhs, text, count=1)
+        return f'{key} = {rhs}\n' + text
+
+    @staticmethod
+    def _get_top_toml_string(text, key):
+        m = re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*(.+?)\s*(?:#.*)?$', text)
+        if not m:
+            return ""
+        raw = m.group(1).strip()
+        if tomllib:
+            try:
+                return str(tomllib.loads(f"value = {raw}\n").get("value", ""))
+            except Exception:
+                pass
+        return raw.strip("\"'")
+
+    def _managed_model_catalog_path(self):
+        return os.path.join(self._home, "model-catalogs", GPT55_LONG_CONTEXT_CATALOG)
+
+    def _set_managed_model_catalog_json(self, text, value):
+        if value:
+            return self._set_top_toml_string(text, "model_catalog_json", value)
+
+        existing = self._get_top_toml_string(text, "model_catalog_json")
+        if not existing:
+            return text
+        try:
+            same = os.path.normcase(os.path.abspath(existing)) == os.path.normcase(
+                os.path.abspath(self._managed_model_catalog_path())
+            )
+        except Exception:
+            same = False
+        return self._set_top_toml_string(text, "model_catalog_json", None) if same else text
+
+    @staticmethod
     def _number_to_text(value):
         if value is None:
             return ""
@@ -233,6 +286,128 @@ class CodexConfig(QObject):
             raise ValueError(f"{field_name} 必须大于 0")
         return parsed
 
+    def _find_codex_cli(self):
+        candidates = [os.environ.get("CODEX_CLI_PATH")]
+
+        if tomllib and os.path.isfile(self._config_path):
+            try:
+                with open(self._config_path, "rb") as f:
+                    data = tomllib.load(f)
+                candidates.append(
+                    data.get("mcp_servers", {})
+                        .get("node_repl", {})
+                        .get("env", {})
+                        .get("CODEX_CLI_PATH")
+                )
+            except Exception:
+                pass
+
+        candidates.extend([shutil.which("codex"), shutil.which("codex.exe")])
+        for candidate in candidates:
+            if not candidate:
+                continue
+            candidate = str(candidate)
+            if os.path.isfile(candidate):
+                return candidate
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+        return ""
+
+    @staticmethod
+    def _fallback_gpt55_catalog(context_window):
+        return {
+            "models": [{
+                "slug": DEFAULT_MODEL,
+                "display_name": "GPT-5.5",
+                "description": "Frontier model for complex coding, research, and real-world work.",
+                "default_reasoning_level": "medium",
+                "supported_reasoning_levels": [
+                    {"effort": "low", "description": "Fast responses with lighter reasoning"},
+                    {"effort": "medium", "description": "Balances speed and reasoning depth for everyday tasks"},
+                    {"effort": "high", "description": "Greater reasoning depth for complex problems"},
+                    {"effort": "xhigh", "description": "Extra high reasoning depth for complex problems"},
+                ],
+                "shell_type": "shell_command",
+                "visibility": "list",
+                "supported_in_api": True,
+                "priority": 0,
+                "context_window": int(context_window),
+                "max_context_window": int(context_window),
+                "effective_context_window_percent": 100,
+                "truncation_policy": {"mode": "tokens", "limit": 10000},
+                "supports_parallel_tool_calls": True,
+                "input_modalities": ["text", "image"],
+                "supports_search_tool": True,
+            }]
+        }
+
+    def _load_model_catalog(self, context_window):
+        exe = self._find_codex_cli()
+        if not exe:
+            return self._fallback_gpt55_catalog(context_window)
+        try:
+            result = subprocess.run(
+                [exe, "debug", "models"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=25,
+                check=False,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                if isinstance(data, dict) and isinstance(data.get("models"), list):
+                    return data
+        except Exception:
+            pass
+        return self._fallback_gpt55_catalog(context_window)
+
+    def _verify_model_catalog(self, path, context_window):
+        exe = self._find_codex_cli()
+        if not exe:
+            return
+        override = "model_catalog_json=" + json.dumps(path, ensure_ascii=False)
+        result = subprocess.run(
+            [exe, "debug", "-c", override, "models"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=25,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or "codex debug models failed").strip())
+
+        data = json.loads(result.stdout)
+        model = next((m for m in data.get("models", []) if m.get("slug") == DEFAULT_MODEL), None)
+        if not model:
+            raise RuntimeError("model catalog does not contain gpt-5.5")
+        if int(model.get("context_window", 0)) < int(context_window):
+            raise RuntimeError("model catalog context_window was not applied")
+        if int(model.get("effective_context_window_percent", 0)) != 100:
+            raise RuntimeError("model catalog effective_context_window_percent was not applied")
+
+    def _ensure_gpt55_long_context_catalog(self, context_window):
+        catalog = self._load_model_catalog(context_window)
+        models = catalog.setdefault("models", [])
+        target = next((m for m in models if isinstance(m, dict) and m.get("slug") == DEFAULT_MODEL), None)
+        if target is None:
+            target = self._fallback_gpt55_catalog(context_window)["models"][0]
+            models.append(target)
+
+        target["context_window"] = int(context_window)
+        target["max_context_window"] = int(context_window)
+        target["effective_context_window_percent"] = 100
+
+        path = self._managed_model_catalog_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            json.dump(catalog, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        self._verify_model_catalog(path, context_window)
+        return path
+
     @staticmethod
     def _set_block_scalar(block, key, value, is_str=True):
         """设置/删除 provider 块内标量字段。value 为 None 时删除。"""
@@ -247,7 +422,8 @@ class CodexConfig(QObject):
     def _write_provider_block(self, text, provider, base_url, wire_api, model,
                               requires_auth=None, reasoning_effort=None,
                               disable_storage=None, context_window=_KEEP,
-                              auto_compact_limit=_KEEP, tool_output_limit=_KEEP):
+                              auto_compact_limit=_KEEP, tool_output_limit=_KEEP,
+                              model_catalog_json=_KEEP):
         provider = provider or "relay"
         # 1. 顶层 model_provider
         if re.search(r'(?m)^\s*model_provider\s*=', text):
@@ -271,6 +447,8 @@ class CodexConfig(QObject):
             text = self._set_top_integer(text, "model_auto_compact_token_limit", auto_compact_limit)
         if tool_output_limit is not _KEEP:
             text = self._set_top_integer(text, "tool_output_token_limit", tool_output_limit)
+        if model_catalog_json is not _KEEP:
+            text = self._set_managed_model_catalog_json(text, model_catalog_json)
         # 3. [model_providers.<provider>] 块
         esc = re.escape(provider)
         block_re = re.compile(rf'(?ms)^\s*\[model_providers\.{esc}\]\s*.*?(?=^\s*\[|\Z)')
@@ -331,6 +509,13 @@ class CodexConfig(QObject):
             self.notify.emit(2, "参数无效", str(e))
             return
         try:
+            model_catalog_json = _KEEP
+            if context_window is not _KEEP:
+                if model == DEFAULT_MODEL and context_window and context_window >= GPT55_LONG_CONTEXT_WINDOW:
+                    model_catalog_json = self._ensure_gpt55_long_context_catalog(context_window)
+                elif context_window is None:
+                    model_catalog_json = None
+
             text = ""
             if os.path.isfile(self._config_path):
                 shutil.copy2(self._config_path, self._config_path + ".bak")
@@ -343,7 +528,8 @@ class CodexConfig(QObject):
                 requires_auth=req, reasoning_effort=eff, disable_storage=dis,
                 context_window=context_window,
                 auto_compact_limit=auto_compact_limit,
-                tool_output_limit=tool_output_limit)
+                tool_output_limit=tool_output_limit,
+                model_catalog_json=model_catalog_json)
             with open(self._config_path, "w", encoding="utf-8", newline="") as f:
                 f.write(new_text)
             self.reload()

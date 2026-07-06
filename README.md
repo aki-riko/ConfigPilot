@@ -2,6 +2,11 @@
 
 一个用 [PrismQML](https://pypi.org/project/prismqml/) 写的图形化小工具，用来管理 OpenAI Codex CLI 的 `~/.codex/config.toml` —— 在多个 API 中转之间切换、填写 API key、获取模型列表，免去手动改 TOML。
 
+![Codex 配置助手主界面](docs/images/codex-config-main.png)
+
+- **下载**：[GitHub Releases](../../releases)
+- **适合**：需要频繁切换 Codex CLI provider、模型和高级配置，但不想手动编辑 TOML/JSON 的用户。
+
 ## 功能
 
 - **多中转切换**：从 `providers.json` 预置列表下拉选择，或手填任意自定义 `base_url`
@@ -93,4 +98,3 @@ quicksketch/
 [MIT](LICENSE) © 2026 aki-riko
 
 基于 [PrismQML](https://pypi.org/project/prismqml/)（MIT）构建。
-

@@ -1,7 +1,7 @@
 ; Codex 配置助手 安装脚本 (Inno Setup)
 #define AppName "Codex 配置助手"
 #ifndef AppVer
-  #define AppVer "1.0.6"
+  #define AppVer "1.0.7"
 #endif
 #define AppPublisher "9li"
 #define AppExe "CodexConfig.exe"

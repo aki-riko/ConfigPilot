@@ -6,7 +6,7 @@ cd /d "%~dp0"
 
 set "PY=.venv\Scripts\python.exe"
 set "FQ=.venv\Lib\site-packages\prismqml"
-set "APP_VER=1.0.6"
+set "APP_VER=1.0.7"
 
 if not exist "%PY%" (
   echo [ERROR] Missing %PY%

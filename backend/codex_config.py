@@ -564,15 +564,13 @@ class CodexConfig(QObject):
             self.notify.emit(2, "未写入", "key 为空,已跳过")
             return
         try:
+            auth = {
+                "OPENAI_API_KEY": key,
+                "auth_mode": "apikey",
+            }
+            os.makedirs(self._home, exist_ok=True)
             if os.path.isfile(self._auth_path):
-                shutil.copy2(self._auth_path, self._auth_path + ".bak")
-                with open(self._auth_path, "r", encoding="utf-8") as f:
-                    auth = json.load(f)
-            else:
-                os.makedirs(self._home, exist_ok=True)
-                auth = {}
-            auth["OPENAI_API_KEY"] = key
-            auth.setdefault("auth_mode", "apikey")
+                os.replace(self._auth_path, self._auth_path + ".bak")
             with open(self._auth_path, "w", encoding="utf-8") as f:
                 json.dump(auth, f, ensure_ascii=False, indent=2)
             self.reload()

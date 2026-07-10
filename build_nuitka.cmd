@@ -24,18 +24,19 @@ call "%PY%" -m nuitka ^
   --include-data-dir=resources=resources ^
   --include-data-dir="%FQ%=prismqml" ^
   --include-data-files=providers.json=providers.json ^
+  --include-data-files=model_profiles.json=model_profiles.json ^
   --include-package=prismqml ^
   --include-package=backend ^
   --windows-console-mode=disable ^
   --windows-icon-from-ico=resources\app_icon.ico ^
   --output-dir=build ^
-  --output-filename=CodexConfig.exe ^
+  --output-filename=ConfigPilot.exe ^
   --company-name=9li ^
-  --product-name=CodexConfig ^
+  --product-name=ConfigPilot ^
   --file-version=%APP_VER% ^
   main.py
 
 if errorlevel 1 exit /b %errorlevel%
 
 echo.
-echo ===== Build complete: build\main.dist\ =====
+echo ===== Build complete: build\main.dist\ConfigPilot.exe =====

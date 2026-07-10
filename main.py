@@ -1,6 +1,7 @@
 # coding: utf-8
 """
-PrismQML 速写 Demo —— venv 装 PyPI 包 prismqml (import prismqml)
+ConfigPilot 应用入口。
+
 运行: <venv>/python.exe main.py
 """
 import os
@@ -34,8 +35,8 @@ def main() -> int:
     import prismqml as _fq
     try:
         engine.addImageProvider("svg", _fq.get_svg_provider())
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[WARN] 注册 SVG 图片提供器失败: {exc}", file=sys.stderr)
 
     # 应用图标 URL(窗口/任务栏)
     app_dir = os.path.dirname(os.path.abspath(__file__))

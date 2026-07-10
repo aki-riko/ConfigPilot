@@ -1,0 +1,52 @@
+{
+  "_说明": "按模型匹配思考等级和上下文预设。value 是写入 config.toml 的真实值，text 是界面显示文本。",
+  "defaultReasoningOptions": [
+    { "value": "", "text": "(不设置)" },
+    { "value": "low", "text": "low" },
+    { "value": "medium", "text": "medium" },
+    { "value": "high", "text": "high" },
+    { "value": "xhigh", "text": "xhigh" }
+  ],
+  "profiles": [
+    {
+      "id": "gpt-5.5",
+      "modelPattern": "^gpt-5\\.5$",
+      "reasoningOptions": [
+        { "value": "", "text": "(不设置)" },
+        { "value": "low", "text": "low" },
+        { "value": "medium", "text": "medium" },
+        { "value": "high", "text": "high" },
+        { "value": "xhigh", "text": "xhigh" }
+      ],
+      "contextPreset": {
+        "buttonText": "套用 GPT-5.5 稳定上下文",
+        "contextWindow": 258400,
+        "autoCompactLimit": 245000,
+        "toolOutputLimit": 6000,
+        "maxContextWindow": 258400,
+        "maxAutoCompactLimit": 245000
+      }
+    },
+    {
+      "id": "gpt-5.6",
+      "modelPattern": "^gpt-5\\.6(?:-|$)",
+      "reasoningOptions": [
+        { "value": "", "text": "(不设置)" },
+        { "value": "low", "text": "极低" },
+        { "value": "medium", "text": "轻度" },
+        { "value": "high", "text": "中" },
+        { "value": "xhigh", "text": "高" },
+        { "value": "ultra", "text": "极高" },
+        { "value": "max", "text": "最高" }
+      ],
+      "contextPreset": {
+        "buttonText": "套用 GPT-5.6 默认上下文",
+        "contextWindow": 372000,
+        "autoCompactLimit": 353000,
+        "toolOutputLimit": 6000,
+        "maxContextWindow": 372000,
+        "maxAutoCompactLimit": 353000
+      }
+    }
+  ]
+}

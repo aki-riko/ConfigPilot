@@ -18,6 +18,9 @@ Item {
     property string fContextWindow: ""
     property string fAutoCompactLimit: ""
     property string fToolOutputLimit: ""
+    readonly property var currentContextPreset: CodexConfig
+                                                ? CodexConfig.contextPresetForModel(fModel)
+                                                : ({})
     readonly property real contextWindowNumber: parsePositive(fContextWindow)
     readonly property real autoCompactNumber: parsePositive(fAutoCompactLimit)
     readonly property real compactRatio: contextWindowNumber > 0 && autoCompactNumber > 0
@@ -34,11 +37,23 @@ Item {
         return Math.round((autoCompactNumber / contextWindowNumber) * 1000) / 10 + "%"
     }
 
-    function useGpt55LongContext() {
-        fModel = "gpt-5.5"
-        fContextWindow = "258400"
-        fAutoCompactLimit = "245000"
-        fToolOutputLimit = "6000"
+    function useModelContextPreset(modelName) {
+        var preset = CodexConfig ? CodexConfig.contextPresetForModel(modelName) : ({})
+        if (!preset || !preset.contextWindow) return
+        fContextWindow = String(preset.contextWindow)
+        fAutoCompactLimit = String(preset.autoCompactLimit)
+        fToolOutputLimit = String(preset.toolOutputLimit)
+    }
+
+    function selectModel(modelName) {
+        fModel = modelName || ""
+        var options = CodexConfig ? CodexConfig.reasoningOptionsForModel(fModel) : []
+        var supported = fReasoningEffort === ""
+        for (var i = 0; i < options.length; i++) {
+            if (options[i].value === fReasoningEffort) supported = true
+        }
+        if (!supported) fReasoningEffort = ""
+        useModelContextPreset(fModel)
     }
 
     function syncFromConfig() {
@@ -137,7 +152,7 @@ Item {
                                 root.fBaseUrl = p.baseUrl
                                 root.fProvider = p.provider
                                 root.fWireApi = p.wireApi
-                                root.fModel = p.model
+                                root.selectModel(p.model)
                             }
                             // 选「自定义…」则不改字段,留用户手填
                         }
@@ -230,7 +245,7 @@ Item {
                                 model: CodexConfig ? CodexConfig.availableModels : []
                                 onActivated: function(index) {
                                     var arr = CodexConfig ? CodexConfig.availableModels : []
-                                    if (index >= 0 && index < arr.length) root.fModel = arr[index]
+                                    if (index >= 0 && index < arr.length) root.selectModel(arr[index])
                                 }
                             }
                             Fluent.Button {
@@ -272,32 +287,10 @@ Item {
                             }
                         }
                     }
-                    Row {
-                        spacing: Fluent.Enums.spacing.m
-                        Text {
-                            text: "思考等级"
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: Fluent.Enums.textColor.tertiary
-                            font.pixelSize: Fluent.Enums.typography.body
-                            font.family: Fluent.Enums.fontFamily
-                        }
-                        Fluent.ComboBoxDefault {
-                            id: effortBox
-                            width: 160
-                            property var effortArr: ["", "low", "medium", "high", "xhigh"]
-                            model: ["(不设置)", "low", "medium", "high", "xhigh"]
-                            Component.onCompleted: currentIndex = Math.max(0, effortArr.indexOf(root.fReasoningEffort))
-                            onActivated: function(index) {
-                                root.fReasoningEffort = effortArr[index] || ""
-                            }
-                            Connections {
-                                target: root
-                                function onFReasoningEffortChanged() {
-                                    var i = Math.max(0, effortBox.effortArr.indexOf(root.fReasoningEffort))
-                                    if (effortBox.currentIndex !== i) effortBox.currentIndex = i
-                                }
-                            }
-                        }
+                    ReasoningEffortSelector {
+                        modelName: root.fModel
+                        reasoningEffort: root.fReasoningEffort
+                        onEffortSelected: function(value) { root.fReasoningEffort = value }
                     }
 
                     Item { width: 1; height: Fluent.Enums.spacing.xs }
@@ -350,7 +343,9 @@ Item {
                             Fluent.LineEdit {
                                 id: contextWindowEdit
                                 width: 220
-                                placeholderText: "258400"
+                                placeholderText: root.currentContextPreset.contextWindow
+                                                 ? String(root.currentContextPreset.contextWindow)
+                                                 : "258400"
                                 Component.onCompleted: text = root.fContextWindow
                                 onTextChanged: if (text !== root.fContextWindow) root.fContextWindow = text
                                 Connections {
@@ -365,7 +360,9 @@ Item {
                             Fluent.LineEdit {
                                 id: autoCompactEdit
                                 width: 220
-                                placeholderText: "245000"
+                                placeholderText: root.currentContextPreset.autoCompactLimit
+                                                 ? String(root.currentContextPreset.autoCompactLimit)
+                                                 : "245000"
                                 Component.onCompleted: text = root.fAutoCompactLimit
                                 onTextChanged: if (text !== root.fAutoCompactLimit) root.fAutoCompactLimit = text
                                 Connections {
@@ -396,8 +393,10 @@ Item {
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Button {
                                 style: Fluent.Enums.button.style_default
-                                text: "套用 GPT-5.5 稳定上下文"
-                                onClicked: root.useGpt55LongContext()
+                                text: root.currentContextPreset.buttonText
+                                      || "当前模型无内置上下文预设"
+                                enabled: !!root.currentContextPreset.contextWindow
+                                onClicked: root.useModelContextPreset(root.fModel)
                             }
                             Fluent.Button {
                                 style: Fluent.Enums.button.style_default

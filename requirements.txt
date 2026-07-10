@@ -1,4 +1,4 @@
-# Codex 配置助手 运行依赖
+# ConfigPilot 运行依赖
 # 安装: pip install -r requirements.txt
 
 prismqml==0.2.22

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Codex 配置助手 —— macOS 打包脚本
+# ConfigPilot —— macOS 打包脚本
 # 策略:Nuitka 只出 standalone 目录(不用 --macos-create-app-bundle,绕开其内置 codesign --deep 在 CI 上的 FATAL),
 #       脚本手动组装 .app bundle + 自己 ad-hoc 签名(不带 --deep,整体签,报错可见) + hdiutil 打 DMG。
 set -euo pipefail
@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PY="${PYTHON:-python3}"
-APP_NAME="CodexConfig"
+APP_NAME="ConfigPilot"
 APP_VER="${APP_VER:-1.0.0}"
 ARCH="$(uname -m)"   # arm64 或 x86_64
 
@@ -29,6 +29,7 @@ mkdir -p build
   --include-data-dir=resources=resources \
   --include-data-dir="$FQ=prismqml" \
   --include-data-files=providers.json=providers.json \
+  --include-data-files=model_profiles.json=model_profiles.json \
   --include-package=prismqml \
   --include-package=backend \
   --output-dir=build \
@@ -71,7 +72,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
   <key>CFBundleExecutable</key><string>${APP_NAME}</string>
-  <key>CFBundleIdentifier</key><string>life.9li.codexconfig</string>
+  <key>CFBundleIdentifier</key><string>life.9li.configpilot</string>
   <key>CFBundleVersion</key><string>${APP_VER}</string>
   <key>CFBundleShortVersionString</key><string>${APP_VER}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -99,4 +100,3 @@ cp -R "$APP_BUNDLE" "$STAGING/${APP_NAME}.app"
 ln -s /Applications "$STAGING/Applications"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -ov -format UDZO "$DMG_PATH"
 echo "[OK] DMG 产物: $DMG_PATH"
-

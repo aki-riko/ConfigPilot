@@ -77,6 +77,10 @@ class CodexConfigAuthTests(unittest.TestCase):
 
             codex_config._codex_home = lambda: str(codex_home)
             codex_config._app_dir = lambda: str(tmp_path)
+            (tmp_path / "model_profiles.json").write_text(
+                (ROOT / "model_profiles.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
 
             config = codex_config.CodexConfig()
             config.setKey("new-key")
@@ -94,6 +98,96 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(backup_auth, old_auth)
             self.assertNotIn("access_token", new_auth)
             self.assertNotIn("refresh_token", new_auth)
+
+    def test_model_profiles_match_gpt56_and_preserve_other_models(self):
+        codex_config = self.load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+
+            expected_values = ["", "low", "medium", "high", "xhigh", "ultra", "max"]
+            expected_text = ["(不设置)", "极低", "轻度", "中", "高", "极高", "最高"]
+            for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+                options = config.reasoningOptionsForModel(model)
+                self.assertEqual([item["value"] for item in options], expected_values)
+                self.assertEqual([item["text"] for item in options], expected_text)
+                self.assertEqual(
+                    config.contextPresetForModel(model),
+                    {
+                        "buttonText": "套用 GPT-5.6 默认上下文",
+                        "contextWindow": 372000,
+                        "autoCompactLimit": 353000,
+                        "toolOutputLimit": 6000,
+                        "maxContextWindow": 372000,
+                        "maxAutoCompactLimit": 353000,
+                    },
+                )
+
+            gpt55_options = config.reasoningOptionsForModel("gpt-5.5")
+            self.assertEqual(
+                [item["value"] for item in gpt55_options],
+                ["", "low", "medium", "high", "xhigh"],
+            )
+            self.assertEqual(
+                config.contextPresetForModel("gpt-5.5"),
+                {
+                    "buttonText": "套用 GPT-5.5 稳定上下文",
+                    "contextWindow": 258400,
+                    "autoCompactLimit": 245000,
+                    "toolOutputLimit": 6000,
+                    "maxContextWindow": 258400,
+                    "maxAutoCompactLimit": 245000,
+                },
+            )
+
+            other_options = config.reasoningOptionsForModel("custom-model")
+            self.assertEqual(
+                [item["value"] for item in other_options],
+                ["", "low", "medium", "high", "xhigh"],
+            )
+            self.assertEqual(config.contextPresetForModel("custom-model"), {})
+
+    def test_apply_real_gpt56_config_sample(self):
+        codex_config = self.load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            config_path = codex_home / "config.toml"
+            config_path.write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'name = "relay"\nbase_url = "https://api.9li.life/v1"\n'
+                'wire_api = "responses"\n',
+                encoding="utf-8",
+            )
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+
+            config.applyConfig(
+                {
+                    "baseUrl": "https://api.9li.life/v1",
+                    "provider": "relay",
+                    "wireApi": "responses",
+                    "model": "gpt-5.6-sol",
+                    "reasoningEffort": "max",
+                    "modelContextWindow": "372000",
+                    "modelAutoCompactTokenLimit": "353000",
+                    "toolOutputTokenLimit": "6000",
+                }
+            )
+
+            with config_path.open("rb") as handle:
+                saved = codex_config.tomllib.load(handle)
+            self.assertEqual(saved["model"], "gpt-5.6-sol")
+            self.assertEqual(saved["model_reasoning_effort"], "max")
+            self.assertEqual(saved["model_context_window"], 372000)
+            self.assertEqual(saved["model_auto_compact_token_limit"], 353000)
+            self.assertEqual(saved["tool_output_token_limit"], 6000)
 
 
 if __name__ == "__main__":

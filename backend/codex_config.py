@@ -7,10 +7,10 @@ Codex 配置管理后端 —— 暴露给 QML 的 QObject。
 key 写入 auth.json。
 """
 import json
+import logging
 import os
 import re
 import shutil
-import subprocess
 
 try:
     import tomllib  # py3.11+
@@ -19,12 +19,13 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from PySide6.QtCore import QObject, Signal, Slot, Property
 
+from backend.model_profiles import ModelProfiles
+
+LOGGER = logging.getLogger(__name__)
+
 DEFAULT_WIRE_API = "responses"
 DEFAULT_MODEL = "gpt-5.5"
-GPT55_STABLE_CONTEXT_WINDOW = 258400
-GPT55_STABLE_AUTO_COMPACT_LIMIT = 245000
-GPT55_STABLE_TOOL_OUTPUT_LIMIT = 6000
-GPT55_MANAGED_CONTEXT_CATALOG = "gpt-5.5-1m.json"
+LEGACY_MANAGED_CONTEXT_CATALOG = "gpt-5.5-1m.json"
 _KEEP = object()
 
 
@@ -49,6 +50,8 @@ class CodexConfig(QObject):
         self._config_path = os.path.join(self._home, "config.toml")
         self._auth_path = os.path.join(self._home, "auth.json")
         self._providers_path = os.path.join(_app_dir(), "providers.json")
+        self._model_profiles_path = os.path.join(_app_dir(), "model_profiles.json")
+        self._model_profiles = ModelProfiles.from_file(self._model_profiles_path)
         self._provider = ""
         self._base_url = ""
         self._wire_api = ""
@@ -190,8 +193,9 @@ class CodexConfig(QObject):
                 with open(self._auth_path, "r", encoding="utf-8") as f:
                     auth = json.load(f)
                 self._has_key = bool(auth.get("OPENAI_API_KEY"))
-            except Exception:
+            except Exception as exc:
                 self._has_key = False
+                self.notify.emit(2, "认证读取失败", f"auth.json: {exc}")
         self.changed.emit()
 
     @Slot()
@@ -240,12 +244,12 @@ class CodexConfig(QObject):
         if tomllib:
             try:
                 return str(tomllib.loads(f"value = {raw}\n").get("value", ""))
-            except Exception:
-                pass
+            except Exception as exc:
+                LOGGER.debug("无法按 TOML 解析 %s，回退为裸字符串: %s", key, exc)
         return raw.strip("\"'")
 
     def _managed_model_catalog_path(self):
-        return os.path.join(self._home, "model-catalogs", GPT55_MANAGED_CONTEXT_CATALOG)
+        return os.path.join(self._home, "model-catalogs", LEGACY_MANAGED_CONTEXT_CATALOG)
 
     def _set_managed_model_catalog_json(self, text, value):
         if value:
@@ -258,7 +262,8 @@ class CodexConfig(QObject):
             same = os.path.normcase(os.path.abspath(existing)) == os.path.normcase(
                 os.path.abspath(self._managed_model_catalog_path())
             )
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("比较旧模型目录路径失败: %s", exc)
             same = False
         return self._set_top_toml_string(text, "model_catalog_json", None) if same else text
 
@@ -268,7 +273,8 @@ class CodexConfig(QObject):
             return ""
         try:
             return str(int(value))
-        except Exception:
+        except Exception as exc:
+            LOGGER.debug("数值转文本失败，保留原值 %r: %s", value, exc)
             return str(value)
 
     @staticmethod
@@ -286,127 +292,13 @@ class CodexConfig(QObject):
             raise ValueError(f"{field_name} 必须大于 0")
         return parsed
 
-    def _find_codex_cli(self):
-        candidates = [os.environ.get("CODEX_CLI_PATH")]
+    @Slot(str, result="QVariantList")
+    def reasoningOptionsForModel(self, model):
+        return self._model_profiles.reasoning_options(model)
 
-        if tomllib and os.path.isfile(self._config_path):
-            try:
-                with open(self._config_path, "rb") as f:
-                    data = tomllib.load(f)
-                candidates.append(
-                    data.get("mcp_servers", {})
-                        .get("node_repl", {})
-                        .get("env", {})
-                        .get("CODEX_CLI_PATH")
-                )
-            except Exception:
-                pass
-
-        candidates.extend([shutil.which("codex"), shutil.which("codex.exe")])
-        for candidate in candidates:
-            if not candidate:
-                continue
-            candidate = str(candidate)
-            if os.path.isfile(candidate):
-                return candidate
-            resolved = shutil.which(candidate)
-            if resolved:
-                return resolved
-        return ""
-
-    @staticmethod
-    def _fallback_gpt55_catalog(context_window):
-        return {
-            "models": [{
-                "slug": DEFAULT_MODEL,
-                "display_name": "GPT-5.5",
-                "description": "Frontier model for complex coding, research, and real-world work.",
-                "default_reasoning_level": "medium",
-                "supported_reasoning_levels": [
-                    {"effort": "low", "description": "Fast responses with lighter reasoning"},
-                    {"effort": "medium", "description": "Balances speed and reasoning depth for everyday tasks"},
-                    {"effort": "high", "description": "Greater reasoning depth for complex problems"},
-                    {"effort": "xhigh", "description": "Extra high reasoning depth for complex problems"},
-                ],
-                "shell_type": "shell_command",
-                "visibility": "list",
-                "supported_in_api": True,
-                "priority": 0,
-                "context_window": int(context_window),
-                "max_context_window": int(context_window),
-                "effective_context_window_percent": 100,
-                "truncation_policy": {"mode": "tokens", "limit": 10000},
-                "supports_parallel_tool_calls": True,
-                "input_modalities": ["text", "image"],
-                "supports_search_tool": True,
-            }]
-        }
-
-    def _load_model_catalog(self, context_window):
-        exe = self._find_codex_cli()
-        if not exe:
-            return self._fallback_gpt55_catalog(context_window)
-        try:
-            result = subprocess.run(
-                [exe, "debug", "models"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=25,
-                check=False,
-            )
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                if isinstance(data, dict) and isinstance(data.get("models"), list):
-                    return data
-        except Exception:
-            pass
-        return self._fallback_gpt55_catalog(context_window)
-
-    def _verify_model_catalog(self, path, context_window):
-        exe = self._find_codex_cli()
-        if not exe:
-            return
-        override = "model_catalog_json=" + json.dumps(path, ensure_ascii=False)
-        result = subprocess.run(
-            [exe, "debug", "-c", override, "models"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=25,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError((result.stderr or result.stdout or "codex debug models failed").strip())
-
-        data = json.loads(result.stdout)
-        model = next((m for m in data.get("models", []) if m.get("slug") == DEFAULT_MODEL), None)
-        if not model:
-            raise RuntimeError("model catalog does not contain gpt-5.5")
-        if int(model.get("context_window", 0)) < int(context_window):
-            raise RuntimeError("model catalog context_window was not applied")
-        if int(model.get("effective_context_window_percent", 0)) != 100:
-            raise RuntimeError("model catalog effective_context_window_percent was not applied")
-
-    def _ensure_gpt55_long_context_catalog(self, context_window):
-        catalog = self._load_model_catalog(context_window)
-        models = catalog.setdefault("models", [])
-        target = next((m for m in models if isinstance(m, dict) and m.get("slug") == DEFAULT_MODEL), None)
-        if target is None:
-            target = self._fallback_gpt55_catalog(context_window)["models"][0]
-            models.append(target)
-
-        target["context_window"] = int(context_window)
-        target["max_context_window"] = int(context_window)
-        target["effective_context_window_percent"] = 100
-
-        path = self._managed_model_catalog_path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8", newline="") as f:
-            json.dump(catalog, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        self._verify_model_catalog(path, context_window)
-        return path
+    @Slot(str, result="QVariantMap")
+    def contextPresetForModel(self, model):
+        return self._model_profiles.context_preset(model)
 
     @staticmethod
     def _set_block_scalar(block, key, value, is_str=True):
@@ -493,6 +385,9 @@ class CodexConfig(QObject):
         req = None if req is None else bool(req)
         eff = None if eff is None else str(eff).strip()
         dis = None if dis is None else bool(dis)
+        if eff and not self._model_profiles.supports_reasoning_effort(model, eff):
+            self.notify.emit(2, "参数无效", f"{model} 不支持思考等级 {eff}")
+            return
         try:
             context_window = (_KEEP if "modelContextWindow" not in cfg
                               else self._optional_positive_int(
@@ -511,12 +406,17 @@ class CodexConfig(QObject):
         try:
             model_catalog_json = _KEEP
             if context_window is not _KEEP:
-                if model == DEFAULT_MODEL:
-                    if context_window and context_window > GPT55_STABLE_CONTEXT_WINDOW:
-                        context_window = GPT55_STABLE_CONTEXT_WINDOW
-                    if (auto_compact_limit is not _KEEP and auto_compact_limit and
-                            auto_compact_limit > GPT55_STABLE_AUTO_COMPACT_LIMIT):
-                        auto_compact_limit = GPT55_STABLE_AUTO_COMPACT_LIMIT
+                context_preset = self._model_profiles.context_preset(model)
+                if context_preset:
+                    context_window = self._model_profiles.clamp_context_window(
+                        model, context_window
+                    )
+                    if auto_compact_limit is not _KEEP:
+                        auto_compact_limit = (
+                            self._model_profiles.clamp_auto_compact_limit(
+                                model, auto_compact_limit
+                            )
+                        )
                     model_catalog_json = None
                 elif context_window is None:
                     model_catalog_json = None
@@ -593,8 +493,9 @@ class CodexConfig(QObject):
             try:
                 with open(self._auth_path, "r", encoding="utf-8") as f:
                     key = json.load(f).get("OPENAI_API_KEY", "")
-            except Exception:
+            except Exception as exc:
                 key = ""
+                self.notify.emit(2, "认证读取失败", f"auth.json: {exc}")
         import threading
         threading.Thread(target=self._fetch_models_worker,
                          args=(base_url, key), daemon=True).start()

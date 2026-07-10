@@ -1,4 +1,4 @@
-// PrismQML 速写 Demo 主窗口
+// ConfigPilot 主窗口
 import QtQuick
 
 import PrismQML as Fluent
@@ -8,7 +8,7 @@ QtObject {
 
     readonly property int windowWidth: 980
     readonly property int windowHeight: 640
-    readonly property string windowTitle: "Codex 配置助手"
+    readonly property string windowTitle: "ConfigPilot"
 
     function iconPath(name) {
         return (typeof FluentIconsDir !== "undefined" ? FluentIconsDir : "") + name + ".svg"

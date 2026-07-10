@@ -41,6 +41,8 @@ QtObject {
     property Component windowComponent: Component {
         Fluent.Windows {
             width: root.windowWidth; height: root.windowHeight
+            minimumWidth: 760
+            minimumHeight: 560
             windowTitle: root.windowTitle
             windowIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
             windowIconColored: true

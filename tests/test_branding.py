@@ -18,6 +18,11 @@ class BrandingTests(unittest.TestCase):
             "requirements.txt",
             "qml/main.qml",
             "qml/views/AboutView.qml",
+            "qml/views/CodexView.qml",
+            "qml/views/ConnectionSection.qml",
+            "qml/views/ModelSection.qml",
+            "qml/views/ContextSection.qml",
+            "qml/views/AdvancedSection.qml",
             "build_nuitka.cmd",
             "scripts/build_macos.sh",
             ".github/workflows/build.yml",
@@ -84,12 +89,39 @@ class BrandingTests(unittest.TestCase):
             self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
             self.assertEqual(struct.unpack(">II", png[16:24]), expected)
 
-    def test_context_presets_use_dropdown_button_without_relay_picker(self):
+    def test_responsive_sections_replace_fixed_width_form(self):
         view = self.read("qml/views/CodexView.qml")
+        connection = self.read("qml/views/ConnectionSection.qml")
+        model = self.read("qml/views/ModelSection.qml")
+        context = self.read("qml/views/ContextSection.qml")
+        advanced = self.read("qml/views/AdvancedSection.qml")
+
         self.assertNotIn('text: "选择中转"', view)
         self.assertNotIn("id: presetBox", view)
-        self.assertIn("feature: Fluent.Enums.button.feature_dropdown", view)
-        self.assertIn("menuItems: root.contextPresetOptions", view)
+        self.assertIn("anchors.bottom: actionBar.top", view)
+        self.assertIn("ConnectionSection", view)
+        self.assertIn("ModelSection", view)
+        self.assertIn("ContextSection", view)
+        self.assertIn("AdvancedSection", view)
+        self.assertIn("highestReasoningEffortForModel", view)
+
+        for section in (connection, model, context):
+            self.assertIn("import QtQuick.Layouts", section)
+            self.assertIn("GridLayout", section)
+            self.assertIn("columns: width <", section)
+
+        self.assertIn("feature: Fluent.Enums.button.feature_dropdown", context)
+        self.assertIn("Fluent.Expander", advanced)
+
+    def test_latest_prismqml_engine_is_pinned(self):
+        requirements = self.read("requirements.txt")
+        about = self.read("qml/views/AboutView.qml")
+        main = self.read("qml/main.qml")
+
+        self.assertIn("prismqml==0.2.24.9", requirements)
+        self.assertIn("prismqml 0.2.24.9", about)
+        self.assertIn("minimumWidth: 760", main)
+        self.assertIn("minimumHeight: 560", main)
 
 
 if __name__ == "__main__":

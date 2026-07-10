@@ -103,6 +103,14 @@ class ModelProfiles:
         source = profile["reasoningOptions"] if profile else self._default_options
         return [dict(option) for option in source]
 
+    def highest_reasoning_effort(self, model):
+        """返回当前模型可用的最高非空思考档位。"""
+        options = self.reasoning_options(model)
+        return next(
+            (option["value"] for option in reversed(options) if option["value"]),
+            "",
+        )
+
     def supports_reasoning_effort(self, model, effort):
         profile = self.profile_for(model)
         if not profile or not effort:

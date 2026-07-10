@@ -63,7 +63,7 @@ def main() -> int:
     if os.environ.get("SELFTEST"):
         from PySide6.QtCore import QTimer
         print("[SELFTEST] QML 加载成功, rootObjects =", len(engine.rootObjects()))
-        QTimer.singleShot(1500, app.quit)
+        QTimer.singleShot(3000, app.quit)
 
     return app.exec()
 

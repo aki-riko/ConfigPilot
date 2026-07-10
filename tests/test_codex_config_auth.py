@@ -116,6 +116,9 @@ class CodexConfigAuthTests(unittest.TestCase):
                 self.assertEqual([item["value"] for item in options], expected_values)
                 self.assertEqual([item["text"] for item in options], expected_text)
                 self.assertEqual(
+                    config.highestReasoningEffortForModel(model), "max"
+                )
+                self.assertEqual(
                     config.contextPresetForModel(model),
                     {
                         "menuText": "GPT-5.6 默认上下文",
@@ -133,6 +136,9 @@ class CodexConfigAuthTests(unittest.TestCase):
                 ["", "low", "medium", "high", "xhigh"],
             )
             self.assertEqual(
+                config.highestReasoningEffortForModel("gpt-5.5"), "xhigh"
+            )
+            self.assertEqual(
                 config.contextPresetForModel("gpt-5.5"),
                 {
                     "menuText": "GPT-5.5 稳定上下文",
@@ -148,6 +154,9 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(
                 [item["value"] for item in other_options],
                 ["", "low", "medium", "high", "xhigh"],
+            )
+            self.assertEqual(
+                config.highestReasoningEffortForModel("custom-model"), "xhigh"
             )
             self.assertEqual(config.contextPresetForModel("custom-model"), {})
             self.assertEqual(

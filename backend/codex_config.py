@@ -296,6 +296,10 @@ class CodexConfig(QObject):
     def reasoningOptionsForModel(self, model):
         return self._model_profiles.reasoning_options(model)
 
+    @Slot(str, result=str)
+    def highestReasoningEffortForModel(self, model):
+        return self._model_profiles.highest_reasoning_effort(model)
+
     @Slot(str, result="QVariantMap")
     def contextPresetForModel(self, model):
         return self._model_profiles.context_preset(model)
@@ -457,11 +461,13 @@ class CodexConfig(QObject):
             self.notify.emit(2, "无默认", "providers.json 没有预置项可作默认")
             return
         p = self._presets[0]
+        model = p.get("model", DEFAULT_MODEL)
         self.applyConfig({
             "baseUrl": p.get("baseUrl", ""),
             "provider": p.get("provider", "relay"),
             "wireApi": p.get("wireApi", DEFAULT_WIRE_API),
-            "model": p.get("model", DEFAULT_MODEL),
+            "model": model,
+            "reasoningEffort": self._model_profiles.highest_reasoning_effort(model),
         })
 
     # ---------- 写 auth.json 的 key ----------

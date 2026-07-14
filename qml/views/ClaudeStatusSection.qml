@@ -16,65 +16,49 @@ Fluent.Card {
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
-        leftPadding: Fluent.Enums.spacing.xl
-        rightPadding: Fluent.Enums.spacing.xl
-        topPadding: Fluent.Enums.spacing.xl
-        bottomPadding: Fluent.Enums.spacing.xl
-        spacing: Fluent.Enums.spacing.l
+        leftPadding: Fluent.Enums.spacing.l
+        rightPadding: Fluent.Enums.spacing.l
+        topPadding: Fluent.Enums.spacing.m
+        bottomPadding: Fluent.Enums.spacing.m
 
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
 
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "安装与模式"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "直接使用 Claude Desktop 自己的本地配置库，不修改程序文件"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Fluent.Badge {
-                text: root.installed ? "已安装" : "未检测到安装"
-                level: root.installed
-                       ? Fluent.Enums.statusLevel.success
-                       : Fluent.Enums.statusLevel.warning
-            }
-        }
-
         GridLayout {
             width: cardColumn.innerWidth
-            columns: width < 620 ? 1 : 2
+            columns: width < 700 ? 2 : 4
             columnSpacing: Fluent.Enums.spacing.l
             rowSpacing: Fluent.Enums.spacing.m
 
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    text: "Claude Desktop"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                }
+                Fluent.Badge {
+                    text: root.installed ? "已安装" : "未检测到安装"
+                    level: root.installed
+                           ? Fluent.Enums.statusLevel.success
+                           : Fluent.Enums.statusLevel.warning
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
 
                 Text {
                     text: "Developer Mode"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
                 }
                 Fluent.Badge {
@@ -88,47 +72,39 @@ Fluent.Card {
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+                spacing: Fluent.Enums.spacing.xxs
 
                 Text {
-                    text: "Third-Party Inference"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
+                    text: "Gateway"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
                 }
                 Fluent.Badge {
-                    text: root.thirdPartyEnabled ? "Gateway 已应用" : "等待配置"
+                    text: root.thirdPartyEnabled ? "已应用" : "待配置"
                     level: root.thirdPartyEnabled
                            ? Fluent.Enums.statusLevel.success
                            : Fluent.Enums.statusLevel.attention
                 }
             }
-        }
 
-        Fluent.Separator {
-            width: cardColumn.innerWidth
-        }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
 
-        Column {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.xxs
-
-            Text {
-                text: root.profileName.length > 0
-                      ? "当前配置：" + root.profileName
-                      : "当前配置：尚未创建"
-                color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.body
-                font.family: Fluent.Enums.fontFamily
-            }
-            Text {
-                width: parent.width
-                text: root.configPath
-                color: Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                wrapMode: Text.WrapAnywhere
+                Text {
+                    text: "配置档案"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                }
+                Fluent.Badge {
+                    text: root.profileName.length > 0 ? root.profileName : "未创建"
+                    level: root.profileName.length > 0
+                           ? Fluent.Enums.statusLevel.info
+                           : Fluent.Enums.statusLevel.attention
+                }
             }
         }
     }

@@ -21,11 +21,11 @@ Fluent.Card {
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
-        leftPadding: Fluent.Enums.spacing.xl
-        rightPadding: Fluent.Enums.spacing.xl
-        topPadding: Fluent.Enums.spacing.xl
-        bottomPadding: Fluent.Enums.spacing.xl
-        spacing: Fluent.Enums.spacing.l
+        leftPadding: Fluent.Enums.spacing.l
+        rightPadding: Fluent.Enums.spacing.l
+        topPadding: Fluent.Enums.spacing.m
+        bottomPadding: Fluent.Enums.spacing.m
+        spacing: Fluent.Enums.spacing.s
 
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
@@ -48,7 +48,7 @@ Fluent.Card {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "服务端必须兼容 Anthropic /v1/messages；地址、认证方式和模型名以服务商文档为准"
+                    text: "兼容 Anthropic /v1/messages 的第三方推理入口"
                     color: Fluent.Enums.textColor.tertiary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
@@ -66,12 +66,12 @@ Fluent.Card {
 
         Column {
             width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.xs
+            spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "Gateway endpoint"
                 color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.body
+                font.pixelSize: Fluent.Enums.typography.caption
                 font.bold: true
                 font.family: Fluent.Enums.fontFamily
             }
@@ -101,17 +101,17 @@ Fluent.Card {
             width: cardColumn.innerWidth
             columns: width < 620 ? 1 : 2
             columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.l
+            rowSpacing: Fluent.Enums.spacing.s
 
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+                spacing: Fluent.Enums.spacing.xxs
 
                 Text {
                     text: "认证方式"
                     color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
+                    font.pixelSize: Fluent.Enums.typography.caption
                     font.bold: true
                     font.family: Fluent.Enums.fontFamily
                 }
@@ -150,12 +150,12 @@ Fluent.Card {
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+                spacing: Fluent.Enums.spacing.xxs
 
                 Text {
                     text: "Gateway API key"
                     color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
+                    font.pixelSize: Fluent.Enums.typography.caption
                     font.bold: true
                     font.family: Fluent.Enums.fontFamily
                 }
@@ -186,25 +186,39 @@ Fluent.Card {
             }
         }
 
-        Fluent.Toggle {
-            id: clearKeyToggle
+        RowLayout {
             width: cardColumn.innerWidth
-            enabled: root.hasApiKey
-            controlType: Fluent.Enums.toggle.control_switch
-            type: Fluent.Enums.toggle.type_subtitle
-            text: "移除已保存的 API key"
-            subtitle: "关闭时，输入框留空会保留现有密钥"
-            Component.onCompleted: Qt.callLater(function() {
-                checked = root.clearApiKeyValue
-            })
-            onToggled: function(checkedValue) {
-                root.clearApiKeyToggled(checkedValue)
+            spacing: Fluent.Enums.spacing.m
+
+            Text {
+                Layout.fillWidth: true
+                text: root.hasApiKey
+                      ? "Key 留空会保留现有值"
+                      : "保存后 Key 仅写入本机 Claude 配置"
+                color: Fluent.Enums.textColor.tertiary
+                font.pixelSize: Fluent.Enums.typography.caption
+                font.family: Fluent.Enums.fontFamily
+                elide: Text.ElideRight
             }
-            Connections {
-                target: root
-                function onClearApiKeyValueChanged() {
-                    if (clearKeyToggle.checked !== root.clearApiKeyValue) {
-                        clearKeyToggle.checked = root.clearApiKeyValue
+
+            Fluent.Toggle {
+                id: clearKeyToggle
+                enabled: root.hasApiKey
+                controlType: Fluent.Enums.toggle.control_switch
+                type: Fluent.Enums.toggle.type_default
+                text: "移除已保存 Key"
+                Component.onCompleted: Qt.callLater(function() {
+                    checked = root.clearApiKeyValue
+                })
+                onToggled: function(checkedValue) {
+                    root.clearApiKeyToggled(checkedValue)
+                }
+                Connections {
+                    target: root
+                    function onClearApiKeyValueChanged() {
+                        if (clearKeyToggle.checked !== root.clearApiKeyValue) {
+                            clearKeyToggle.checked = root.clearApiKeyValue
+                        }
                     }
                 }
             }

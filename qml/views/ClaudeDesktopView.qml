@@ -95,40 +95,44 @@ Item {
             width: parent ? parent.width : 0
             leftPadding: root.pagePadding
             rightPadding: root.pagePadding
-            topPadding: Fluent.Enums.spacing.xl
-            bottomPadding: Fluent.Enums.spacing.xl
-            spacing: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.m
 
             readonly property real innerWidth: Math.max(
                 0, width - leftPadding - rightPadding
             )
 
-            ColumnLayout {
+            RowLayout {
                 width: pageColumn.innerWidth
-                spacing: Fluent.Enums.spacing.xxs
+                spacing: Fluent.Enums.spacing.m
 
-                Text {
-                    text: "Claude Desktop"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.displayLarge
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: "一键启用 Developer Mode，并配置 Third-Party Inference Gateway"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
+                    spacing: Fluent.Enums.spacing.xxs
+
+                    Text {
+                        text: "Claude Desktop"
+                        color: Fluent.Enums.textColor.primary
+                        font.pixelSize: Fluent.Enums.typography.displayLarge
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Developer Mode 与 Third-Party Inference Gateway"
+                        color: Fluent.Enums.textColor.secondary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.family: Fluent.Enums.fontFamily
+                        wrapMode: Text.WordWrap
+                    }
                 }
-                Text {
-                    Layout.fillWidth: true
-                    text: ClaudeDesktopConfig ? ClaudeDesktopConfig.dataDir : ""
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WrapAnywhere
+
+                Fluent.Badge {
+                    text: root.needsActivation ? "待配置" : "已就绪"
+                    level: root.needsActivation
+                           ? Fluent.Enums.statusLevel.attention
+                           : Fluent.Enums.statusLevel.success
                 }
             }
 
@@ -172,18 +176,9 @@ Item {
                 onClearHeadersToggled: function(value) { root.fClearHeaders = value }
             }
 
-            Text {
-                width: pageColumn.innerWidth
-                text: "配置写入后必须完全退出并重新打开 Claude Desktop；ConfigPilot 不会强制结束正在运行的 Cowork / Code 会话。"
-                color: Fluent.Enums.statusLevel.warningColor
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                wrapMode: Text.WordWrap
-            }
-
             Item {
                 width: 1
-                height: Fluent.Enums.spacing.xl
+                height: Fluent.Enums.spacing.s
             }
         }
     }
@@ -193,7 +188,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 72
+        height: 68
         color: Fluent.Enums.stateColor.controlBg
         border.width: Fluent.Enums.border.thin
         border.color: Fluent.Enums.stateColor.borderLight
@@ -205,22 +200,37 @@ Item {
             anchors.rightMargin: root.pagePadding
             spacing: Fluent.Enums.spacing.m
 
-            Text {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: root.hasDraftChanges
-                      ? "有待应用的 Claude Desktop 配置"
-                      : "开发者模式与第三方 Gateway 已同步"
-                color: root.hasDraftChanges
-                       ? Fluent.Enums.statusLevel.warningColor
-                       : Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                elide: Text.ElideRight
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.hasDraftChanges
+                          ? "有待应用的 Claude Desktop 配置"
+                          : "开发者模式与第三方 Gateway 已同步"
+                    color: root.hasDraftChanges
+                           ? Fluent.Enums.statusLevel.warningColor
+                           : Fluent.Enums.textColor.secondary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.bold: root.hasDraftChanges
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "保存后请完全退出并重新打开 Claude Desktop"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
             }
 
             Fluent.Button {
                 style: Fluent.Enums.button.style_default
                 text: "打开目录"
+                visible: root.width >= 820
                 onClicked: if (ClaudeDesktopConfig) {
                     ClaudeDesktopConfig.openConfigDirectory()
                 }
@@ -234,7 +244,7 @@ Item {
 
             Fluent.Button {
                 style: Fluent.Enums.button.style_primary
-                text: "一键启用并应用"
+                text: "启用并应用"
                 enabled: root.hasDraftChanges && root.fEndpoint.trim().length > 0
                 onClicked: root.applyDraft()
             }

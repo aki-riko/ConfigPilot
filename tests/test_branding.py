@@ -1,6 +1,5 @@
 import struct
 import unittest
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -80,17 +79,41 @@ class BrandingTests(unittest.TestCase):
 
         self.assertIn('#define AppUserModelID "PrismQML.ConfigPilot"', installer)
         self.assertEqual(installer.count('AppUserModelID: "{#AppUserModelID}"'), 2)
+        self.assertIn('if "__compiled__" in globals():', main)
         self.assertIn(
             'os.environ.setdefault("PRISMQML_APP_USER_MODEL_ID", "PrismQML.ConfigPilot")',
             main,
         )
+        self.assertLess(
+            main.index('if "__compiled__" in globals():'),
+            main.index("from prismqml import App"),
+        )
         self.assertIn("app.setWindowIcon(taskbar_icon)", main)
 
     def test_icon_sources_are_valid_and_windows_icon_has_multiple_sizes(self):
-        svg_path = ROOT / "resources" / "app_icon.svg"
-        svg_root = ET.parse(svg_path).getroot()
-        self.assertTrue(svg_root.tag.endswith("svg"))
-        self.assertIn("configpilot-gradient", svg_path.read_text(encoding="utf-8"))
+        png = (ROOT / "resources" / "app_icon.png").read_bytes()
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", png[16:24]), (768, 768))
+        self.assertEqual((png[24], png[25]), (8, 6))
+
+        main = self.read("main.py")
+        self.assertIn(
+            '"app_icon.ico" if sys.platform == "win32" else "app_icon.png"',
+            main,
+        )
+        self.assertIn(
+            'logo_path = os.path.join(app_dir, "resources", "app_icon.png")',
+            main,
+        )
+        self.assertIn('window_instance.setIcon(taskbar_icon)', main)
+        for script in (
+            "scripts/make_ico.py",
+            "scripts/make_icns.py",
+            "scripts/make_social_preview.py",
+        ):
+            content = self.read(script)
+            self.assertIn('"app_icon.png"', content)
+            self.assertNotIn('"app_icon.svg"', content)
 
         ico = (ROOT / "resources" / "app_icon.ico").read_bytes()
         reserved, image_type, image_count = struct.unpack("<HHH", ico[:6])

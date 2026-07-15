@@ -1,5 +1,5 @@
 # coding: utf-8
-"""从 SVG 源图标生成包含多种尺寸的 Windows ICO。"""
+"""从 PNG 源图标生成包含多种尺寸的 Windows ICO。"""
 
 from __future__ import annotations
 
@@ -8,23 +8,19 @@ import struct
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt
-from PySide6.QtGui import QGuiApplication, QImage, QPainter
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import QBuffer, QIODevice, QSize, Qt
+from PySide6.QtGui import QGuiApplication, QImage
 
 
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 
-def render_png(renderer: QSvgRenderer, size: int) -> bytes:
-    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(Qt.GlobalColor.transparent)
-
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-    renderer.render(painter, QRectF(0, 0, size, size))
-    painter.end()
+def render_png(source: QImage, size: int) -> bytes:
+    image = source.scaled(
+        QSize(size, size),
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
 
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -66,7 +62,7 @@ def write_ico(images: list[tuple[int, bytes]], output_path: Path) -> None:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    source_path = root / "resources" / "app_icon.svg"
+    source_path = root / "resources" / "app_icon.png"
     output_path = root / "resources" / "app_icon.ico"
 
     if not source_path.is_file():
@@ -75,13 +71,13 @@ def main() -> int:
 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QGuiApplication.instance() or QGuiApplication(sys.argv)
-    renderer = QSvgRenderer(str(source_path))
-    if not renderer.isValid():
-        print(f"[ERROR] SVG 无法解析: {source_path}")
+    source = QImage(str(source_path))
+    if source.isNull():
+        print(f"[ERROR] PNG 无法解析: {source_path}")
         return 1
 
     write_ico(
-        [(size, render_png(renderer, size)) for size in SIZES],
+        [(size, render_png(source, size)) for size in SIZES],
         output_path,
     )
     print(f"[OK] 已生成 {output_path}，包含 {len(SIZES)} 种尺寸")

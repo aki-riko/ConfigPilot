@@ -17,7 +17,6 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
 )
-from PySide6.QtSvg import QSvgRenderer
 
 
 CANVAS_SIZE = (1280, 640)
@@ -30,16 +29,15 @@ def rounded_path(rect, radius):
 
 
 def render_icon(source_path, size):
-    renderer = QSvgRenderer(str(source_path))
-    if not renderer.isValid():
-        raise RuntimeError(f"SVG 无法解析: {source_path}")
-    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    renderer.render(painter, QRectF(0, 0, size, size))
-    painter.end()
-    return image
+    source = QImage(str(source_path))
+    if source.isNull():
+        raise RuntimeError(f"PNG 无法解析: {source_path}")
+    return source.scaled(
+        size,
+        size,
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
 
 
 def paint_background(painter):
@@ -97,7 +95,7 @@ def paint_app_preview(painter, screenshot):
 def main():
     root = Path(__file__).resolve().parents[1]
     screenshot_path = root / "docs" / "images" / "configpilot-main.png"
-    icon_path = root / "resources" / "app_icon.svg"
+    icon_path = root / "resources" / "app_icon.png"
     output_path = root / "docs" / "images" / "social-preview.png"
     if not screenshot_path.is_file():
         raise FileNotFoundError(f"找不到应用截图: {screenshot_path}")

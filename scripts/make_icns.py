@@ -1,8 +1,8 @@
 # coding: utf-8
 """
-把 resources/app_icon.svg 渲染为 macOS 应用图标 resources/app_icon.icns。
+把 resources/app_icon.png 缩放为 macOS 应用图标 resources/app_icon.icns。
 
-用项目已有的 PySide6 (QtSvg) 渲染各尺寸 PNG 到 .iconset 目录,
+用项目已有的 PySide6 生成各尺寸 PNG 到 .iconset 目录,
 再调用 macOS 自带的 iconutil 合成 .icns,无需额外 brew 依赖。
 仅在 macOS 上可用(依赖 iconutil)。
 """
@@ -12,8 +12,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QGuiApplication, QImage, QPainter
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtGui import QGuiApplication, QImage
 
 # iconutil 需要的标准命名: (像素边长, 文件名)
 SPECS = [
@@ -30,33 +29,33 @@ SPECS = [
 ]
 
 
-def render_png(renderer: QSvgRenderer, size: int, out_path: str) -> None:
-    img = QImage(size, size, QImage.Format_ARGB32)
-    img.fill(Qt.transparent)
-    painter = QPainter(img)
-    renderer.render(painter)
-    painter.end()
+def render_png(source: QImage, size: int, out_path: str) -> None:
+    img = source.scaled(
+        QSize(size, size),
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
     if not img.save(out_path, "PNG"):
         raise RuntimeError(f"保存 PNG 失败: {out_path}")
 
 
 def main() -> int:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    svg_path = os.path.join(root, "resources", "app_icon.svg")
+    source_path = os.path.join(root, "resources", "app_icon.png")
     icns_path = os.path.join(root, "resources", "app_icon.icns")
     iconset_dir = os.path.join(root, "resources", "app_icon.iconset")
 
-    if not os.path.isfile(svg_path):
-        print(f"[ERROR] 找不到源图标: {svg_path}")
+    if not os.path.isfile(source_path):
+        print(f"[ERROR] 找不到源图标: {source_path}")
         return 1
 
     # 离屏渲染,无需真实显示
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     _app = QGuiApplication(sys.argv)
 
-    renderer = QSvgRenderer(svg_path)
-    if not renderer.isValid():
-        print(f"[ERROR] SVG 无法解析: {svg_path}")
+    source = QImage(source_path)
+    if source.isNull():
+        print(f"[ERROR] PNG 无法解析: {source_path}")
         return 1
 
     if os.path.isdir(iconset_dir):
@@ -64,7 +63,7 @@ def main() -> int:
     os.makedirs(iconset_dir)
 
     for size, name in SPECS:
-        render_png(renderer, size, os.path.join(iconset_dir, name))
+        render_png(source, size, os.path.join(iconset_dir, name))
     print(f"[OK] 已生成 {len(SPECS)} 个 PNG -> {iconset_dir}")
 
     # iconutil 只在 macOS 上存在

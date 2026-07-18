@@ -2,7 +2,7 @@
 #define AppName "ConfigPilot"
 #define AppLegacyName "Codex 配置助手"
 #ifndef AppVer
-  #define AppVer "1.0.14"
+  #define AppVer "1.0.15"
 #endif
 #define AppPublisher "9li"
 #define AppExe "ConfigPilot.exe"

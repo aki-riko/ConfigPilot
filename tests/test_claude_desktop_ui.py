@@ -36,7 +36,11 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn('"clearApiKey": fClearApiKey', page)
         self.assertIn('"clearHeaders": fClearHeaders', page)
         self.assertIn("完全退出并重新打开 Claude Desktop", page)
-        self.assertIn('text: "启用并应用"', page)
+        self.assertIn(
+            'text: root.configBusy ? "处理中..." : "启用并应用"',
+            page,
+        )
+        self.assertIn("ClaudeDesktopConfig.operationBusy", page)
 
         self.assertIn("columns: width < 700 ? 1 : 2", status)
         self.assertIn("id: statusGrid", status)

@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+from tests.qt_test_utils import wait_for_idle
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,7 +44,9 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
         )
         patches.start()
         self.addCleanup(patches.stop)
-        return module.ClaudeDesktopConfig(), primary, third_party
+        config = module.ClaudeDesktopConfig()
+        wait_for_idle(config)
+        return config, primary, third_party
 
     @staticmethod
     def write_json(path: Path, value):
@@ -107,6 +111,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                 {"preferences": {"sidebarMode": "default"}},
             )
             config.reload()
+            wait_for_idle(config)
 
             notices = []
             config.notify.connect(lambda level, title, message: notices.append((level, title, message)))
@@ -119,6 +124,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "headersText": '{"X-Tenant": "demo"}',
                 }
             )
+            wait_for_idle(config)
 
             meta = json.loads(
                 (third_party / "configLibrary" / "_meta.json").read_text(
@@ -198,6 +204,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "headersText": "",
                 }
             )
+            wait_for_idle(config)
             preserved = json.loads(profile_path.read_text(encoding="utf-8"))
             self.assertEqual(preserved["inferenceGatewayApiKey"], "old-secret")
             self.assertEqual(
@@ -213,6 +220,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "clearHeaders": True,
                 }
             )
+            wait_for_idle(config)
             cleared = json.loads(profile_path.read_text(encoding="utf-8"))
             self.assertNotIn("inferenceGatewayApiKey", cleared)
             self.assertNotIn("inferenceCustomHeaders", cleared)
@@ -231,6 +239,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                 {"preferences": {"sidebarMode": "default"}},
             )
             config.reload()
+            wait_for_idle(config)
             config.applyConfig(
                 {
                     "endpoint": "https://gateway.example.com",
@@ -239,6 +248,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "apiKey": "keep-secret",
                 }
             )
+            wait_for_idle(config)
 
             meta = json.loads(
                 (third_party / "configLibrary" / "_meta.json").read_text(
@@ -252,6 +262,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
 
             config.setDeveloperModeEnabled(False)
             config.setThirdPartyEnabled(False)
+            wait_for_idle(config)
 
             primary_settings = json.loads(
                 (primary / "developer_settings.json").read_text(encoding="utf-8")
@@ -279,6 +290,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
 
             config.setDeveloperModeEnabled(True)
             config.setThirdPartyEnabled(True)
+            wait_for_idle(config)
 
             self.assertTrue(config.developerModeEnabled)
             self.assertTrue(config.thirdPartyEnabled)
@@ -295,6 +307,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             )
 
             config.setThirdPartyEnabled(True)
+            wait_for_idle(config)
 
             self.assertFalse(
                 (third_party / "claude_desktop_config.json").exists()
@@ -405,6 +418,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "headersText": "[]",
                 }
             )
+            wait_for_idle(config)
 
             self.assertFalse((third_party / "configLibrary").exists())
             self.assertEqual(notices[-1][0], 2)
@@ -434,6 +448,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                     "modelsText": "model-a",
                 }
             )
+            wait_for_idle(config)
 
             self.assertEqual(meta_path.read_text(encoding="utf-8"), original)
             self.assertEqual(notices[-1][0], 2)

@@ -21,7 +21,10 @@ Item {
                                        : Fluent.Enums.spacing.xl
     readonly property bool needsActivation: ClaudeDesktopConfig
                                                  && (!ClaudeDesktopConfig.developerModeEnabled
-                                                     || !ClaudeDesktopConfig.thirdPartyEnabled)
+                                                      || !ClaudeDesktopConfig.thirdPartyEnabled)
+    readonly property bool configBusy: ClaudeDesktopConfig
+                                               ? ClaudeDesktopConfig.operationBusy
+                                               : false
     readonly property bool hasDraftChanges: {
         if (!ClaudeDesktopConfig) return false
         return needsActivation
@@ -146,6 +149,7 @@ Item {
                 thirdPartyEnabled: ClaudeDesktopConfig
                                    ? ClaudeDesktopConfig.thirdPartyEnabled
                                    : false
+                configBusy: root.configBusy
                 installBusy: ClaudeDesktopConfig ? ClaudeDesktopConfig.installBusy : false
                 installCancelable: ClaudeDesktopConfig
                                    ? ClaudeDesktopConfig.installCancelable
@@ -259,6 +263,7 @@ Item {
                 style: Fluent.Enums.button.style_default
                 text: "打开目录"
                 visible: root.width >= 820
+                enabled: !root.configBusy
                 onClicked: if (ClaudeDesktopConfig) {
                     ClaudeDesktopConfig.openConfigDirectory()
                 }
@@ -267,13 +272,16 @@ Item {
             Fluent.Button {
                 style: Fluent.Enums.button.style_default
                 text: "重新读取"
+                enabled: !root.configBusy
                 onClicked: if (ClaudeDesktopConfig) ClaudeDesktopConfig.reload()
             }
 
             Fluent.Button {
                 style: Fluent.Enums.button.style_primary
-                text: "启用并应用"
-                enabled: root.hasDraftChanges && root.fEndpoint.trim().length > 0
+                text: root.configBusy ? "处理中..." : "启用并应用"
+                enabled: !root.configBusy
+                         && root.hasDraftChanges
+                         && root.fEndpoint.trim().length > 0
                 onClicked: root.applyDraft()
             }
         }

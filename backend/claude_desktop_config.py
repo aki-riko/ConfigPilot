@@ -3,13 +3,9 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
-import shutil
-import tempfile
-from urllib.parse import urlparse
 import uuid
 
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
@@ -20,7 +16,16 @@ from backend.claude_install_sources import (
     claude_install_target,
 )
 from backend.claude_installer import ClaudeInstaller
-from backend.endpoint_urls import normalize_v1_base_url
+from backend.async_tasks import SerialTaskRunner
+from backend.claude_config_io import (
+    atomic_write_json,
+    models_to_text,
+    parse_headers,
+    parse_models,
+    read_json_object,
+    valid_profile_id,
+    validate_endpoint,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -57,113 +62,11 @@ def _third_party_data_dir() -> Path:
     return Path.home() / "Library" / "Application Support" / CLAUDE_THIRD_PARTY_DIR_NAME
 
 
-def _read_json_object(path: Path, *, default: dict | None = None) -> dict:
-    if not path.is_file():
-        return dict(default or {})
-    with path.open("r", encoding="utf-8") as handle:
-        value = json.load(handle)
-    if not isinstance(value, dict):
-        raise ValueError(f"{path.name} 顶层必须是 JSON 对象")
-    return value
-
-
-def _backup_file(path: Path) -> None:
-    if path.is_file():
-        shutil.copy2(path, path.with_name(path.name + ".bak"))
-
-
-def _atomic_write_json(path: Path, value: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _backup_file(path)
-    fd, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(value, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            LOGGER.debug("无法调整 Claude 配置文件权限: %s", path, exc_info=True)
-    except Exception:
-        try:
-            temporary_path.unlink(missing_ok=True)
-        except OSError:
-            LOGGER.warning("清理 Claude 临时配置失败: %s", temporary_path, exc_info=True)
-        raise
-
-
-def _valid_profile_id(value: object) -> bool:
-    if not isinstance(value, str):
-        return False
-    try:
-        return str(uuid.UUID(value)) == value
-    except (ValueError, AttributeError):
-        return False
-
-
-def _parse_models(text: str) -> list[str]:
-    models: list[str] = []
-    seen: set[str] = set()
-    for line in text.splitlines():
-        model = line.strip()
-        if model and model not in seen:
-            seen.add(model)
-            models.append(model)
-    return models
-
-
-def _models_to_text(value: object) -> str:
-    if not isinstance(value, list):
-        return ""
-    names: list[str] = []
-    for item in value:
-        if isinstance(item, str):
-            name = item.strip()
-        elif isinstance(item, dict):
-            name = str(item.get("name", "")).strip()
-        else:
-            continue
-        if name:
-            names.append(name)
-    return "\n".join(names)
-
-
-def _parse_headers(text: str) -> dict[str, str]:
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"额外 Header 不是有效 JSON：{exc.msg}") from exc
-    if not isinstance(value, dict):
-        raise ValueError("额外 Header 必须是 JSON 对象")
-    headers: dict[str, str] = {}
-    for raw_key, raw_value in value.items():
-        key = str(raw_key).strip()
-        if not key:
-            raise ValueError("Header 名称不能为空")
-        if not isinstance(raw_value, str):
-            raise ValueError(f"Header {key} 的值必须是字符串")
-        headers[key] = raw_value
-    return headers
-
-
-def _validate_endpoint(value: str) -> str:
-    endpoint = value.strip()
-    parsed = urlparse(endpoint)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("Gateway endpoint 必须是完整的 http(s) URL")
-    return normalize_v1_base_url(endpoint)
-
-
 class ClaudeDesktopConfig(QObject):
     """读取并安全写入 Claude Desktop 的第三方推理配置库。"""
 
     changed = Signal()
+    operationBusyChanged = Signal()
     installChanged = Signal()
     notify = Signal(int, str, str)
 
@@ -175,6 +78,11 @@ class ClaudeDesktopConfig(QObject):
         self._installer = ClaudeInstaller(self)
         self._installer.changed.connect(self.installChanged.emit)
         self._installer.notify.connect(self.notify.emit)
+        self._tasks = SerialTaskRunner(
+            self,
+            thread_name="ConfigPilotClaudeConfig",
+        )
+        self._tasks.busyChanged.connect(self.operationBusyChanged.emit)
         self._config_library_dir = self._data_dir / CONFIG_LIBRARY_DIR_NAME
         self._meta_path = self._config_library_dir / CONFIG_LIBRARY_META_FILE_NAME
         self._desktop_config_path = self._data_dir / CONFIG_FILE_NAME
@@ -242,6 +150,10 @@ class ClaudeDesktopConfig(QObject):
     def profileName(self):
         return self._profile_name
 
+    @Property(bool, notify=operationBusyChanged)
+    def operationBusy(self):
+        return self._tasks.busy
+
     @Property(bool, notify=installChanged)
     def installBusy(self):
         return self._installer.busy
@@ -266,7 +178,7 @@ class ClaudeDesktopConfig(QObject):
         for entry in entries:
             if (
                 not isinstance(entry, dict)
-                or not _valid_profile_id(entry.get("id"))
+                or not valid_profile_id(entry.get("id"))
                 or not isinstance(entry.get("name"), str)
             ):
                 raise ValueError("_meta.json 包含无效配置条目，已拒绝覆盖")
@@ -279,64 +191,103 @@ class ClaudeDesktopConfig(QObject):
             if (
                 isinstance(entry, dict)
                 and entry.get("id") == applied_id
-                and _valid_profile_id(applied_id)
+                and valid_profile_id(applied_id)
             ):
                 return applied_id, str(entry.get("name", ""))
         return "", ""
 
-    @Slot()
-    def reload(self):
-        self._installed = claude_desktop_installed(self._install_target)
-        self._developer_mode_enabled = False
-        self._third_party_enabled = False
-        self._endpoint = ""
-        self._auth_scheme = "bearer"
-        self._models_text = ""
-        self._has_api_key = False
-        self._header_count = 0
-        self._profile_name = ""
-        self._active_config_path = self._config_library_dir
+    def _empty_snapshot(self) -> dict:
+        return {
+            "installed": False,
+            "developerModeEnabled": False,
+            "thirdPartyEnabled": False,
+            "endpoint": "",
+            "authScheme": "bearer",
+            "modelsText": "",
+            "hasApiKey": False,
+            "headerCount": 0,
+            "profileName": "",
+            "activeConfigPath": self._config_library_dir,
+        }
 
-        try:
-            for path in self._developer_settings_paths:
-                settings = _read_json_object(path)
-                if settings.get("allowDevTools") is True:
-                    self._developer_mode_enabled = True
+    def _read_snapshot(self) -> dict:
+        snapshot = self._empty_snapshot()
+        snapshot["installed"] = claude_desktop_installed(self._install_target)
+        snapshot["developerModeEnabled"] = any(
+            read_json_object(path).get("allowDevTools") is True
+            for path in self._developer_settings_paths
+        )
+        desktop_config = read_json_object(self._desktop_config_path)
+        meta = read_json_object(self._meta_path)
+        profile_id, profile_name = self._active_profile(meta)
+        if not profile_id:
+            return snapshot
 
-            desktop_config = _read_json_object(self._desktop_config_path)
-            meta = _read_json_object(self._meta_path)
-            profile_id, profile_name = self._active_profile(meta)
-            if profile_id:
-                profile_path = self._config_library_dir / f"{profile_id}.json"
-                profile = _read_json_object(profile_path)
-                self._active_config_path = profile_path
-                self._profile_name = profile_name
-                self._endpoint = str(profile.get("inferenceGatewayBaseUrl", ""))
-                auth_scheme = str(
-                    profile.get("inferenceGatewayAuthScheme", "bearer")
-                ).strip()
-                self._auth_scheme = (
+        profile_path = self._config_library_dir / f"{profile_id}.json"
+        profile = read_json_object(profile_path)
+        endpoint = str(profile.get("inferenceGatewayBaseUrl", ""))
+        auth_scheme = str(
+            profile.get("inferenceGatewayAuthScheme", "bearer")
+        ).strip()
+        headers = profile.get(
+            "inferenceCustomHeaders",
+            profile.get("inferenceGatewayHeaders", {}),
+        )
+        snapshot.update(
+            {
+                "activeConfigPath": profile_path,
+                "profileName": profile_name,
+                "endpoint": endpoint,
+                "authScheme": (
                     auth_scheme if auth_scheme in SUPPORTED_AUTH_SCHEMES else "bearer"
-                )
-                self._models_text = _models_to_text(profile.get("inferenceModels"))
-                self._has_api_key = bool(profile.get("inferenceGatewayApiKey"))
-                headers = profile.get(
-                    "inferenceCustomHeaders",
-                    profile.get("inferenceGatewayHeaders", {}),
-                )
-                self._header_count = len(headers) if isinstance(headers, dict) else 0
-                self._third_party_enabled = (
+                ),
+                "modelsText": models_to_text(profile.get("inferenceModels")),
+                "hasApiKey": bool(profile.get("inferenceGatewayApiKey")),
+                "headerCount": len(headers) if isinstance(headers, dict) else 0,
+                "thirdPartyEnabled": (
                     desktop_config.get("deploymentMode") == "3p"
                     and profile.get("inferenceProvider") == "gateway"
-                    and bool(self._endpoint)
-                )
-        except Exception as exc:
-            LOGGER.exception("读取 Claude Desktop 配置失败")
-            self.notify.emit(3, "Claude 配置读取失败", str(exc))
+                    and bool(endpoint)
+                ),
+            }
+        )
+        return snapshot
+
+    def _apply_snapshot(self, snapshot: dict) -> None:
+        self._installed = bool(snapshot["installed"])
+        self._developer_mode_enabled = bool(snapshot["developerModeEnabled"])
+        self._third_party_enabled = bool(snapshot["thirdPartyEnabled"])
+        self._endpoint = str(snapshot["endpoint"])
+        self._auth_scheme = str(snapshot["authScheme"])
+        self._models_text = str(snapshot["modelsText"])
+        self._has_api_key = bool(snapshot["hasApiKey"])
+        self._header_count = int(snapshot["headerCount"])
+        self._profile_name = str(snapshot["profileName"])
+        self._active_config_path = Path(snapshot["activeConfigPath"])
         self.changed.emit()
 
-    def _prepare_profile(self, cfg: dict) -> tuple[dict, dict, Path]:
-        meta = _read_json_object(self._meta_path)
+    def _on_reload_failed(self, exc: Exception) -> None:
+        LOGGER.exception(
+            "读取 Claude Desktop 配置失败",
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        self._apply_snapshot(self._empty_snapshot())
+        self.notify.emit(3, "Claude 配置读取失败", str(exc))
+
+    @Slot()
+    def reload(self):
+        self._tasks.submit(
+            self._read_snapshot,
+            self._apply_snapshot,
+            self._on_reload_failed,
+        )
+
+    def _prepare_profile(
+        self,
+        cfg: dict,
+        current_models_text: str,
+    ) -> tuple[dict, dict, Path]:
+        meta = read_json_object(self._meta_path)
         entries = self._validated_entries(meta)
 
         profile_id, _ = self._active_profile(meta)
@@ -345,7 +296,7 @@ class ClaudeDesktopConfig(QObject):
                 (
                     entry
                     for entry in entries
-                    if isinstance(entry, dict) and _valid_profile_id(entry.get("id"))
+                    if isinstance(entry, dict) and valid_profile_id(entry.get("id"))
                 ),
                 None,
             )
@@ -360,8 +311,8 @@ class ClaudeDesktopConfig(QObject):
                 meta["appliedId"] = profile_id
 
         profile_path = self._config_library_dir / f"{profile_id}.json"
-        profile = _read_json_object(profile_path)
-        endpoint = _validate_endpoint(str(cfg.get("endpoint", "")))
+        profile = read_json_object(profile_path)
+        endpoint = validate_endpoint(str(cfg.get("endpoint", "")))
         auth_scheme = str(cfg.get("authScheme", "bearer")).strip()
         if auth_scheme not in SUPPORTED_AUTH_SCHEMES:
             raise ValueError("认证方式只能是 bearer 或 x-api-key")
@@ -372,8 +323,8 @@ class ClaudeDesktopConfig(QObject):
         profile["inferenceCredentialKind"] = "static"
         profile["inferenceGatewayAuthScheme"] = auth_scheme
 
-        if models_text != self._models_text:
-            models = _parse_models(models_text)
+        if models_text != current_models_text:
+            models = parse_models(models_text)
             if models:
                 profile["inferenceModels"] = models
             else:
@@ -390,21 +341,21 @@ class ClaudeDesktopConfig(QObject):
             profile.pop("inferenceCustomHeaders", None)
             profile.pop("inferenceGatewayHeaders", None)
         elif headers_text:
-            profile["inferenceCustomHeaders"] = _parse_headers(headers_text)
+            profile["inferenceCustomHeaders"] = parse_headers(headers_text)
             profile.pop("inferenceGatewayHeaders", None)
 
         return meta, profile, profile_path
 
     def _saved_gateway_profile(self) -> dict:
-        meta = _read_json_object(self._meta_path)
+        meta = read_json_object(self._meta_path)
         profile_id, _ = self._active_profile(meta)
         if not profile_id:
             raise ValueError("尚未保存 Gateway 配置，请先填写并应用")
         profile_path = self._config_library_dir / f"{profile_id}.json"
-        profile = _read_json_object(profile_path)
+        profile = read_json_object(profile_path)
         if profile.get("inferenceProvider") != "gateway":
             raise ValueError("当前配置档案不是 Gateway 类型")
-        _validate_endpoint(str(profile.get("inferenceGatewayBaseUrl", "")))
+        validate_endpoint(str(profile.get("inferenceGatewayBaseUrl", "")))
         return profile
 
     @Slot(str)
@@ -415,86 +366,131 @@ class ClaudeDesktopConfig(QObject):
     def cancelInstall(self):
         self._installer.cancel()
 
+    def _complete_change(self, snapshot: dict, title: str, message: str) -> None:
+        self._apply_snapshot(snapshot)
+        self.notify.emit(1, title, message)
+
+    def _change_failed(
+        self,
+        exc: Exception,
+        *,
+        invalid_title: str,
+        failure_title: str,
+    ) -> None:
+        if isinstance(exc, ValueError):
+            self.notify.emit(2, invalid_title, str(exc))
+        else:
+            LOGGER.exception(
+                failure_title,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            self.notify.emit(3, failure_title, str(exc))
+            self.reload()
+
+    def _set_developer_mode_worker(self, enabled: bool) -> dict:
+        for path in self._developer_settings_paths:
+            settings = read_json_object(path)
+            settings["allowDevTools"] = enabled
+            atomic_write_json(path, settings)
+        return self._read_snapshot()
+
     @Slot(bool)
     def setDeveloperModeEnabled(self, enabled):
-        try:
-            for path in self._developer_settings_paths:
-                settings = _read_json_object(path)
-                settings["allowDevTools"] = bool(enabled)
-                _atomic_write_json(path, settings)
-            self.reload()
-            state = "启用" if enabled else "关闭"
-            self.notify.emit(
-                1,
+        enabled = bool(enabled)
+        state = "启用" if enabled else "关闭"
+        self._tasks.submit(
+            lambda: self._set_developer_mode_worker(enabled),
+            lambda snapshot: self._complete_change(
+                snapshot,
                 f"Developer Mode 已{state}",
                 "请完全退出并重新打开 Claude Desktop。",
-            )
-        except Exception as exc:
-            LOGGER.exception("切换 Claude Desktop Developer Mode 失败")
-            self.reload()
-            self.notify.emit(3, "切换失败", str(exc))
+            ),
+            lambda exc: self._change_failed(
+                exc,
+                invalid_title="无法切换 Developer Mode",
+                failure_title="切换 Developer Mode 失败",
+            ),
+        )
+
+    def _set_third_party_worker(self, enabled: bool) -> dict:
+        if enabled:
+            self._saved_gateway_profile()
+        desktop_config = read_json_object(self._desktop_config_path)
+        desktop_config["deploymentMode"] = "3p" if enabled else "1p"
+        atomic_write_json(self._desktop_config_path, desktop_config)
+        return self._read_snapshot()
 
     @Slot(bool)
     def setThirdPartyEnabled(self, enabled):
-        try:
-            if enabled:
-                self._saved_gateway_profile()
-            desktop_config = _read_json_object(self._desktop_config_path)
-            desktop_config["deploymentMode"] = "3p" if enabled else "1p"
-            _atomic_write_json(self._desktop_config_path, desktop_config)
-            self.reload()
-            state = "启用" if enabled else "关闭"
-            self.notify.emit(
-                1,
+        enabled = bool(enabled)
+        state = "启用" if enabled else "关闭"
+        self._tasks.submit(
+            lambda: self._set_third_party_worker(enabled),
+            lambda snapshot: self._complete_change(
+                snapshot,
                 f"Gateway 已{state}",
                 "已保留配置档案；请完全退出并重新打开 Claude Desktop。",
-            )
-        except ValueError as exc:
-            self.reload()
-            self.notify.emit(2, "无法启用 Gateway", str(exc))
-        except Exception as exc:
-            LOGGER.exception("切换 Claude Desktop Gateway 失败")
-            self.reload()
-            self.notify.emit(3, "切换失败", str(exc))
+            ),
+            lambda exc: self._change_failed(
+                exc,
+                invalid_title="无法启用 Gateway",
+                failure_title="切换 Gateway 失败",
+            ),
+        )
+
+    def _apply_config_worker(self, cfg: dict, current_models_text: str) -> dict:
+        meta, profile, profile_path = self._prepare_profile(
+            cfg,
+            current_models_text,
+        )
+        desktop_config = read_json_object(self._desktop_config_path)
+        desktop_config["deploymentMode"] = "3p"
+
+        developer_settings: list[tuple[Path, dict]] = []
+        for path in self._developer_settings_paths:
+            settings = read_json_object(path)
+            settings["allowDevTools"] = True
+            developer_settings.append((path, settings))
+
+        atomic_write_json(profile_path, profile)
+        atomic_write_json(self._meta_path, meta)
+        for path, settings in developer_settings:
+            atomic_write_json(path, settings)
+        # 最后切换 deploymentMode，避免配置库未写完时进入 3p 模式。
+        atomic_write_json(self._desktop_config_path, desktop_config)
+        return self._read_snapshot()
 
     @Slot("QVariantMap")
     def applyConfig(self, cfg):
-        try:
-            meta, profile, profile_path = self._prepare_profile(dict(cfg))
-            desktop_config = _read_json_object(self._desktop_config_path)
-            desktop_config["deploymentMode"] = "3p"
-
-            developer_settings: list[tuple[Path, dict]] = []
-            for path in self._developer_settings_paths:
-                settings = _read_json_object(path)
-                settings["allowDevTools"] = True
-                developer_settings.append((path, settings))
-
-            _atomic_write_json(profile_path, profile)
-            _atomic_write_json(self._meta_path, meta)
-            for path, settings in developer_settings:
-                _atomic_write_json(path, settings)
-            # 最后切换 deploymentMode，避免 Claude 在配置库尚未写完时进入 3p 模式。
-            _atomic_write_json(self._desktop_config_path, desktop_config)
-
-            self.reload()
-            self.notify.emit(
-                1,
+        config = dict(cfg)
+        current_models_text = self._models_text
+        self._tasks.submit(
+            lambda: self._apply_config_worker(config, current_models_text),
+            lambda snapshot: self._complete_change(
+                snapshot,
                 "Claude Desktop 已配置",
                 "开发者模式与第三方 Gateway 已写入；请完全退出并重新打开 Claude Desktop。",
-            )
-        except ValueError as exc:
-            self.notify.emit(2, "参数无效", str(exc))
-        except Exception as exc:
-            LOGGER.exception("写入 Claude Desktop 配置失败")
-            self.notify.emit(3, "应用失败", str(exc))
+            ),
+            lambda exc: self._change_failed(
+                exc,
+                invalid_title="参数无效",
+                failure_title="应用失败",
+            ),
+        )
+
+    def _open_config_directory(self, path: object) -> None:
+        directory = Path(path)
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory))):
+            self.notify.emit(3, "打开失败", "系统未能打开配置目录")
 
     @Slot()
     def openConfigDirectory(self):
-        try:
-            self._data_dir.mkdir(parents=True, exist_ok=True)
-            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._data_dir))):
-                raise RuntimeError("系统未能打开配置目录")
-        except Exception as exc:
-            LOGGER.exception("打开 Claude Desktop 配置目录失败")
-            self.notify.emit(3, "打开失败", str(exc))
+        self._tasks.submit(
+            lambda: (self._data_dir.mkdir(parents=True, exist_ok=True), self._data_dir)[1],
+            self._open_config_directory,
+            lambda exc: self._change_failed(
+                exc,
+                invalid_title="无法打开配置目录",
+                failure_title="打开失败",
+            ),
+        )

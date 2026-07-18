@@ -9,6 +9,7 @@ Fluent.Card {
     property bool developerModeEnabled: false
     property bool thirdPartyEnabled: false
     property bool gatewayCanEnable: false
+    property bool configBusy: false
     property bool installBusy: false
     property bool installCancelable: false
     property int installProgress: -1
@@ -157,6 +158,7 @@ Fluent.Card {
                         Layout.alignment: Qt.AlignHCenter
                         controlType: Fluent.Enums.toggle.control_switch
                         type: Fluent.Enums.toggle.type_default
+                        enabled: !root.configBusy
                         text: root.developerModeEnabled ? "已启用" : "未启用"
 
                         function syncChecked() {
@@ -197,7 +199,8 @@ Fluent.Card {
                         id: gatewayToggle
                         objectName: "claudeGatewayToggle"
                         Layout.alignment: Qt.AlignHCenter
-                        enabled: root.thirdPartyEnabled || root.gatewayCanEnable
+                        enabled: !root.configBusy
+                                 && (root.thirdPartyEnabled || root.gatewayCanEnable)
                         controlType: Fluent.Enums.toggle.control_switch
                         type: Fluent.Enums.toggle.type_default
                         text: root.thirdPartyEnabled ? "已应用" : "未启用"

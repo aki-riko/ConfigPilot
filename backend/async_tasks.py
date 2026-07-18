@@ -10,7 +10,7 @@ import queue
 import threading
 from typing import Any
 
-from PySide6.QtCore import QObject, Property, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, Property, Signal, Slot
 
 
 LOGGER = logging.getLogger(__name__)
@@ -23,7 +23,13 @@ class SerialTaskRunner(QObject):
     busyChanged = Signal()
     _completed = Signal(int, object, object)
 
-    def __init__(self, parent: QObject | None = None, *, thread_name: str):
+    def __init__(
+        self,
+        parent: QObject | None = None,
+        *,
+        thread_name: str,
+        drain_on_close: bool = False,
+    ):
         super().__init__(parent)
         self._tasks: queue.Queue = queue.Queue()
         self._callbacks: dict[
@@ -32,6 +38,8 @@ class SerialTaskRunner(QObject):
         ] = {}
         self._ids = itertools.count(1)
         self._pending = 0
+        self._drain_on_close = bool(drain_on_close)
+        self._closed = threading.Event()
         self._completed.connect(self._deliver)
         self._thread = threading.Thread(
             target=self._run,
@@ -39,6 +47,11 @@ class SerialTaskRunner(QObject):
             name=thread_name,
         )
         self._thread.start()
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.close)
+        if parent is not None:
+            parent.destroyed.connect(self.close)
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
@@ -50,6 +63,8 @@ class SerialTaskRunner(QObject):
         on_success: Callable[[Any], None],
         on_error: Callable[[Exception], None],
     ) -> int:
+        if self._closed.is_set():
+            raise RuntimeError("后台任务队列已关闭")
         task_id = next(self._ids)
         was_busy = self.busy
         self._callbacks[task_id] = (on_success, on_error)
@@ -71,7 +86,14 @@ class SerialTaskRunner(QObject):
             except Exception as exc:  # 后台异常统一交回主线程处理
                 result = None
                 error = exc
-            self._completed.emit(task_id, result, error)
+            if self._closed.is_set():
+                continue
+            try:
+                self._completed.emit(task_id, result, error)
+            except RuntimeError:
+                if not self._closed.is_set():
+                    LOGGER.exception("后台任务结果信号发送失败")
+                return
 
     @Slot(int, object, object)
     def _deliver(self, task_id: int, result: object, error: object) -> None:
@@ -87,6 +109,32 @@ class SerialTaskRunner(QObject):
         except Exception:
             LOGGER.exception("后台任务结果交付失败")
         finally:
+            if self._closed.is_set():
+                return
             self._pending -= 1
             if self._pending == 0:
                 self.busyChanged.emit()
+
+    @Slot()
+    def close(self) -> None:
+        """停止接收任务；配置队列可选择先排空再结束。"""
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        was_busy = self._pending > 0
+        self._callbacks.clear()
+        self._pending = 0
+        if not self._drain_on_close:
+            while True:
+                try:
+                    self._tasks.get_nowait()
+                except queue.Empty:
+                    break
+        self._tasks.put(_STOP)
+        if self._drain_on_close and threading.current_thread() is not self._thread:
+            self._thread.join()
+        if was_busy:
+            try:
+                self.busyChanged.emit()
+            except RuntimeError:
+                LOGGER.debug("任务队列销毁期间无法发送忙碌状态", exc_info=True)

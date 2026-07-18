@@ -11,7 +11,8 @@ import time
 import unittest
 from unittest import mock
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QTimer
+import shiboken6
 
 from tests.qt_test_utils import wait_until
 
@@ -79,6 +80,105 @@ class ClaudeInstallerTests(unittest.TestCase):
 
         self.assertEqual(len(worker_threads), 1)
         self.assertNotEqual(worker_threads[0], main_thread)
+
+    def test_cancel_during_validation_never_launches_installer(self):
+        sources, installer = self.load_modules()
+        with mock.patch.object(sources.sys, "platform", "win32"):
+            spec = sources.official_install_spec("claude-code")
+        backend = installer.ClaudeInstaller()
+        verify_started = threading.Event()
+        release_verify = threading.Event()
+        notices = []
+        backend.notify.connect(
+            lambda level, title, message: notices.append((level, title, message))
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / spec.file_name
+            path.write_bytes(b"official-script")
+
+            def slow_verify(resolved, downloaded_path):
+                verify_started.set()
+                release_verify.wait(1)
+
+            with (
+                mock.patch.object(installer, "official_install_spec", return_value=spec),
+                mock.patch.object(installer, "_download_to_temp", return_value=path),
+                mock.patch.object(installer, "verify_download", side_effect=slow_verify),
+                mock.patch.object(backend, "_launch") as launch,
+            ):
+                backend.install("claude-code")
+                self.assertTrue(verify_started.wait(1))
+                backend.cancel()
+                release_verify.set()
+                wait_until(lambda: not backend.busy, timeout=2)
+
+            launch.assert_not_called()
+            self.assertTrue(any(title == "已取消安装" for _, title, _ in notices))
+
+    def test_cancel_after_ready_signal_is_queued_never_launches_installer(self):
+        sources, installer = self.load_modules()
+        with mock.patch.object(sources.sys, "platform", "win32"):
+            spec = sources.official_install_spec("claude-code")
+        backend = installer.ClaudeInstaller()
+        backend._cancel_event = threading.Event()
+        backend._set_state(
+            busy=True,
+            cancelable=True,
+            progress=100,
+            status="等待启动安装程序",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / spec.file_name
+            path.write_bytes(b"official-script")
+            emitter = threading.Thread(
+                target=lambda: backend._workerReady.emit(spec, str(path))
+            )
+            with mock.patch.object(backend, "_launch") as launch:
+                emitter.start()
+                emitter.join(timeout=1)
+                self.assertFalse(emitter.is_alive())
+                backend.cancel()
+                wait_until(lambda: not backend.busy, timeout=2)
+
+            launch.assert_not_called()
+
+    def test_parent_destruction_does_not_raise_in_installer_thread(self):
+        sources, installer = self.load_modules()
+        with mock.patch.object(sources.sys, "platform", "win32"):
+            spec = sources.official_install_spec("claude-code")
+        parent = QObject()
+        backend = installer.ClaudeInstaller(parent)
+        source_started = threading.Event()
+        release_source = threading.Event()
+        worker_errors = []
+        original_hook = threading.excepthook
+
+        def slow_source(product):
+            source_started.set()
+            release_source.wait(1)
+            return spec
+
+        threading.excepthook = lambda args: worker_errors.append(args.exc_value)
+        try:
+            with mock.patch.object(
+                installer,
+                "official_install_spec",
+                side_effect=slow_source,
+            ):
+                backend.install("claude-code")
+                self.assertTrue(source_started.wait(1))
+                worker_thread = backend._thread
+                shiboken6.delete(parent)
+                release_source.set()
+                worker_thread.join(timeout=1)
+        finally:
+            threading.excepthook = original_hook
+            release_source.set()
+
+        self.assertFalse(worker_thread.is_alive())
+        self.assertEqual(worker_errors, [])
 
     def test_linux_package_resolution_selects_latest_and_preserves_hash(self):
         sources, _ = self.load_modules()

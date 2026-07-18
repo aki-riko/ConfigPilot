@@ -81,6 +81,7 @@ class ClaudeDesktopConfig(QObject):
         self._tasks = SerialTaskRunner(
             self,
             thread_name="ConfigPilotClaudeConfig",
+            drain_on_close=True,
         )
         self._tasks.busyChanged.connect(self.operationBusyChanged.emit)
         self._config_library_dir = self._data_dir / CONFIG_LIBRARY_DIR_NAME

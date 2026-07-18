@@ -15,9 +15,8 @@ import tempfile
 import threading
 from urllib import error as urllib_error
 from urllib import request as urllib_request
-from urllib.parse import urlparse
 
-from PySide6.QtCore import QObject, Property, QProcess, QUrl, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QObject, Property, QProcess, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from backend.claude_install_sources import (
@@ -30,6 +29,13 @@ from backend.claude_install_validation import (
     SHELL_SCRIPT_MARKER,
     verify_download,
 )
+from backend.claude_install_utils import (
+    content_length as _content_length,
+    format_bytes as _format_bytes,
+    remove_download_tree as _remove_download_tree,
+    request as _request,
+    validate_response_url as _validate_response_url,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,49 +45,6 @@ SUPPORTED_INSTALL_PRODUCTS = frozenset({"claude-code", "claude-desktop"})
 
 class InstallCancelled(Exception):
     """用户取消安装下载。"""
-
-
-def _remove_download_tree(path: Path) -> None:
-    try:
-        shutil.rmtree(path)
-    except FileNotFoundError:
-        return
-    except OSError:
-        LOGGER.warning("清理 Claude 下载目录失败: %s", path, exc_info=True)
-
-
-def _format_bytes(value: int) -> str:
-    amount = float(max(0, value))
-    for unit in ("B", "KB", "MB", "GB"):
-        if amount < 1024 or unit == "GB":
-            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
-        amount /= 1024
-    return f"{int(value)} B"
-
-
-def _validate_response_url(url: str, spec: InstallSpec) -> None:
-    parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or hostname not in spec.allowed_hosts:
-        raise RuntimeError(f"下载被重定向到未授权地址: {hostname or url}")
-
-
-def _content_length(headers, maximum: int) -> int:
-    raw = headers.get("Content-Length", "")
-    if not raw:
-        return 0
-    try:
-        length = int(raw)
-    except ValueError as exc:
-        raise RuntimeError("服务器返回了无效的文件大小") from exc
-    if length <= 0 or length > maximum:
-        raise RuntimeError("服务器返回的文件大小超出安全限制")
-    return length
-
-
-def _request(spec: InstallSpec, url: str, accept: str):
-    headers = {"User-Agent": spec.user_agent, "Accept": accept}
-    return urllib_request.Request(url, headers=headers)
 
 
 def _fetch_metadata(spec: InstallSpec, cancel_event: threading.Event) -> bytes:
@@ -232,10 +195,16 @@ class ClaudeInstaller(QObject):
         self._thread: threading.Thread | None = None
         self._process: QProcess | None = None
         self._download_path = ""
+        self._closing = threading.Event()
         self._workerProgress.connect(self._on_worker_progress)
         self._workerReady.connect(self._on_worker_ready)
         self._workerFailed.connect(self._on_worker_failed)
         self._workerCancelled.connect(self._on_worker_cancelled)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown)
+        if parent is not None:
+            parent.destroyed.connect(self.shutdown)
 
     @Property(bool, notify=changed)
     def busy(self):
@@ -262,6 +231,8 @@ class ClaudeInstaller(QObject):
 
     @Slot(str)
     def install(self, product: str):
+        if self._closing.is_set():
+            return
         if self._busy:
             self.notify.emit(2, "安装任务进行中", "请等待当前 Claude 安装任务完成。")
             return
@@ -295,35 +266,72 @@ class ClaudeInstaller(QObject):
     def _download_worker(self, product: str, cancel_event: threading.Event):
         path: Path | None = None
         try:
+            self._raise_if_cancelled(cancel_event)
             spec = official_install_spec(product)
-            self._workerProgress.emit(-1, f"正在准备 {spec.display_name}")
+            self._raise_if_cancelled(cancel_event)
+            self._emit_worker(self._workerProgress, -1, f"正在准备 {spec.display_name}")
             resolved = self._resolve_spec(spec, cancel_event)
+            self._raise_if_cancelled(cancel_event)
+
+            def report_progress(percent, status):
+                self._raise_if_cancelled(cancel_event)
+                if not self._emit_worker(self._workerProgress, percent, status):
+                    raise InstallCancelled()
+
             path = _download_to_temp(
                 resolved,
                 cancel_event,
-                lambda percent, status: self._workerProgress.emit(percent, status),
+                report_progress,
             )
-            self._workerProgress.emit(100, "正在校验官方安装文件")
+            self._raise_if_cancelled(cancel_event)
+            self._emit_worker(self._workerProgress, 100, "正在校验官方安装文件")
+            self._raise_if_cancelled(cancel_event)
             verify_download(resolved, path)
-            self._workerReady.emit(resolved, str(path))
+            self._raise_if_cancelled(cancel_event)
+            if not self._emit_worker(self._workerReady, resolved, str(path)):
+                _remove_download_tree(path.parent)
         except InstallCancelled:
             if path is not None:
                 _remove_download_tree(path.parent)
-            self._workerCancelled.emit()
+            self._emit_worker(self._workerCancelled)
         except Exception as exc:
             if path is not None:
                 _remove_download_tree(path.parent)
+            if self._closing.is_set():
+                return
             LOGGER.exception("Claude 安装文件处理失败")
-            self._workerFailed.emit(str(exc))
+            self._emit_worker(self._workerFailed, str(exc))
+
+    def _raise_if_cancelled(self, cancel_event: threading.Event) -> None:
+        if self._closing.is_set() or cancel_event.is_set():
+            raise InstallCancelled()
+
+    def _emit_worker(self, signal, *args) -> bool:
+        if self._closing.is_set():
+            return False
+        try:
+            signal.emit(*args)
+            return True
+        except RuntimeError:
+            self._closing.set()
+            if self._cancel_event is not None:
+                self._cancel_event.set()
+            LOGGER.debug("Claude 安装器销毁期间忽略后台信号", exc_info=True)
+            return False
 
     def _resolve_spec(self, spec: InstallSpec, cancel_event: threading.Event) -> InstallSpec:
+        self._raise_if_cancelled(cancel_event)
         if spec.resolve_redirect_with_curl:
-            self._workerProgress.emit(-1, "正在解析 Anthropic Desktop 官方下载地址")
+            self._emit_worker(self._workerProgress, -1, "正在解析 Anthropic Desktop 官方下载地址")
+            self._raise_if_cancelled(cancel_event)
             spec = _resolve_redirect_with_curl(spec)
+            self._raise_if_cancelled(cancel_event)
         if spec.kind != "linux-deb":
             return spec
-        self._workerProgress.emit(-1, "正在读取 Anthropic Linux 软件包索引")
+        self._emit_worker(self._workerProgress, -1, "正在读取 Anthropic Linux 软件包索引")
+        self._raise_if_cancelled(cancel_event)
         raw = _fetch_metadata(spec, cancel_event)
+        self._raise_if_cancelled(cancel_event)
         try:
             index_text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -339,6 +347,21 @@ class ClaudeInstaller(QObject):
     @Slot(object, str)
     def _on_worker_ready(self, spec: InstallSpec, path: str):
         self._thread = None
+        if self._closing.is_set() or (
+            self._cancel_event is not None and self._cancel_event.is_set()
+        ):
+            self._cancel_event = None
+            self._download_path = path
+            self._cleanup_download()
+            if not self._closing.is_set():
+                self._set_state(
+                    busy=False,
+                    cancelable=False,
+                    progress=-1,
+                    status="下载已取消",
+                )
+                self.notify.emit(0, "已取消安装", "未启动任何 Claude 安装程序。")
+            return
         self._cancel_event = None
         self._download_path = path
         self._set_state(
@@ -434,14 +457,26 @@ class ClaudeInstaller(QObject):
     def _on_worker_failed(self, message: str):
         self._thread = None
         self._cancel_event = None
+        if self._closing.is_set():
+            return
         self._fail(message)
 
     @Slot()
     def _on_worker_cancelled(self):
         self._thread = None
         self._cancel_event = None
+        if self._closing.is_set():
+            return
         self._set_state(busy=False, cancelable=False, progress=-1, status="下载已取消")
         self.notify.emit(0, "已取消安装", "未启动任何 Claude 安装程序。")
+
+    @Slot()
+    def shutdown(self):
+        if self._closing.is_set():
+            return
+        self._closing.set()
+        if self._cancel_event is not None:
+            self._cancel_event.set()
 
     def _cleanup_download(self):
         if not self._download_path:

@@ -248,6 +248,7 @@ Item {
                 id: connectionSection
                 objectName: "connectionSection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 baseUrlValue: root.fBaseUrl
                 providerValue: root.fProvider
                 wireApiValue: root.fWireApi
@@ -264,6 +265,7 @@ Item {
             ModelSection {
                 objectName: "modelSection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 modelValue: root.fModel
                 reasoningValue: root.fReasoningEffort
                 availableModels: CodexConfig ? CodexConfig.availableModels : []
@@ -286,6 +288,7 @@ Item {
             ContextSection {
                 objectName: "contextSection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 currentPreset: root.currentContextPreset
                 contextWindowValue: root.fContextWindow
                 autoCompactValue: root.fAutoCompactLimit
@@ -308,6 +311,7 @@ Item {
             AdvancedSection {
                 objectName: "advancedSection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 requiresAuthValue: root.fRequiresAuth
                 disableStorageValue: root.fDisableStorage
                 onRequiresAuthToggled: function(value) {

@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -41,6 +42,14 @@ class ClaudeDesktopUiTests(unittest.TestCase):
             page,
         )
         self.assertIn("ClaudeDesktopConfig.operationBusy", page)
+        for component in ("ClaudeGatewaySection", "ClaudeAdvancedSection"):
+            self.assertRegex(
+                page,
+                re.compile(
+                    rf"{component}\s*\{{.*?enabled:\s*!root\.configBusy",
+                    re.DOTALL,
+                ),
+            )
 
         self.assertIn("columns: width < 700 ? 1 : 2", status)
         self.assertIn("id: statusGrid", status)

@@ -1,3 +1,4 @@
+import re
 import struct
 import unittest
 from pathlib import Path
@@ -159,6 +160,19 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("ContextSection", view)
         self.assertIn("AdvancedSection", view)
         self.assertIn("highestReasoningEffortForModel", view)
+        for component in (
+            "ConnectionSection",
+            "ModelSection",
+            "ContextSection",
+            "AdvancedSection",
+        ):
+            self.assertRegex(
+                view,
+                re.compile(
+                    rf"{component}\s*\{{.*?enabled:\s*!root\.configBusy",
+                    re.DOTALL,
+                ),
+            )
 
         for section in (connection, model, context):
             self.assertIn("import QtQuick.Layouts", section)

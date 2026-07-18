@@ -15,7 +15,8 @@ from PySide6.QtCore import QObject, Signal, Slot, Property
 from backend.async_tasks import SerialTaskRunner
 from backend.codex_config_store import CodexConfigStore, KEEP
 from backend.codex_model_catalog import fetch_codex_model_catalog
-from backend.endpoint_urls import append_api_path, normalize_v1_base_url
+from backend.codex_models_api import fetch_models_result
+from backend.endpoint_urls import normalize_v1_base_url
 from backend.model_profiles import ModelProfiles
 
 LOGGER = logging.getLogger(__name__)
@@ -68,10 +69,15 @@ class CodexConfig(QObject):
         self._config_tasks = SerialTaskRunner(
             self,
             thread_name="ConfigPilotCodexConfig",
+            drain_on_close=True,
         )
         self._network_tasks = SerialTaskRunner(
             self,
             thread_name="ConfigPilotCodexNetwork",
+        )
+        self._catalog_tasks = SerialTaskRunner(
+            self,
+            thread_name="ConfigPilotCodexCatalog",
         )
         self._config_tasks.busyChanged.connect(self.operationBusyChanged.emit)
         self._presets = []
@@ -208,6 +214,9 @@ class CodexConfig(QObject):
         self._tool_output_token_limit = str(snapshot["toolOutputTokenLimit"])
         self._model_catalog_json = str(snapshot["modelCatalogJson"])
         self.changed.emit()
+        auth_error = str(snapshot.get("authError", ""))
+        if auth_error:
+            self.notify.emit(2, "认证读取失败", auth_error)
 
     def _config_read_failed(self, exc):
         LOGGER.exception(
@@ -268,7 +277,7 @@ class CodexConfig(QObject):
         if self._reasoning_refresh_pending:
             return
         self._reasoning_refresh_pending = True
-        self._network_tasks.submit(
+        self._catalog_tasks.submit(
             fetch_codex_model_catalog,
             self._apply_reasoning_catalog,
             self._reasoning_catalog_failed,
@@ -292,7 +301,10 @@ class CodexConfig(QObject):
             "写入 Codex 配置失败",
             exc_info=(type(exc), exc, exc.__traceback__),
         )
-        self.notify.emit(3, "写入失败", str(exc))
+        if isinstance(exc, ValueError):
+            self.notify.emit(2, "参数无效", str(exc))
+        else:
+            self.notify.emit(3, "写入失败", str(exc))
 
     @Slot("QVariantMap")
     def applyConfig(self, cfg):
@@ -418,41 +430,21 @@ class CodexConfig(QObject):
             return
         key = (key_override or "").strip()
         self._set_models_loading(True)
+        if not key:
+            self._config_tasks.submit(
+                self._store.read_api_key,
+                lambda stored_key: self._queue_models_fetch(base_url, stored_key),
+                self._models_fetch_failed,
+            )
+            return
+        self._queue_models_fetch(base_url, key)
+
+    def _queue_models_fetch(self, base_url, key):
         self._network_tasks.submit(
-            lambda: self._fetch_models_result(base_url, key),
+            lambda: fetch_models_result(base_url, key, fetch_codex_model_catalog),
             self._apply_models_result,
             self._models_fetch_failed,
         )
-
-    def _fetch_models_result(self, base_url, key_override):
-        import urllib.request
-
-        key = key_override or self._store.read_api_key()
-        url = append_api_path(base_url, "models")
-        headers = {"Accept": "application/json"}
-        if key:
-            headers["Authorization"] = f"Bearer {key}"
-        request = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        data = payload.get("data", payload) if isinstance(payload, dict) else payload
-        ids = []
-        for item in data or []:
-            model_id = item.get("id") if isinstance(item, dict) else str(item)
-            if model_id:
-                ids.append(str(model_id))
-        catalog = []
-        has_reasoning = any(
-            isinstance(item, dict)
-            and isinstance(item.get("supported_reasoning_levels"), list)
-            for item in data or []
-        )
-        if ids and not has_reasoning:
-            try:
-                catalog = fetch_codex_model_catalog()
-            except Exception as exc:
-                LOGGER.info("Codex 远端模型目录回退失败: %s", exc)
-        return {"ids": ids, "models": data or [], "catalog": catalog}
 
     def _apply_models_result(self, result):
         self._set_models_loading(False)

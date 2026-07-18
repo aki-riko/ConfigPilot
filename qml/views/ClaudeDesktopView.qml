@@ -185,6 +185,7 @@ Item {
             ClaudeGatewaySection {
                 objectName: "claudeGatewaySection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 endpointValue: root.fEndpoint
                 authSchemeValue: root.fAuthScheme
                 apiKeyValue: root.fApiKey
@@ -199,6 +200,7 @@ Item {
             ClaudeAdvancedSection {
                 objectName: "claudeAdvancedSection"
                 width: pageColumn.innerWidth
+                enabled: !root.configBusy
                 modelsValue: root.fModels
                 headersValue: root.fHeaders
                 headerCount: ClaudeDesktopConfig ? ClaudeDesktopConfig.headerCount : 0

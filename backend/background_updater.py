@@ -6,10 +6,12 @@ from __future__ import annotations
 import os
 import logging
 import queue
+from pathlib import Path
 import tempfile
 import threading
+import uuid
 
-from PySide6.QtCore import QStandardPaths, QUrl, Signal, Slot
+from PySide6.QtCore import QCoreApplication, QStandardPaths, QUrl, Signal, Slot
 from PySide6.QtNetwork import QNetworkReply, QNetworkRequest
 from prismqml import Updater
 
@@ -45,9 +47,15 @@ class _DownloadWriter:
             daemon=True,
             name="ConfigPilotUpdateWriter",
         )
+        self._started = False
 
     def start(self) -> None:
+        self._started = True
         self._thread.start()
+
+    def wait(self) -> None:
+        if self._started and threading.current_thread() is not self._thread:
+            self._thread.join()
 
     def try_enqueue(self, chunk: bytes) -> bool:
         try:
@@ -82,6 +90,15 @@ class _DownloadWriter:
         except OSError as exc:
             return f"清理更新残留失败: {exc}"
 
+    @staticmethod
+    def _safe_emit(signal, *args) -> bool:
+        try:
+            signal.emit(*args)
+            return True
+        except RuntimeError:
+            LOGGER.debug("更新写入器销毁期间忽略后台信号", exc_info=True)
+            return False
+
     def _run(self) -> None:
         handle = None
         received = 0
@@ -89,13 +106,17 @@ class _DownloadWriter:
             if os.path.exists(self.path):
                 os.remove(self.path)
             handle = open(self.path, "wb")
-            self._prepared.emit(self.generation, "")
+            if not self._safe_emit(self._prepared, self.generation, ""):
+                handle.close()
+                handle = None
+                self._remove_partial()
+                return
             while True:
                 try:
                     was_full = self._chunks.full()
                     chunk = self._chunks.get(timeout=0.05)
                     if was_full:
-                        self._capacity_available.emit(self.generation)
+                        self._safe_emit(self._capacity_available, self.generation)
                     handle.write(chunk)
                     received += len(chunk)
                 except queue.Empty:
@@ -113,13 +134,13 @@ class _DownloadWriter:
                         if cleanup_error
                         else finish_error
                     )
-                    self._completed.emit(self.generation, "", message)
+                    self._safe_emit(self._completed, self.generation, "", message)
                 elif received <= 0:
                     cleanup_error = self._remove_partial()
                     message = cleanup_error or "下载文件无效"
-                    self._completed.emit(self.generation, "", message)
+                    self._safe_emit(self._completed, self.generation, "", message)
                 else:
-                    self._completed.emit(self.generation, self.path, "")
+                    self._safe_emit(self._completed, self.generation, self.path, "")
                 return
         except Exception as exc:
             if handle is not None:
@@ -131,7 +152,7 @@ class _DownloadWriter:
             message = f"写入更新文件失败: {exc}"
             if cleanup_error:
                 message += f"；{cleanup_error}"
-            self._completed.emit(self.generation, "", message)
+            self._safe_emit(self._completed, self.generation, "", message)
 
 
 class BackgroundDownloadUpdater(Updater):
@@ -148,12 +169,21 @@ class BackgroundDownloadUpdater(Updater):
         self._pending_download_url = ""
         self._network_finished = False
         self._network_error = ""
+        self._closing = threading.Event()
         self._writerPrepared.connect(self._on_writer_prepared)
         self._writerCapacityAvailable.connect(self._on_writer_capacity_available)
         self._writerCompleted.connect(self._on_writer_completed)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.shutdown)
+        parent = self.parent()
+        if parent is not None:
+            parent.destroyed.connect(self.shutdown)
 
     @Slot(str)
     def downloadUpdate(self, url: str):
+        if self._closing.is_set():
+            return
         if not url:
             self.downloadFailed.emit("下载地址为空")
             return
@@ -161,10 +191,21 @@ class BackgroundDownloadUpdater(Updater):
             return
 
         name = QUrl(url).fileName() or "update_installer.exe"
+        suffix = "".join(Path(name).suffixes)
+        allowed_suffix_chars = (
+            ".-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        )
+        if len(suffix) > 32 or any(
+            char not in allowed_suffix_chars for char in suffix
+        ):
+            suffix = ""
         temp_dir = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.TempLocation
         ) or tempfile.gettempdir()
-        self._download_path = os.path.join(temp_dir, name)
+        self._download_path = os.path.join(
+            temp_dir,
+            f"configpilot-update-{uuid.uuid4().hex}{suffix}",
+        )
         self._download_generation += 1
         self._pending_download_url = url
         self._network_finished = False
@@ -180,6 +221,8 @@ class BackgroundDownloadUpdater(Updater):
 
     @Slot(int, str)
     def _on_writer_prepared(self, generation: int, error: str) -> None:
+        if self._closing.is_set():
+            return
         if generation != self._download_generation or self._writer is None:
             return
         if error:
@@ -211,12 +254,16 @@ class BackgroundDownloadUpdater(Updater):
                 raise RuntimeError("更新写入队列状态竞争")
 
     def _on_download_ready_read(self):
+        if self._closing.is_set():
+            return
         try:
             self._enqueue_available_data()
         except Exception as exc:
             self._fail_active_download(str(exc))
 
     def _on_download_finished(self):
+        if self._closing.is_set():
+            return
         reply = self._download_reply
         if reply is None:
             return
@@ -231,6 +278,8 @@ class BackgroundDownloadUpdater(Updater):
 
     @Slot(int)
     def _on_writer_capacity_available(self, generation: int) -> None:
+        if self._closing.is_set():
+            return
         if generation != self._download_generation:
             return
         try:
@@ -263,6 +312,8 @@ class BackgroundDownloadUpdater(Updater):
 
     @Slot(int, str, str)
     def _on_writer_completed(self, generation: int, path: str, error: str) -> None:
+        if self._closing.is_set():
+            return
         if generation != self._download_generation:
             return
         self._writer = None
@@ -276,3 +327,25 @@ class BackgroundDownloadUpdater(Updater):
             self.downloadFailed.emit(error)
             return
         self.downloadFinished.emit(path)
+
+    @Slot()
+    def shutdown(self) -> None:
+        if self._closing.is_set():
+            return
+        self._closing.set()
+        self._download_generation += 1
+        for attribute in ("_check_reply", "_download_reply"):
+            reply = getattr(self, attribute, None)
+            setattr(self, attribute, None)
+            if reply is not None:
+                try:
+                    reply.abort()
+                    reply.deleteLater()
+                except RuntimeError:
+                    LOGGER.debug("更新器销毁期间网络响应已释放", exc_info=True)
+        writer = self._writer
+        self._writer = None
+        self._pending_download_url = ""
+        if writer is not None:
+            writer.request_finish("更新器已关闭")
+            writer.wait()

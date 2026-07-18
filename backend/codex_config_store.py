@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 
 try:
     import tomllib
@@ -18,6 +19,7 @@ except ModuleNotFoundError:  # pragma: no cover
 LOGGER = logging.getLogger(__name__)
 LEGACY_MANAGED_CONTEXT_CATALOG = "gpt-5.5-1m.json"
 KEEP = object()
+_PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class CodexConfigStore:
@@ -39,6 +41,7 @@ class CodexConfigStore:
     def read_snapshot(self) -> dict:
         snapshot = {
             "configExists": False,
+            "authError": "",
             "provider": "",
             "baseUrl": "",
             "wireApi": "",
@@ -86,7 +89,11 @@ class CodexConfigStore:
                     "modelCatalogJson": str(data.get("model_catalog_json", "")),
                 }
             )
-        snapshot["hasKey"] = bool(self.read_api_key())
+        try:
+            snapshot["hasKey"] = bool(self.read_api_key())
+        except Exception as exc:
+            LOGGER.warning("读取 Codex 认证文件失败: %s", self.auth_path, exc_info=True)
+            snapshot["authError"] = f"auth.json: {exc}"
         return snapshot
 
     def read_api_key(self) -> str:
@@ -105,7 +112,11 @@ class CodexConfigStore:
                 text,
                 count=1,
             )
-        rhs = f'"{value}"' if is_str else ("true" if value else "false")
+        rhs = (
+            json.dumps(str(value), ensure_ascii=False)
+            if is_str
+            else ("true" if value else "false")
+        )
         if re.search(rf"(?m)^\s*{re.escape(key)}\s*=", text):
             return re.sub(
                 rf"(?m)^(\s*{re.escape(key)}\s*=\s*).*$",
@@ -204,7 +215,11 @@ class CodexConfigStore:
                 block,
                 count=1,
             )
-        rhs = f'"{value}"' if is_str else ("true" if value else "false")
+        rhs = (
+            json.dumps(str(value), ensure_ascii=False)
+            if is_str
+            else ("true" if value else "false")
+        )
         if re.search(rf"(?m)^\s*{re.escape(key)}\s*=", block):
             return re.sub(
                 rf"(?m)^(\s*{re.escape(key)}\s*=\s*).*$",
@@ -216,6 +231,8 @@ class CodexConfigStore:
 
     def _write_provider_block(self, text, values):
         provider = values["provider"] or "relay"
+        if not _PROVIDER_PATTERN.fullmatch(provider):
+            raise ValueError("provider 只能包含字母、数字、下划线和连字符")
         if re.search(r"(?m)^\s*model_provider\s*=", text):
             text = re.sub(
                 r'(?m)^(\s*model_provider\s*=\s*")[^"]*(")',
@@ -285,24 +302,49 @@ class CodexConfigStore:
             block += f"requires_openai_auth = {enabled}\n"
         return text.rstrip() + block
 
+    @staticmethod
+    def _atomic_write_text(path: str, text: str) -> None:
+        parent = os.path.dirname(path) or os.curdir
+        os.makedirs(parent, exist_ok=True)
+        fd, temporary_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(path)}.",
+            suffix=".tmp",
+            dir=parent,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if os.path.isfile(path):
+                shutil.copy2(path, path + ".bak")
+            os.replace(temporary_path, path)
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                LOGGER.debug("无法调整 Codex 配置文件权限: %s", path, exc_info=True)
+        except Exception:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                LOGGER.warning("清理 Codex 临时配置失败: %s", temporary_path, exc_info=True)
+            raise
+
     def apply_config(self, values: dict) -> dict:
         text = ""
         if os.path.isfile(self.config_path):
-            shutil.copy2(self.config_path, self.config_path + ".bak")
             with open(self.config_path, "r", encoding="utf-8") as handle:
                 text = handle.read()
-        else:
-            os.makedirs(self.home, exist_ok=True)
         new_text = self._write_provider_block(text, values)
-        with open(self.config_path, "w", encoding="utf-8", newline="") as handle:
-            handle.write(new_text)
+        if tomllib:
+            tomllib.loads(new_text)
+        self._atomic_write_text(self.config_path, new_text)
         return self.read_snapshot()
 
     def set_key(self, key: str) -> dict:
         auth = {"OPENAI_API_KEY": key, "auth_mode": "apikey"}
-        os.makedirs(self.home, exist_ok=True)
-        if os.path.isfile(self.auth_path):
-            os.replace(self.auth_path, self.auth_path + ".bak")
-        with open(self.auth_path, "w", encoding="utf-8") as handle:
-            json.dump(auth, handle, ensure_ascii=False, indent=2)
+        text = json.dumps(auth, ensure_ascii=False, indent=2) + "\n"
+        self._atomic_write_text(self.auth_path, text)
         return self.read_snapshot()

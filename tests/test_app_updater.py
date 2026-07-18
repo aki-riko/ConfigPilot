@@ -6,8 +6,10 @@ import tempfile
 import threading
 import unittest
 import uuid
+from unittest import mock
 
 from PySide6.QtCore import QObject, Signal
+import shiboken6
 
 from backend.app_settings import load_app_settings
 from backend.app_updater import AppUpdater
@@ -229,6 +231,119 @@ class AppUpdaterTests(unittest.TestCase):
         updater._enqueue_available_data()
         self.assertEqual(reply.read_calls, 1)
         self.assertEqual(b"".join(writer.chunks), b"payload")
+
+    def test_same_download_url_uses_unique_temporary_paths(self):
+        _ = APP
+        first = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+        second = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+        with mock.patch.object(_DownloadWriter, "start", return_value=None):
+            first.downloadUpdate("https://example.test/releases/setup.tar.gz")
+            second.downloadUpdate("https://example.test/releases/setup.tar.gz")
+
+        try:
+            self.assertNotEqual(first._download_path, second._download_path)
+            self.assertTrue(first._download_path.endswith(".tar.gz"))
+            self.assertTrue(second._download_path.endswith(".tar.gz"))
+        finally:
+            first.shutdown()
+            second.shutdown()
+
+    def test_shutdown_waits_for_writer_and_removes_partial_file(self):
+        _ = APP
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "partial.exe"
+            prepared = threading.Event()
+            completed = threading.Event()
+            writer = _DownloadWriter(
+                1,
+                str(path),
+                prepared=CallbackSignal(lambda generation, error: prepared.set()),
+                capacity_available=CallbackSignal(lambda generation: None),
+                completed=CallbackSignal(
+                    lambda generation, output_path, error: completed.set()
+                ),
+            )
+            updater = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+            updater._writer = writer
+            updater._download_path = str(path)
+            writer.start()
+            self.assertTrue(prepared.wait(1))
+            self.assertTrue(path.exists())
+            self.assertTrue(writer.try_enqueue(b"partial-payload"))
+
+            updater.shutdown()
+
+            self.assertTrue(completed.is_set())
+            self.assertFalse(writer._thread.is_alive())
+            self.assertFalse(path.exists())
+
+    def test_writer_signal_after_updater_deletion_does_not_raise(self):
+        _ = APP
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "destroyed-owner.exe"
+            updater = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+            prepared = threading.Event()
+            worker_errors = []
+            original_hook = threading.excepthook
+            writer = _DownloadWriter(
+                1,
+                str(path),
+                prepared=CallbackSignal(lambda generation, error: prepared.set()),
+                capacity_available=updater._writerCapacityAvailable,
+                completed=updater._writerCompleted,
+            )
+            writer.start()
+            self.assertTrue(prepared.wait(1))
+            shiboken6.delete(updater)
+            threading.excepthook = lambda args: worker_errors.append(args.exc_value)
+            try:
+                self.assertTrue(writer.try_enqueue(b"payload"))
+                writer.request_finish()
+                writer.wait()
+            finally:
+                threading.excepthook = original_hook
+
+            self.assertFalse(writer._thread.is_alive())
+            self.assertEqual(worker_errors, [])
+
+    def test_parent_destruction_shuts_down_active_writer(self):
+        _ = APP
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "parent-destroyed.exe"
+            parent = QObject()
+            updater = BackgroundDownloadUpdater(
+                "owner/repo",
+                "v1.0.0",
+                "Setup",
+                parent=parent,
+            )
+            prepared = threading.Event()
+            completed = threading.Event()
+            worker_errors = []
+            original_hook = threading.excepthook
+            writer = _DownloadWriter(
+                1,
+                str(path),
+                prepared=CallbackSignal(lambda generation, error: prepared.set()),
+                capacity_available=CallbackSignal(lambda generation: None),
+                completed=CallbackSignal(
+                    lambda generation, output_path, error: completed.set()
+                ),
+            )
+            updater._writer = writer
+            writer.start()
+            self.assertTrue(prepared.wait(1))
+            self.assertTrue(writer.try_enqueue(b"partial-payload"))
+            threading.excepthook = lambda args: worker_errors.append(args.exc_value)
+            try:
+                shiboken6.delete(parent)
+            finally:
+                threading.excepthook = original_hook
+
+            self.assertTrue(completed.is_set())
+            self.assertFalse(writer._thread.is_alive())
+            self.assertFalse(path.exists())
+            self.assertEqual(worker_errors, [])
 
     def test_real_qt_download_matches_source_bytes(self):
         _ = APP

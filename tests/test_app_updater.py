@@ -1,15 +1,70 @@
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import tempfile
+import threading
 import unittest
+import uuid
 
 from PySide6.QtCore import QObject, Signal
 
 from backend.app_settings import load_app_settings
 from backend.app_updater import AppUpdater
+from backend.background_updater import BackgroundDownloadUpdater, _DownloadWriter
+from tests.qt_test_utils import APP, wait_until
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class CallbackSignal:
+    def __init__(self, callback):
+        self._callback = callback
+
+    def emit(self, *args):
+        self._callback(*args)
+
+
+class BufferedReply:
+    def __init__(self, payload):
+        self.payload = bytearray(payload)
+        self.read_calls = 0
+
+    def bytesAvailable(self):
+        return len(self.payload)
+
+    def read(self, size):
+        self.read_calls += 1
+        chunk = self.payload[:size]
+        del self.payload[:size]
+        return bytes(chunk)
+
+
+class ControlledWriter:
+    def __init__(self, has_capacity):
+        self.capacity = has_capacity
+        self.chunks = []
+
+    def has_capacity(self):
+        return self.capacity
+
+    def try_enqueue(self, chunk):
+        self.chunks.append(chunk)
+        return True
+
+
+class PayloadHandler(BaseHTTPRequestHandler):
+    payload = b""
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(self.payload)))
+        self.end_headers()
+        self.wfile.write(self.payload)
+
+    def log_message(self, format, *args):
+        return
 
 
 class FakeEngineUpdater(QObject):
@@ -120,6 +175,96 @@ class AppUpdaterTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "owner/repo"):
                 load_app_settings(path)
+
+    def test_download_writer_preserves_bytes_off_main_thread(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "update.exe"
+            prepared = threading.Event()
+            completed = threading.Event()
+            result = {}
+            worker_threads = []
+
+            writer = _DownloadWriter(
+                7,
+                str(path),
+                prepared=CallbackSignal(
+                    lambda generation, error: (
+                        worker_threads.append(threading.get_ident()),
+                        prepared.set(),
+                    )
+                ),
+                capacity_available=CallbackSignal(lambda generation: None),
+                completed=CallbackSignal(
+                    lambda generation, output_path, error: (
+                        result.update(path=output_path, error=error),
+                        completed.set(),
+                    )
+                ),
+            )
+            main_thread = threading.get_ident()
+            writer.start()
+            self.assertTrue(prepared.wait(1))
+            self.assertTrue(writer.try_enqueue(b"first-"))
+            self.assertTrue(writer.try_enqueue(b"second"))
+            writer.request_finish()
+            self.assertTrue(completed.wait(1))
+
+            self.assertNotEqual(worker_threads, [main_thread])
+            self.assertEqual(result, {"path": str(path), "error": ""})
+            self.assertEqual(path.read_bytes(), b"first-second")
+
+    def test_network_reply_is_not_read_until_writer_has_capacity(self):
+        _ = APP
+        updater = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+        reply = BufferedReply(b"payload")
+        writer = ControlledWriter(False)
+        updater._download_reply = reply
+        updater._writer = writer
+
+        updater._enqueue_available_data()
+        self.assertEqual(reply.read_calls, 0)
+        self.assertEqual(bytes(reply.payload), b"payload")
+
+        writer.capacity = True
+        updater._enqueue_available_data()
+        self.assertEqual(reply.read_calls, 1)
+        self.assertEqual(b"".join(writer.chunks), b"payload")
+
+    def test_real_qt_download_matches_source_bytes(self):
+        _ = APP
+        payload = bytes(range(256)) * 12289
+        PayloadHandler.payload = payload
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PayloadHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        downloaded = []
+        failures = []
+        updater = BackgroundDownloadUpdater("owner/repo", "v1.0.0", "Setup")
+        updater.downloadFinished.connect(downloaded.append)
+        updater.downloadFailed.connect(failures.append)
+        file_name = f"configpilot-{uuid.uuid4().hex}.bin"
+        host, port = server.server_address
+
+        try:
+            updater.downloadUpdate(f"http://{host}:{port}/{file_name}")
+            wait_until(
+                lambda: bool(downloaded or failures),
+                timeout=5,
+                message="真实 Qt 更新下载超时",
+            )
+            self.assertEqual(failures, [])
+            self.assertEqual(len(downloaded), 1)
+            output_path = Path(downloaded[0])
+            self.assertEqual(output_path.read_bytes(), payload)
+        finally:
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1)
+            if downloaded:
+                try:
+                    os.remove(downloaded[0])
+                except FileNotFoundError:
+                    pass
 
 
 if __name__ == "__main__":

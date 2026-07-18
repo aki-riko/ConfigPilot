@@ -7,9 +7,9 @@ import sys
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
-from prismqml import Updater
 
 from .app_settings import AppSettings
+from .background_updater import BackgroundDownloadUpdater
 
 
 class AppUpdater(QObject):
@@ -29,7 +29,7 @@ class AppUpdater(QObject):
         settings: AppSettings,
         prismqml_version: str,
         parent: Optional[QObject] = None,
-        updater_factory: Callable = Updater,
+        updater_factory: Callable = BackgroundDownloadUpdater,
     ):
         super().__init__(parent)
         self._settings = settings

@@ -40,6 +40,15 @@ class InstallCancelled(Exception):
     """用户取消安装下载。"""
 
 
+def _remove_download_tree(path: Path) -> None:
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return
+    except OSError:
+        LOGGER.warning("清理 Claude 下载目录失败: %s", path, exc_info=True)
+
+
 def _format_bytes(value: int) -> str:
     amount = float(max(0, value))
     for unit in ("B", "KB", "MB", "GB"):
@@ -161,7 +170,7 @@ def _download_to_temp(
         os.replace(partial_path, final_path)
         return final_path
     except Exception:
-        shutil.rmtree(download_dir, ignore_errors=True)
+        _remove_download_tree(download_dir)
         raise
 
 
@@ -298,11 +307,11 @@ class ClaudeInstaller(QObject):
             self._workerReady.emit(resolved, str(path))
         except InstallCancelled:
             if path is not None:
-                shutil.rmtree(path.parent, ignore_errors=True)
+                _remove_download_tree(path.parent)
             self._workerCancelled.emit()
         except Exception as exc:
             if path is not None:
-                shutil.rmtree(path.parent, ignore_errors=True)
+                _remove_download_tree(path.parent)
             LOGGER.exception("Claude 安装文件处理失败")
             self._workerFailed.emit(str(exc))
 
@@ -436,8 +445,14 @@ class ClaudeInstaller(QObject):
     def _cleanup_download(self):
         if not self._download_path:
             return
-        shutil.rmtree(Path(self._download_path).parent, ignore_errors=True)
+        download_dir = Path(self._download_path).parent
         self._download_path = ""
+        threading.Thread(
+            target=_remove_download_tree,
+            args=(download_dir,),
+            daemon=True,
+            name="ConfigPilotClaudeCleanup",
+        ).start()
 
     def _finish(self, title: str, message: str):
         self._set_state(busy=False, cancelable=False, progress=100, status=title)

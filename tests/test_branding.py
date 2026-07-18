@@ -215,7 +215,7 @@ class BrandingTests(unittest.TestCase):
 
         self.assertIn('setContextProperty("AppUpdater", app_updater)', main_py)
         self.assertIn("parent=app.qapp", main_py)
-        self.assertIn("from prismqml import Updater", updater_py)
+        self.assertIn("BackgroundDownloadUpdater", updater_py)
         self.assertIn("AppUpdater.checkAutomatically()", main_qml)
         self.assertIn("Fluent.UpdateDialog", main_qml)
         self.assertIn("Fluent.ProgressDialog", main_qml)

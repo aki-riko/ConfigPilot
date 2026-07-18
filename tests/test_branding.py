@@ -181,7 +181,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("minimumHeight: 560", main)
 
     def test_release_version_and_macos_disclosure_are_consistent(self):
-        version = "1.0.13"
+        version = "1.0.14"
         app_config = self.read("app_config.json")
         self.assertIn(f'"version": "{version}"', app_config)
         self.assertIn(f'set "APP_VER={version}"', self.read("build_nuitka.cmd"))
@@ -194,7 +194,7 @@ class BrandingTests(unittest.TestCase):
         readme = self.read("README.md")
         macos_build = self.read("scripts/build_macos.sh")
         first_open = self.read("docs/macos-first-open.txt")
-        release_notes = self.read("docs/release-notes/v1.0.13.md")
+        release_notes = self.read("docs/release-notes/v1.0.14.md")
 
         for content in (readme, first_open, release_notes):
             self.assertIn("Apple Developer Program", content)

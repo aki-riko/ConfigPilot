@@ -57,8 +57,8 @@ class AppUpdaterTests(unittest.TestCase):
         self.engine = self.controller._updater
 
     def test_real_configuration_builds_verified_engine_contract(self):
-        self.assertEqual(self.controller.version, "1.0.13")
-        self.assertEqual(self.controller.currentVersion, "v1.0.13")
+        self.assertEqual(self.controller.version, "1.0.14")
+        self.assertEqual(self.controller.currentVersion, "v1.0.14")
         self.assertEqual(self.controller.prismqmlVersion, "0.2.24.13")
         self.assertEqual(self.engine.repo, "aki-riko/ConfigPilot")
         self.assertEqual(self.engine.asset_keyword, "Setup")
@@ -71,8 +71,8 @@ class AppUpdaterTests(unittest.TestCase):
 
         self.controller.checkAutomatically()
         self.assertTrue(self.controller.checking)
-        self.engine.upToDate.emit("v1.0.13")
-        self.assertEqual(up_to_date, [("v1.0.13", False)])
+        self.engine.upToDate.emit("v1.0.14")
+        self.assertEqual(up_to_date, [("v1.0.14", False)])
 
         self.controller.checkManually()
         self.engine.checkFailed.emit("network down")
@@ -86,8 +86,8 @@ class AppUpdaterTests(unittest.TestCase):
         self.controller.checkAutomatically()
         self.controller.checkManually()
         self.assertEqual(self.engine.check_count, 1)
-        self.engine.upToDate.emit("v1.0.13")
-        self.assertEqual(results, [("v1.0.13", True)])
+        self.engine.upToDate.emit("v1.0.14")
+        self.assertEqual(results, [("v1.0.14", True)])
 
     def test_download_completion_uses_configured_silent_installer_args(self):
         ready = []

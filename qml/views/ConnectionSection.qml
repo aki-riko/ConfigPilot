@@ -17,6 +17,13 @@ Fluent.Card {
     signal wireApiEdited(string value)
     signal saveKeyRequested(string value)
 
+    function commitKey() {
+        var value = keyInput.text.trim()
+        if (value.length === 0) return
+        root.saveKeyRequested(value)
+        keyInput.text = ""
+    }
+
     autoHeight: true
 
     Column {
@@ -211,7 +218,7 @@ Fluent.Card {
             }
             Text {
                 width: parent.width
-                text: "仅在输入后保存；留空不会改动现有 auth.json"
+                text: "输入完成后自动保存；留空不会改动现有 auth.json"
                 color: Fluent.Enums.textColor.tertiary
                 font.pixelSize: Fluent.Enums.typography.caption
                 font.family: Fluent.Enums.fontFamily
@@ -231,22 +238,15 @@ Fluent.Card {
                     inputType: Fluent.Enums.input.type_password
                     enabled: !root.configBusy
                     placeholderText: "粘贴 API key"
-                    onAccepted: {
-                        if (text.trim().length > 0) {
-                            root.saveKeyRequested(text)
-                            text = ""
-                        }
-                    }
+                    onAccepted: root.commitKey()
+                    onEditingFinished: root.commitKey()
                 }
                 Fluent.Button {
                     Layout.fillWidth: keyGrid.columns === 1
                     style: Fluent.Enums.button.style_default
                     text: "保存密钥"
                     enabled: !root.configBusy && keyInput.text.trim().length > 0
-                    onClicked: {
-                        root.saveKeyRequested(keyInput.text)
-                        keyInput.text = ""
-                    }
+                    onClicked: root.commitKey()
                 }
             }
         }

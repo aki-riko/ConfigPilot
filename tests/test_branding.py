@@ -183,6 +183,12 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('text: "套用稳定上下文"', context)
         self.assertNotIn("feature: Fluent.Enums.button.feature_dropdown", context)
         self.assertIn("Fluent.Expander", advanced)
+        self.assertIn("function commitKey()", connection)
+        self.assertIn("onAccepted: root.commitKey()", connection)
+        self.assertIn("onEditingFinished: root.commitKey()", connection)
+        self.assertIn("输入完成后自动保存", connection)
+        self.assertIn("connectionSection.keyDraft.trim()", view)
+        self.assertIn("CodexConfig.setKey(key)", view)
 
     def test_latest_prismqml_engine_is_pinned(self):
         requirements = self.read("requirements.txt")

@@ -138,6 +138,8 @@ Item {
     function applyDraft() {
         if (!CodexConfig) return
         commitTypedModel(fModel)
+        var key = connectionSection ? connectionSection.keyDraft.trim() : ""
+        if (key.length > 0) CodexConfig.setKey(key)
         CodexConfig.applyConfig({
             "baseUrl": fBaseUrl,
             "provider": fProvider,

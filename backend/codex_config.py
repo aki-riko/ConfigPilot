@@ -20,6 +20,7 @@ from backend.codex_oauth import (
     CodexOAuthError,
     exchange_refresh_token,
     load_codex_oauth_settings,
+    parse_chatgpt_auth_json,
 )
 from backend.endpoint_urls import normalize_v1_base_url
 from backend.model_profiles import ModelProfiles
@@ -494,38 +495,41 @@ class CodexConfig(QObject):
             self._config_write_failed,
         )
 
-    def _exchange_and_store_refresh_token(self, refresh_token: str):
-        settings = load_codex_oauth_settings(
-            os.path.join(_app_dir(), "app_config.json")
-        )
-        tokens = exchange_refresh_token(refresh_token, settings)
+    def _import_and_store_auth_json(self, raw_json: str):
+        tokens = parse_chatgpt_auth_json(raw_json)
+        required = ("id_token", "access_token", "refresh_token", "account_id")
+        if not all(tokens.get(name) for name in required):
+            settings = load_codex_oauth_settings(
+                os.path.join(_app_dir(), "app_config.json")
+            )
+            tokens = exchange_refresh_token(tokens["refresh_token"], settings)
         return self._store.set_chatgpt_auth(tokens)
 
-    def _refresh_token_login_failed(self, exc):
+    def _auth_json_import_failed(self, exc):
         LOGGER.error(
-            "Codex refresh token 登录失败: %s",
+            "Codex 认证 JSON 导入失败: %s",
             exc,
             exc_info=(type(exc), exc, exc.__traceback__),
         )
         if isinstance(exc, (CodexOAuthError, ValueError)):
-            self.notify.emit(2, "登录失败", str(exc))
+            self.notify.emit(2, "导入失败", str(exc))
         else:
-            self.notify.emit(3, "登录失败", "写入 Codex 认证失败，请检查日志")
+            self.notify.emit(3, "导入失败", "写入 Codex 认证失败，请检查日志")
 
     @Slot(str)
-    def setRefreshToken(self, refresh_token: str):
-        token = str(refresh_token or "").strip()
-        if not token:
-            self.notify.emit(2, "未登录", "refresh token 不能为空")
+    def importAuthJson(self, raw_json: str):
+        value = str(raw_json or "").strip()
+        if not value:
+            self.notify.emit(2, "未导入", "认证 JSON 不能为空")
             return
         self._config_tasks.submit(
-            lambda: self._exchange_and_store_refresh_token(token),
+            lambda: self._import_and_store_auth_json(value),
             lambda snapshot: self._complete_config_change(
                 snapshot,
-                "ChatGPT 登录成功",
+                "ChatGPT 认证导入成功",
                 "OAuth 凭据已保存到 auth.json，请完全重启 Codex 生效",
             ),
-            self._refresh_token_login_failed,
+            self._auth_json_import_failed,
         )
 
     # ---------- 获取模型列表(后台线程,不阻塞 UI) ----------

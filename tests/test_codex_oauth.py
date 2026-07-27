@@ -11,6 +11,7 @@ from backend.codex_oauth import (
     CodexOAuthSettings,
     exchange_refresh_token,
     load_codex_oauth_settings,
+    parse_chatgpt_auth_json,
 )
 
 
@@ -77,6 +78,79 @@ class CodexOAuthTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "HTTPS"):
                 load_codex_oauth_settings(config_path)
+
+    def test_parse_flat_codex2api_json_with_camel_case(self):
+        result = parse_chatgpt_auth_json(
+            json.dumps(
+                {
+                    "refresh_token": "refresh-token",
+                    "accessToken": "access-token",
+                    "idToken": self.id_token,
+                    "chatgpt_account_id": "account-flat",
+                }
+            )
+        )
+        self.assertEqual(
+            result,
+            {
+                "refresh_token": "refresh-token",
+                "access_token": "access-token",
+                "id_token": self.id_token,
+                "account_id": "account-flat",
+            },
+        )
+
+    def test_parse_official_codex_auth_json(self):
+        result = parse_chatgpt_auth_json(
+            json.dumps(
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {
+                        "refresh_token": "refresh-token",
+                        "access_token": "access-token",
+                        "id_token": self.id_token,
+                        "account_id": "account-123",
+                    },
+                }
+            )
+        )
+        self.assertEqual(result["account_id"], "account-123")
+        self.assertEqual(result["refresh_token"], "refresh-token")
+
+    def test_parse_sub2api_single_account_json(self):
+        result = parse_chatgpt_auth_json(
+            json.dumps(
+                {
+                    "accounts": [
+                        {
+                            "name": "test",
+                            "credentials": {
+                                "refresh_token": "refresh-token",
+                                "access_token": "access-token",
+                                "id_token": self.id_token,
+                            },
+                        }
+                    ]
+                }
+            )
+        )
+        self.assertEqual(result["account_id"], "account-123")
+
+    def test_parse_rejects_multiple_accounts(self):
+        payload = {
+            "accounts": [
+                {"credentials": {"refresh_token": "secret-one"}},
+                {"credentials": {"refresh_token": "secret-two"}},
+            ]
+        }
+        with self.assertRaisesRegex(ValueError, "每次只能导入一个") as caught:
+            parse_chatgpt_auth_json(json.dumps(payload))
+        self.assertNotIn("secret-one", str(caught.exception))
+        self.assertNotIn("secret-two", str(caught.exception))
+
+    def test_parse_rejects_access_token_only_json(self):
+        with self.assertRaisesRegex(ValueError, "缺少 refresh_token"):
+            parse_chatgpt_auth_json('{"accessToken":"access-only-secret"}')
 
     def test_refresh_exchange_uses_official_json_contract(self):
         calls = []

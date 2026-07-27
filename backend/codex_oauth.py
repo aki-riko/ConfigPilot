@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 
 MAX_RESPONSE_BYTES = 64 * 1024
+MAX_IMPORT_BYTES = 256 * 1024
 REFRESH_URL_OVERRIDE_ENV = "CODEX_REFRESH_TOKEN_URL_OVERRIDE"
 CLIENT_ID_OVERRIDE_ENV = "CODEX_APP_SERVER_LOGIN_CLIENT_ID"
 
@@ -128,6 +129,114 @@ def _account_id_from_payload(payload: dict) -> str:
             return account_id.strip()
     account_id = payload.get("chatgpt_account_id")
     return account_id.strip() if isinstance(account_id, str) else ""
+
+
+def _first_string(data: dict, *keys: str) -> str:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _credential_candidates(value) -> list[dict]:
+    if isinstance(value, list):
+        candidates = []
+        for item in value:
+            candidates.extend(_credential_candidates(item))
+        return candidates
+    if not isinstance(value, dict):
+        return []
+
+    accounts = value.get("accounts")
+    if isinstance(accounts, list):
+        candidates = []
+        for account in accounts:
+            if not isinstance(account, dict):
+                continue
+            credentials = account.get("credentials")
+            if isinstance(credentials, dict):
+                candidates.append(credentials)
+        return candidates
+
+    tokens = value.get("tokens")
+    if isinstance(tokens, dict):
+        return [tokens]
+    return [value]
+
+
+def _load_import_payload(raw_json: str):
+    text = str(raw_json or "").lstrip("\ufeff").strip()
+    if not text:
+        raise ValueError("认证 JSON 不能为空")
+    if len(text.encode("utf-8")) > MAX_IMPORT_BYTES:
+        raise ValueError("认证 JSON 不能超过 256 KiB")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("认证 JSON 格式无效，请检查是否复制完整") from exc
+
+
+def _select_credential_source(payload) -> dict:
+    candidates = []
+    for candidate in _credential_candidates(payload):
+        if any(
+            _first_string(candidate, *aliases)
+            for aliases in (
+                ("refresh_token", "refreshToken"),
+                ("access_token", "accessToken"),
+                ("id_token", "idToken"),
+            )
+        ):
+            candidates.append(candidate)
+    if not candidates:
+        raise ValueError("认证 JSON 中未找到 token 凭据")
+    if len(candidates) != 1:
+        raise ValueError("认证 JSON 包含多个账号，ConfigPilot 每次只能导入一个")
+    return candidates[0]
+
+
+def _normalized_import_tokens(source: dict) -> dict:
+    return {
+        "refresh_token": _first_string(source, "refresh_token", "refreshToken"),
+        "access_token": _first_string(source, "access_token", "accessToken"),
+        "id_token": _first_string(source, "id_token", "idToken"),
+        "account_id": _first_string(
+            source,
+            "account_id",
+            "accountId",
+            "chatgpt_account_id",
+            "chatgptAccountId",
+        ),
+    }
+
+
+def _populate_import_account_id(tokens: dict, source: dict):
+    if not tokens["account_id"]:
+        account = source.get("account")
+        if isinstance(account, dict):
+            tokens["account_id"] = _first_string(account, "id")
+    if not tokens["account_id"]:
+        for token_name in ("id_token", "access_token"):
+            token = tokens[token_name]
+            if not token:
+                continue
+            tokens["account_id"] = _account_id_from_payload(
+                _jwt_payload(token, token_name)
+            )
+            if tokens["account_id"]:
+                break
+
+
+def parse_chatgpt_auth_json(raw_json: str) -> dict:
+    """解析 Codex auth.json 或 codex2api 兼容的单账号 JSON。"""
+    payload = _load_import_payload(raw_json)
+    source = _select_credential_source(payload)
+    tokens = _normalized_import_tokens(source)
+    if not tokens["refresh_token"]:
+        raise ValueError("认证 JSON 中缺少 refresh_token")
+    _populate_import_account_id(tokens, source)
+    return {key: value for key, value in tokens.items() if value}
 
 
 def exchange_refresh_token(

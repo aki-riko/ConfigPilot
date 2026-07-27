@@ -17,7 +17,7 @@ Fluent.Card {
     signal providerEdited(string value)
     signal wireApiEdited(string value)
     signal saveKeyRequested(string value)
-    signal loginWithRefreshTokenRequested(string value)
+    signal importAuthJsonRequested(string value)
 
     function commitKey() {
         var value = keyInput.text.trim()
@@ -26,11 +26,11 @@ Fluent.Card {
         keyInput.text = ""
     }
 
-    function commitRefreshToken() {
-        var value = refreshTokenInput.text.trim()
+    function commitAuthJson() {
+        var value = authJsonInput.text.trim()
         if (value.length === 0) return
-        root.loginWithRefreshTokenRequested(value)
-        refreshTokenInput.text = ""
+        root.importAuthJsonRequested(value)
+        authJsonInput.text = ""
     }
 
     autoHeight: true
@@ -270,7 +270,7 @@ Fluent.Card {
             spacing: Fluent.Enums.spacing.s
 
             Text {
-                text: "ChatGPT Refresh Token"
+                text: "ChatGPT JSON 导入"
                 color: Fluent.Enums.textColor.secondary
                 font.pixelSize: Fluent.Enums.typography.body
                 font.bold: true
@@ -278,7 +278,7 @@ Fluent.Card {
             }
             Text {
                 width: parent.width
-                text: "使用官方 OAuth 接口换取完整凭据；成功后由 Codex 自动刷新。"
+                text: "粘贴 Codex auth.json 或 codex2api 兼容 JSON；仅有 refresh_token 时自动换取完整凭据。"
                 color: Fluent.Enums.textColor.tertiary
                 font.pixelSize: Fluent.Enums.typography.caption
                 font.family: Fluent.Enums.fontFamily
@@ -286,29 +286,28 @@ Fluent.Card {
             }
 
             GridLayout {
-                id: refreshTokenGrid
+                id: authJsonGrid
                 width: parent.width
-                columns: width < 560 ? 1 : 2
+                columns: 1
                 columnSpacing: Fluent.Enums.spacing.m
                 rowSpacing: Fluent.Enums.spacing.s
 
-                Fluent.LineEdit {
-                    id: refreshTokenInput
-                    objectName: "refreshTokenInput"
+                Fluent.TextEdit {
+                    id: authJsonInput
+                    objectName: "authJsonInput"
                     Layout.fillWidth: true
-                    inputType: Fluent.Enums.input.type_password
+                    Layout.preferredHeight: 132
                     enabled: !root.configBusy
-                    placeholderText: "粘贴 refresh token"
-                    onAccepted: root.commitRefreshToken()
+                    placeholderText: "{\n  \"refresh_token\": \"...\"\n}"
                 }
                 Fluent.Button {
-                    objectName: "refreshTokenLoginButton"
-                    Layout.fillWidth: refreshTokenGrid.columns === 1
+                    objectName: "authJsonImportButton"
+                    Layout.fillWidth: true
                     style: Fluent.Enums.button.style_default
-                    text: root.configBusy ? "登录中..." : "登录 ChatGPT"
+                    text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
                     enabled: !root.configBusy
-                             && refreshTokenInput.text.trim().length > 0
-                    onClicked: root.commitRefreshToken()
+                             && authJsonInput.text.trim().length > 0
+                    onClicked: root.commitAuthJson()
                 }
             }
         }

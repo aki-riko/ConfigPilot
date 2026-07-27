@@ -180,9 +180,9 @@ class BrandingTests(unittest.TestCase):
             self.assertIn("columns: width <", section)
 
         self.assertIn("未包含 /v1 时自动补全", connection)
-        self.assertIn('objectName: "refreshTokenInput"', connection)
-        self.assertIn('objectName: "refreshTokenLoginButton"', connection)
-        self.assertIn("setRefreshToken", view)
+        self.assertIn('objectName: "authJsonInput"', connection)
+        self.assertIn('objectName: "authJsonImportButton"', connection)
+        self.assertIn("importAuthJson", view)
         self.assertIn('text: "套用稳定上下文"', context)
         self.assertNotIn("feature: Fluent.Enums.button.feature_dropdown", context)
         self.assertIn("Fluent.Expander", advanced)
@@ -204,7 +204,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("minimumHeight: 560", main)
 
     def test_release_version_and_macos_disclosure_are_consistent(self):
-        version = "1.0.21"
+        version = "1.0.22"
         app_config = self.read("app_config.json")
         self.assertIn(f'"version": "{version}"', app_config)
         self.assertIn(f'set "APP_VER={version}"', self.read("build_nuitka.cmd"))
@@ -217,7 +217,7 @@ class BrandingTests(unittest.TestCase):
         readme = self.read("README.md")
         macos_build = self.read("scripts/build_macos.sh")
         first_open = self.read("docs/macos-first-open.txt")
-        release_notes = self.read("docs/release-notes/v1.0.21.md")
+        release_notes = self.read("docs/release-notes/v1.0.22.md")
 
         for content in (readme, first_open, release_notes):
             self.assertIn("Apple Developer Program", content)

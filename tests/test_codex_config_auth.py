@@ -196,7 +196,7 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(snapshot["authMode"], "chatgpt")
             self.assertFalse(snapshot["hasKey"])
 
-    def test_refresh_token_login_exchanges_once_and_writes_auth(self):
+    def test_refresh_token_json_import_exchanges_once_and_writes_auth(self):
         codex_config = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp) / ".codex"
@@ -219,7 +219,9 @@ class CodexConfigAuthTests(unittest.TestCase):
                 "exchange_refresh_token",
                 return_value=exchanged,
             ) as exchange:
-                config.setRefreshToken("original-refresh-token")
+                config.importAuthJson(
+                    json.dumps({"refresh_token": "original-refresh-token"})
+                )
                 wait_for_idle(config)
 
             exchange.assert_called_once()
@@ -229,7 +231,38 @@ class CodexConfigAuthTests(unittest.TestCase):
             )
             self.assertEqual(auth["tokens"]["refresh_token"], "rotated-refresh-token")
             self.assertTrue(config.hasChatgptAuth)
-            self.assertTrue(any(title == "ChatGPT 登录成功" for _, title, _ in notices))
+            self.assertTrue(
+                any(title == "ChatGPT 认证导入成功" for _, title, _ in notices)
+            )
+
+    def test_complete_auth_json_import_skips_exchange(self):
+        codex_config = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+            wait_for_idle(config)
+            payload = {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "id_token": "id-token",
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "account_id": "account-123",
+                },
+            }
+
+            with patch.object(codex_config, "exchange_refresh_token") as exchange:
+                config.importAuthJson(json.dumps(payload))
+                wait_for_idle(config)
+
+            exchange.assert_not_called()
+            auth = json.loads(
+                (codex_home / "auth.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(auth["tokens"], payload["tokens"])
 
     def test_corrupt_auth_does_not_hide_valid_config(self):
         codex_config = self.load_module()

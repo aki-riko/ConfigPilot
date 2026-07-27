@@ -284,8 +284,8 @@ Item {
                 onSaveKeyRequested: function(value) {
                     if (CodexConfig) CodexConfig.setKey(value)
                 }
-                onLoginWithRefreshTokenRequested: function(value) {
-                    if (CodexConfig) CodexConfig.setRefreshToken(value)
+                onImportAuthJsonRequested: function(value) {
+                    if (CodexConfig) CodexConfig.importAuthJson(value)
                 }
             }
 

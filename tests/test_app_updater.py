@@ -132,8 +132,8 @@ class AppUpdaterTests(unittest.TestCase):
         self.engine = self.controller._updater
 
     def test_real_configuration_builds_verified_engine_contract(self):
-        self.assertEqual(self.controller.version, "1.0.20")
-        self.assertEqual(self.controller.currentVersion, "v1.0.20")
+        self.assertEqual(self.controller.version, "1.0.21")
+        self.assertEqual(self.controller.currentVersion, "v1.0.21")
         self.assertEqual(self.controller.prismqmlVersion, "0.3.1.27")
         self.assertEqual(self.engine.repo, "aki-riko/ConfigPilot")
         self.assertEqual(self.engine.asset_keyword, "Setup")
@@ -146,8 +146,8 @@ class AppUpdaterTests(unittest.TestCase):
 
         self.controller.checkAutomatically()
         self.assertTrue(self.controller.checking)
-        self.engine.upToDate.emit("v1.0.20")
-        self.assertEqual(up_to_date, [("v1.0.20", False)])
+        self.engine.upToDate.emit("v1.0.21")
+        self.assertEqual(up_to_date, [("v1.0.21", False)])
 
         self.controller.checkManually()
         self.engine.checkFailed.emit("network down")
@@ -161,22 +161,22 @@ class AppUpdaterTests(unittest.TestCase):
         self.controller.checkAutomatically()
         self.controller.checkManually()
         self.assertEqual(self.engine.check_count, 1)
-        self.engine.upToDate.emit("v1.0.20")
-        self.assertEqual(results, [("v1.0.20", True)])
+        self.engine.upToDate.emit("v1.0.21")
+        self.assertEqual(results, [("v1.0.21", True)])
 
     def test_release_page_shell_open_runs_off_main_thread(self):
         main_thread = threading.get_ident()
 
         self.assertTrue(
             self.controller.openReleasePage(
-                "https://github.com/aki-riko/ConfigPilot/releases/tag/v1.0.20"
+                "https://github.com/aki-riko/ConfigPilot/releases/tag/v1.0.21"
             )
         )
         wait_until(lambda: bool(self.open_calls))
 
         self.assertEqual(
             self.open_calls[0][0],
-            "https://github.com/aki-riko/ConfigPilot/releases/tag/v1.0.20",
+            "https://github.com/aki-riko/ConfigPilot/releases/tag/v1.0.21",
         )
         self.assertNotEqual(self.open_calls[0][1], main_thread)
         self.assertFalse(self.controller.openReleasePage("file:///C:/Windows/System32"))

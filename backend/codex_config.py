@@ -16,6 +16,11 @@ from backend.async_tasks import SerialTaskRunner
 from backend.codex_config_store import CodexConfigStore, KEEP
 from backend.codex_model_catalog import fetch_codex_model_catalog
 from backend.codex_models_api import fetch_models_result
+from backend.codex_oauth import (
+    CodexOAuthError,
+    exchange_refresh_token,
+    load_codex_oauth_settings,
+)
 from backend.endpoint_urls import normalize_v1_base_url
 from backend.model_profiles import ModelProfiles
 
@@ -59,6 +64,8 @@ class CodexConfig(QObject):
         self._wire_api = ""
         self._model = ""
         self._has_key = False
+        self._auth_mode = ""
+        self._has_chatgpt_auth = False
         self._requires_auth = False
         self._reasoning_effort = ""
         self._disable_storage = False
@@ -208,6 +215,14 @@ class CodexConfig(QObject):
     def hasKey(self):
         return self._has_key
 
+    @Property(str, notify=changed)
+    def authMode(self):
+        return self._auth_mode
+
+    @Property(bool, notify=changed)
+    def hasChatgptAuth(self):
+        return self._has_chatgpt_auth
+
     @Property(bool, notify=changed)
     def configExists(self):
         return self._config_exists
@@ -241,6 +256,8 @@ class CodexConfig(QObject):
         self._wire_api = str(snapshot["wireApi"])
         self._model = str(snapshot["model"])
         self._has_key = bool(snapshot["hasKey"])
+        self._auth_mode = str(snapshot.get("authMode", ""))
+        self._has_chatgpt_auth = bool(snapshot.get("hasChatgptAuth", False))
         self._requires_auth = bool(snapshot["requiresAuth"])
         self._reasoning_effort = str(snapshot["reasoningEffort"])
         self._disable_storage = bool(snapshot["disableStorage"])
@@ -475,6 +492,40 @@ class CodexConfig(QObject):
                 "API key 已保存到 auth.json",
             ),
             self._config_write_failed,
+        )
+
+    def _exchange_and_store_refresh_token(self, refresh_token: str):
+        settings = load_codex_oauth_settings(
+            os.path.join(_app_dir(), "app_config.json")
+        )
+        tokens = exchange_refresh_token(refresh_token, settings)
+        return self._store.set_chatgpt_auth(tokens)
+
+    def _refresh_token_login_failed(self, exc):
+        LOGGER.error(
+            "Codex refresh token 登录失败: %s",
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        if isinstance(exc, (CodexOAuthError, ValueError)):
+            self.notify.emit(2, "登录失败", str(exc))
+        else:
+            self.notify.emit(3, "登录失败", "写入 Codex 认证失败，请检查日志")
+
+    @Slot(str)
+    def setRefreshToken(self, refresh_token: str):
+        token = str(refresh_token or "").strip()
+        if not token:
+            self.notify.emit(2, "未登录", "refresh token 不能为空")
+            return
+        self._config_tasks.submit(
+            lambda: self._exchange_and_store_refresh_token(token),
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "ChatGPT 登录成功",
+                "OAuth 凭据已保存到 auth.json，请完全重启 Codex 生效",
+            ),
+            self._refresh_token_login_failed,
         )
 
     # ---------- 获取模型列表(后台线程,不阻塞 UI) ----------

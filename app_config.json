@@ -1,5 +1,10 @@
 {
   "version": "1.0.20",
+  "codex_oauth": {
+    "token_url": "https://auth.openai.com/oauth/token",
+    "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
+    "timeout_seconds": 30
+  },
   "updates": {
     "repository": "aki-riko/ConfigPilot",
     "asset_keyword": "Setup",

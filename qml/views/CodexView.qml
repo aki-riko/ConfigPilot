@@ -276,12 +276,16 @@ Item {
                 providerValue: root.fProvider
                 wireApiValue: root.fWireApi
                 hasKey: CodexConfig ? CodexConfig.hasKey : false
+                hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
                 configBusy: root.configBusy
                 onBaseUrlEdited: function(value) { root.fBaseUrl = value }
                 onProviderEdited: function(value) { root.fProvider = value }
                 onWireApiEdited: function(value) { root.fWireApi = value }
                 onSaveKeyRequested: function(value) {
                     if (CodexConfig) CodexConfig.setKey(value)
+                }
+                onLoginWithRefreshTokenRequested: function(value) {
+                    if (CodexConfig) CodexConfig.setRefreshToken(value)
                 }
             }
 

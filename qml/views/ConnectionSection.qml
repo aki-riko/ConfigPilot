@@ -9,6 +9,7 @@ Fluent.Card {
     property string providerValue: ""
     property string wireApiValue: ""
     property bool hasKey: false
+    property bool hasChatgptAuth: false
     property bool configBusy: false
     readonly property string keyDraft: keyInput.text
 
@@ -16,12 +17,20 @@ Fluent.Card {
     signal providerEdited(string value)
     signal wireApiEdited(string value)
     signal saveKeyRequested(string value)
+    signal loginWithRefreshTokenRequested(string value)
 
     function commitKey() {
         var value = keyInput.text.trim()
         if (value.length === 0) return
         root.saveKeyRequested(value)
         keyInput.text = ""
+    }
+
+    function commitRefreshToken() {
+        var value = refreshTokenInput.text.trim()
+        if (value.length === 0) return
+        root.loginWithRefreshTokenRequested(value)
+        refreshTokenInput.text = ""
     }
 
     autoHeight: true
@@ -66,8 +75,9 @@ Fluent.Card {
             }
 
             Fluent.Badge {
-                text: root.hasKey ? "密钥已设置" : "未设置密钥"
-                level: root.hasKey
+                text: root.hasChatgptAuth ? "ChatGPT 已登录"
+                      : (root.hasKey ? "API 密钥已设置" : "未设置认证")
+                level: root.hasChatgptAuth || root.hasKey
                        ? Fluent.Enums.statusLevel.success
                        : Fluent.Enums.statusLevel.warning
             }
@@ -247,6 +257,58 @@ Fluent.Card {
                     text: "保存密钥"
                     enabled: !root.configBusy && keyInput.text.trim().length > 0
                     onClicked: root.commitKey()
+                }
+            }
+        }
+
+        Fluent.Separator {
+            width: cardColumn.innerWidth
+        }
+
+        Column {
+            width: cardColumn.innerWidth
+            spacing: Fluent.Enums.spacing.s
+
+            Text {
+                text: "ChatGPT Refresh Token"
+                color: Fluent.Enums.textColor.secondary
+                font.pixelSize: Fluent.Enums.typography.body
+                font.bold: true
+                font.family: Fluent.Enums.fontFamily
+            }
+            Text {
+                width: parent.width
+                text: "使用官方 OAuth 接口换取完整凭据；成功后由 Codex 自动刷新。"
+                color: Fluent.Enums.textColor.tertiary
+                font.pixelSize: Fluent.Enums.typography.caption
+                font.family: Fluent.Enums.fontFamily
+                wrapMode: Text.WordWrap
+            }
+
+            GridLayout {
+                id: refreshTokenGrid
+                width: parent.width
+                columns: width < 560 ? 1 : 2
+                columnSpacing: Fluent.Enums.spacing.m
+                rowSpacing: Fluent.Enums.spacing.s
+
+                Fluent.LineEdit {
+                    id: refreshTokenInput
+                    objectName: "refreshTokenInput"
+                    Layout.fillWidth: true
+                    inputType: Fluent.Enums.input.type_password
+                    enabled: !root.configBusy
+                    placeholderText: "粘贴 refresh token"
+                    onAccepted: root.commitRefreshToken()
+                }
+                Fluent.Button {
+                    objectName: "refreshTokenLoginButton"
+                    Layout.fillWidth: refreshTokenGrid.columns === 1
+                    style: Fluent.Enums.button.style_default
+                    text: root.configBusy ? "登录中..." : "登录 ChatGPT"
+                    enabled: !root.configBusy
+                             && refreshTokenInput.text.trim().length > 0
+                    onClicked: root.commitRefreshToken()
                 }
             }
         }

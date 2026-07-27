@@ -180,6 +180,9 @@ class BrandingTests(unittest.TestCase):
             self.assertIn("columns: width <", section)
 
         self.assertIn("未包含 /v1 时自动补全", connection)
+        self.assertIn('objectName: "refreshTokenInput"', connection)
+        self.assertIn('objectName: "refreshTokenLoginButton"', connection)
+        self.assertIn("setRefreshToken", view)
         self.assertIn('text: "套用稳定上下文"', context)
         self.assertNotIn("feature: Fluent.Enums.button.feature_dropdown", context)
         self.assertIn("Fluent.Expander", advanced)

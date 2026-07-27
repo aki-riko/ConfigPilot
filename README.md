@@ -25,6 +25,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列
 - **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）
 - **API key**：写入 `~/.codex/auth.json`
+- **ChatGPT refresh token 登录**：通过 Codex 官方 OAuth 接口换取并保存完整凭据，后续由 Codex 自动刷新
 - **安全**：每次写入前自动备份 `config.toml.bak` / `auth.json.bak`，保留 `notify` 等其它原有配置不动
 - **恢复初始设置**：只恢复 ConfigPilot 实际改过且此后未被外部修改的字段；保留 `[projects.*]` 工作区信任项和其它 Codex 配置
 - **常驻操作栏**：随时查看未应用状态，并可重新读取或应用配置

@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime, timezone
 
 try:
     import tomllib
@@ -58,6 +59,8 @@ class CodexConfigStore:
             "wireApi": "",
             "model": "",
             "hasKey": False,
+            "authMode": "",
+            "hasChatgptAuth": False,
             "requiresAuth": False,
             "reasoningEffort": "",
             "disableStorage": False,
@@ -103,7 +106,8 @@ class CodexConfigStore:
                 }
             )
         try:
-            snapshot["hasKey"] = bool(self.read_api_key())
+            auth_status = self.read_auth_status()
+            snapshot.update(auth_status)
         except Exception as exc:
             LOGGER.warning("读取 Codex 认证文件失败: %s", self.auth_path, exc_info=True)
             snapshot["authError"] = f"auth.json: {exc}"
@@ -120,6 +124,29 @@ class CodexConfigStore:
         with open(self.auth_path, "r", encoding="utf-8") as handle:
             auth = json.load(handle)
         return str(auth.get("OPENAI_API_KEY", "")) if isinstance(auth, dict) else ""
+
+    def read_auth_status(self) -> dict:
+        status = {"hasKey": False, "authMode": "", "hasChatgptAuth": False}
+        if not os.path.isfile(self.auth_path):
+            return status
+        with open(self.auth_path, "r", encoding="utf-8") as handle:
+            auth = json.load(handle)
+        if not isinstance(auth, dict):
+            raise ValueError("auth.json 根节点必须是对象")
+        auth_mode = str(auth.get("auth_mode") or "")
+        tokens = auth.get("tokens")
+        required_tokens = ("id_token", "access_token", "refresh_token", "account_id")
+        has_chatgpt_auth = (
+            auth_mode == "chatgpt"
+            and isinstance(tokens, dict)
+            and all(isinstance(tokens.get(name), str) and tokens[name].strip()
+                    for name in required_tokens)
+        )
+        return {
+            "hasKey": bool(str(auth.get("OPENAI_API_KEY") or "").strip()),
+            "authMode": auth_mode,
+            "hasChatgptAuth": has_chatgpt_auth,
+        }
 
     @staticmethod
     def _set_top_scalar(text, key, value, is_str=True):
@@ -423,8 +450,7 @@ class CodexConfigStore:
         self._atomic_write_text(self.config_path, new_text)
         return self.read_snapshot()
 
-    def set_key(self, key: str) -> dict:
-        auth = {"OPENAI_API_KEY": key, "auth_mode": "apikey"}
+    def _replace_auth(self, auth: dict) -> dict:
         text = json.dumps(auth, ensure_ascii=False, indent=2) + "\n"
         current_state = file_state(self.auth_path)
         applied_state = {"present": True, "content": text}
@@ -432,6 +458,24 @@ class CodexConfigStore:
             self._journal.record_auth(current_state, applied_state)
         self._atomic_write_text(self.auth_path, text)
         return self.read_snapshot()
+
+    def set_key(self, key: str) -> dict:
+        return self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
+
+    def set_chatgpt_auth(self, tokens: dict) -> dict:
+        required = ("id_token", "access_token", "refresh_token", "account_id")
+        if not isinstance(tokens, dict) or any(
+            not isinstance(tokens.get(name), str) or not tokens[name].strip()
+            for name in required
+        ):
+            raise ValueError("ChatGPT OAuth 凭据不完整")
+        auth = {
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": None,
+            "tokens": {name: tokens[name].strip() for name in required},
+            "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        return self._replace_auth(auth)
 
     def _build_restored_config(self, text, entries, field_names):
         new_text = text

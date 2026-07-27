@@ -165,6 +165,72 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertNotIn("access_token", new_auth)
             self.assertNotIn("refresh_token", new_auth)
 
+    def test_set_chatgpt_auth_backs_up_existing_auth_and_reports_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            auth_path = codex_home / "auth.json"
+            original = {"OPENAI_API_KEY": "old-key", "auth_mode": "apikey"}
+            auth_path.write_text(json.dumps(original), encoding="utf-8")
+            store = CodexConfigStore(str(codex_home))
+
+            snapshot = store.set_chatgpt_auth(
+                {
+                    "id_token": "id-token",
+                    "access_token": "access-token",
+                    "refresh_token": "refresh-token",
+                    "account_id": "account-123",
+                }
+            )
+
+            auth = json.loads(auth_path.read_text(encoding="utf-8"))
+            backup = json.loads(
+                (codex_home / "auth.json.bak").read_text(encoding="utf-8")
+            )
+            self.assertEqual(backup, original)
+            self.assertEqual(auth["auth_mode"], "chatgpt")
+            self.assertIsNone(auth["OPENAI_API_KEY"])
+            self.assertEqual(auth["tokens"]["account_id"], "account-123")
+            self.assertTrue(auth["last_refresh"].endswith("Z"))
+            self.assertTrue(snapshot["hasChatgptAuth"])
+            self.assertEqual(snapshot["authMode"], "chatgpt")
+            self.assertFalse(snapshot["hasKey"])
+
+    def test_refresh_token_login_exchanges_once_and_writes_auth(self):
+        codex_config = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+            wait_for_idle(config)
+            notices = []
+            config.notify.connect(lambda *args: notices.append(args))
+            exchanged = {
+                "id_token": "id-token",
+                "access_token": "access-token",
+                "refresh_token": "rotated-refresh-token",
+                "account_id": "account-123",
+            }
+
+            with patch.object(
+                codex_config,
+                "exchange_refresh_token",
+                return_value=exchanged,
+            ) as exchange:
+                config.setRefreshToken("original-refresh-token")
+                wait_for_idle(config)
+
+            exchange.assert_called_once()
+            self.assertEqual(exchange.call_args.args[0], "original-refresh-token")
+            auth = json.loads(
+                (codex_home / "auth.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(auth["tokens"]["refresh_token"], "rotated-refresh-token")
+            self.assertTrue(config.hasChatgptAuth)
+            self.assertTrue(any(title == "ChatGPT 登录成功" for _, title, _ in notices))
+
     def test_corrupt_auth_does_not_hide_valid_config(self):
         codex_config = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:

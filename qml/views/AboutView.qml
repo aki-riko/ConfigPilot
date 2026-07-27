@@ -5,6 +5,21 @@ import PrismQML as Fluent
 Item {
     id: root
 
+    // 帮助页复用引擎 updater，由 PrismQML AutoUpdater 负责反馈、下载与安装。
+    Component {
+        id: progressPresenter
+        Fluent.AutoUpdaterProgressDialogPresenter {}
+    }
+
+    Fluent.AutoUpdater {
+        id: autoUpdater
+        updater: appUpdater
+        autoDownload: true
+        silentArgs: AppInstallerSilentArgs
+        notifyWhenUpToDate: true
+        feedbackPresenter: progressPresenter
+    }
+
     Fluent.ScrollArea {
         anchors.fill: parent
 
@@ -69,17 +84,18 @@ Item {
                     }
                     Text {
                         text: "AI 工具配置与自动化中心\nConfigPilot "
-                            + AppUpdater.version + "\n基于 PrismQML (prismqml "
-                            + AppUpdater.prismqmlVersion + ") · MIT"
+                            + AppVersion + "\n基于 PrismQML (prismqml "
+                            + PrismQMLVersion + ") · MIT"
                         font.pixelSize: Fluent.Enums.typography.body
                         color: Fluent.Enums.textColor.secondary
                         font.family: Fluent.Enums.fontFamily
                     }
                     Fluent.Button {
                         style: Fluent.Enums.button.style_default
-                        text: AppUpdater.checking ? "正在检查..." : "检查更新"
-                        enabled: !AppUpdater.checking
-                        onClicked: AppUpdater.checkManually()
+                        text: autoUpdater.feedbackModel.checking
+                            ? "正在检查..." : "检查更新"
+                        enabled: !autoUpdater.feedbackModel.checking
+                        onClicked: autoUpdater.check()
                     }
                 }
             }

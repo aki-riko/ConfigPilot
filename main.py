@@ -75,14 +75,30 @@ def main() -> int:
 
     # 注册 AI 工具配置后端
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from backend.app_updater import AppUpdater
     from backend.codex_config import CodexConfig
     from backend.claude_desktop_config import ClaudeDesktopConfig
 
-    app_updater = AppUpdater(app_settings, prismqml.__version__, parent=app.qapp)
+    # 更新检查、下载、摘要校验和安装启动全部交给 PrismQML 引擎。
+    # 应用侧只提供仓库、当前版本和安装包关键词。
+    app_updater = app.enable_auto_update(
+        app_settings.updates.repository,
+        f"v{app_settings.version}",
+        app_settings.updates.asset_keyword,
+    )
     codex = CodexConfig()
     claude_desktop = ClaudeDesktopConfig()
     engine.rootContext().setContextProperty("AppUpdater", app_updater)
+    engine.rootContext().setContextProperty("AppVersion", app_settings.version)
+    engine.rootContext().setContextProperty("PrismQMLVersion", prismqml.__version__)
+    engine.rootContext().setContextProperty(
+        "AppAutoCheckEnabled", app_settings.updates.auto_check
+    )
+    engine.rootContext().setContextProperty(
+        "AppUpdateStartupDelayMs", app_settings.updates.startup_delay_ms
+    )
+    engine.rootContext().setContextProperty(
+        "AppInstallerSilentArgs", app_settings.updates.windows_installer_args
+    )
     engine.rootContext().setContextProperty("CodexConfig", codex)
     engine.rootContext().setContextProperty("ClaudeDesktopConfig", claude_desktop)
 

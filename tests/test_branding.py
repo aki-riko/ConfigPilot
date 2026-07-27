@@ -195,8 +195,8 @@ class BrandingTests(unittest.TestCase):
         about = self.read("qml/views/AboutView.qml")
         main = self.read("qml/main.qml")
 
-        self.assertIn("prismqml==0.3.1.27", requirements)
-        self.assertIn("AppUpdater.prismqmlVersion", about)
+        self.assertIn("prismqml==0.3.2.11", requirements)
+        self.assertIn("PrismQMLVersion", about)
         self.assertIn("minimumWidth: 760", main)
         self.assertIn("minimumHeight: 560", main)
 
@@ -228,19 +228,17 @@ class BrandingTests(unittest.TestCase):
 
     def test_application_update_flow_uses_prismqml_engine(self):
         main_py = self.read("main.py")
-        updater_py = self.read("backend/app_updater.py")
         main_qml = self.read("qml/main.qml")
         about_qml = self.read("qml/views/AboutView.qml")
         installer = self.read("ConfigPilot.iss")
 
+        self.assertIn("app.enable_auto_update(", main_py)
         self.assertIn('setContextProperty("AppUpdater", app_updater)', main_py)
-        self.assertIn("parent=app.qapp", main_py)
-        self.assertIn("BackgroundDownloadUpdater", updater_py)
-        self.assertIn("AppUpdater.checkAutomatically()", main_qml)
-        self.assertIn("Fluent.UpdateDialog", main_qml)
-        self.assertIn("Fluent.ProgressDialog", main_qml)
-        self.assertIn("AppUpdater.downloadUpdate", main_qml)
-        self.assertIn("AppUpdater.checkManually()", about_qml)
+        self.assertIn("Fluent.AutoUpdater", main_qml)
+        self.assertIn("Fluent.AutoUpdaterProgressDialogPresenter", main_qml)
+        self.assertIn("autoUpdater.checkSilently()", main_qml)
+        self.assertIn("Fluent.AutoUpdater", about_qml)
+        self.assertIn("autoUpdater.check()", about_qml)
         self.assertIn("/AUTORESTARTAPP", installer)
 
 

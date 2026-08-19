@@ -24,7 +24,7 @@ from prismqml import App
 def main() -> int:
     # App 自动完成 DPI / 消息处理器 / register_types / 异步孵化控制器
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    from backend.app_settings import load_app_settings
+    from backend.app_settings import load_app_settings, resolve_prismqml_config_path
 
     try:
         app_settings = load_app_settings(os.path.join(app_dir, "app_config.json"))
@@ -32,7 +32,11 @@ def main() -> int:
         print(f"[ERROR] 加载应用配置失败: {exc}", file=sys.stderr)
         return -1
 
-    app = App(sys.argv)
+    app = App(
+        sys.argv,
+        config_path=resolve_prismqml_config_path(),
+        persist_appearance=True,
+    )
     app.setApplicationVersion(app_settings.version)
     engine = app.engine
 

@@ -12,7 +12,7 @@ from unittest import mock
 from PySide6.QtCore import QObject, QTimer, Signal
 import shiboken6
 
-from backend.app_settings import load_app_settings
+from backend.app_settings import load_app_settings, resolve_prismqml_config_path
 from backend.app_updater import AppUpdater
 from backend.background_updater import BackgroundDownloadUpdater, _DownloadWriter
 from tests.qt_test_utils import APP, wait_until
@@ -130,6 +130,23 @@ class AppUpdaterTests(unittest.TestCase):
         )
         self.addCleanup(self.controller._installer_tasks.close)
         self.engine = self.controller._updater
+
+    def test_prismqml_config_path_is_platform_specific(self):
+        self.assertEqual(
+            resolve_prismqml_config_path(
+                platform_name="nt",
+                environment={"LOCALAPPDATA": "C:/Users/Test/AppData/Local"},
+            ),
+            Path("C:/Users/Test/AppData/Local/ConfigPilot/prismqml.json"),
+        )
+        self.assertEqual(
+            resolve_prismqml_config_path(
+                platform_name="posix",
+                environment={},
+                home="/home/test",
+            ),
+            Path("/home/test/.config/ConfigPilot/prismqml.json"),
+        )
 
     def test_real_configuration_builds_verified_engine_contract(self):
         self.assertEqual(self.controller.version, "1.0.22")

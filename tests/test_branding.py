@@ -1,5 +1,10 @@
+import json
+import os
 import re
+import subprocess
 import struct
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -198,10 +203,94 @@ class BrandingTests(unittest.TestCase):
         about = self.read("qml/views/AboutView.qml")
         main = self.read("qml/main.qml")
 
-        self.assertIn("prismqml==0.3.3.7", requirements)
+        self.assertIn("prismqml==0.4.0.8", requirements)
         self.assertIn("PrismQMLVersion", about)
         self.assertIn("minimumWidth: 760", main)
         self.assertIn("minimumHeight: 560", main)
+
+    def test_prismqml_config_is_owned_by_configpilot(self):
+        main = self.read("main.py")
+        settings = self.read("backend/app_settings.py")
+
+        self.assertIn("config_path=resolve_prismqml_config_path()", main)
+        self.assertIn("persist_appearance=True", main)
+        self.assertIn('_APPLICATION_CONFIG_DIR_NAME = "ConfigPilot"', settings)
+        self.assertIn('_PRISMQML_CONFIG_FILE_NAME = "prismqml.json"', settings)
+
+    def test_configpilot_config_wins_when_gallery_config_exists(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            gallery_path = temporary_root / "gallery.json"
+            configpilot_path = (
+                temporary_root / "local" / "ConfigPilot" / "prismqml.json"
+            )
+            configpilot_path.parent.mkdir(parents=True)
+            gallery_path.write_text(
+                json.dumps(
+                    {
+                        "Appearance": {
+                            "Theme": "dark",
+                            "Skin": "vintage_ticket",
+                            "Language": "zh_CN",
+                            "AccentColor": "#123456",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            configpilot_path.write_text(
+                json.dumps(
+                    {
+                        "Appearance": {
+                            "Theme": "light",
+                            "Skin": "fluent",
+                            "Language": "en",
+                            "AccentColor": "#654321",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "LOCALAPPDATA": str(temporary_root / "local"),
+                    "PRISMQML_CONFIG_FILE": str(gallery_path),
+                    "PYTHONIOENCODING": "utf-8",
+                    "QT_QPA_PLATFORM": "offscreen",
+                }
+            )
+            script = """
+from pathlib import Path
+from PySide6.QtCore import QTimer
+from backend.app_settings import resolve_prismqml_config_path
+from prismqml import App
+from prismqml.python.config import getConfigManager
+
+config_path = resolve_prismqml_config_path()
+app = App([], config_path=config_path, persist_appearance=True)
+manager = getConfigManager(config_path, persist_appearance=True)
+assert Path(manager.getConfigPath()).resolve() == config_path.resolve()
+assert manager.theme == "light"
+assert manager.skin == "fluent"
+assert manager.language == "en"
+assert manager.accentColor == "#654321"
+QTimer.singleShot(0, app.quit)
+raise SystemExit(app.exec())
+"""
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_release_version_and_macos_disclosure_are_consistent(self):
         version = "1.0.22"

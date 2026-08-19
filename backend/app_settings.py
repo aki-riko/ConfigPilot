@@ -5,12 +5,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 from pathlib import Path
 import re
 
 
 _VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)+(?:-[0-9A-Za-z.-]+)?$")
 _REPOSITORY_PATTERN = re.compile(r"^[^\s/]+/[^\s/]+$")
+_WINDOWS_CONFIG_ROOT_ENVIRONMENT = "LOCALAPPDATA"
+_XDG_CONFIG_HOME_ENVIRONMENT = "XDG_CONFIG_HOME"
+_APPLICATION_CONFIG_DIR_NAME = "ConfigPilot"
+_PRISMQML_CONFIG_FILE_NAME = "prismqml.json"
+
+
+def resolve_prismqml_config_path(
+    platform_name: str | None = None,
+    environment: dict[str, str] | None = None,
+    home: str | Path | None = None,
+) -> Path:
+    """返回 ConfigPilot 独占的 PrismQML 配置路径。"""
+    current_platform = platform_name or os.name
+    current_environment = environment if environment is not None else os.environ
+    if current_platform == "nt":
+        config_root = current_environment.get(_WINDOWS_CONFIG_ROOT_ENVIRONMENT)
+        if not config_root:
+            raise RuntimeError("LOCALAPPDATA 未设置，无法定位 ConfigPilot 配置目录")
+        base_path = Path(config_root)
+    else:
+        xdg_config_home = current_environment.get(_XDG_CONFIG_HOME_ENVIRONMENT)
+        base_path = (
+            Path(xdg_config_home)
+            if xdg_config_home
+            else (Path(home) if home is not None else Path.home()) / ".config"
+        )
+    return base_path / _APPLICATION_CONFIG_DIR_NAME / _PRISMQML_CONFIG_FILE_NAME
 
 
 @dataclass(frozen=True)

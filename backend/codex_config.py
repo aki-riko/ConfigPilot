@@ -413,13 +413,6 @@ class CodexConfig(QObject):
         if context_window is not KEEP:
             context_preset = self._model_profiles.context_preset(model)
             if context_preset:
-                context_window = self._model_profiles.clamp_context_window(
-                    model, context_window
-                )
-                if auto_compact_limit is not KEEP:
-                    auto_compact_limit = self._model_profiles.clamp_auto_compact_limit(
-                        model, auto_compact_limit
-                    )
                 model_catalog_json = None
             elif context_window is None:
                 model_catalog_json = None

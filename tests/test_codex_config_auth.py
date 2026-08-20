@@ -414,7 +414,7 @@ class CodexConfigAuthTests(unittest.TestCase):
                 },
             )
 
-    def test_apply_real_gpt56_config_sample(self):
+    def test_apply_custom_gpt56_context_values_are_preserved(self):
         codex_config = self.load_module()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -471,8 +471,8 @@ class CodexConfigAuthTests(unittest.TestCase):
                 saved = tomllib.load(handle)
             self.assertEqual(saved["model"], "gpt-5.6-sol")
             self.assertEqual(saved["model_reasoning_effort"], "xhigh")
-            self.assertEqual(saved["model_context_window"], 258400)
-            self.assertEqual(saved["model_auto_compact_token_limit"], 245000)
+            self.assertEqual(saved["model_context_window"], 372000)
+            self.assertEqual(saved["model_auto_compact_token_limit"], 353000)
             self.assertEqual(saved["tool_output_token_limit"], 6000)
 
     def test_model_fetch_notification_does_not_embed_model_list(self):

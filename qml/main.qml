@@ -57,6 +57,9 @@ QtObject {
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: true
+            splashIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
+            splashTitle: root.windowTitle
+            splashSubtitle: "正在加载..."
 
             Component {
                 id: updateProgressPresenter
@@ -73,9 +76,8 @@ QtObject {
                 feedbackPresenter: updateProgressPresenter
             }
 
-            // 启动屏:挂到 _splashInstance,内容加载完成后引擎自动 finish()
+            // PrismQML 0.4+ 自动创建并管理 splashComponent；业务只配置外观。
             Component.onCompleted: {
-                this._splashInstance = root.splashComponent.createObject(this.contentItem)
                 if (AppAutoCheckEnabled) {
                     updateCheckTimer.start()
                 }
@@ -96,13 +98,4 @@ QtObject {
         }
     }
 
-    // 启动屏组件
-    property Component splashComponent: Component {
-        Fluent.SplashScreen {
-            iconSource: typeof AppLogo !== "undefined" ? AppLogo : ""
-            title: root.windowTitle
-            subtitle: "正在加载..."
-            z: 9999
-        }
-    }
 }

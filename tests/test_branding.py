@@ -217,6 +217,13 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('_APPLICATION_CONFIG_DIR_NAME = "ConfigPilot"', settings)
         self.assertIn('_PRISMQML_CONFIG_FILE_NAME = "prismqml.json"', settings)
 
+    def test_startup_splash_uses_engine_owned_instance(self):
+        main_qml = self.read("qml/main.qml")
+
+        self.assertIn('splashSubtitle: "正在加载..."', main_qml)
+        self.assertNotIn("_splashInstance = root.splashComponent.createObject", main_qml)
+        self.assertNotIn("property Component splashComponent", main_qml)
+
     def test_configpilot_config_wins_when_gallery_config_exists(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary_root = Path(temporary_directory)

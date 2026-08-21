@@ -32,6 +32,7 @@ PROVIDER_FIELD_TYPES = {
     "name": "string",
     "base_url": "string",
     "wire_api": "string",
+    "env_key": "string",
     "requires_openai_auth": "bool",
 }
 _PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -71,6 +72,8 @@ def managed_field_names(current_data: dict, values: dict, keep_marker) -> list[s
     fields.append(f"provider.{provider}.base_url")
     if values["wireApi"]:
         fields.append(f"provider.{provider}.wire_api")
+    if values.get("envKey", keep_marker) is not keep_marker:
+        fields.append(f"provider.{provider}.env_key")
     if values["requiresAuth"] is not None:
         fields.append(f"provider.{provider}.requires_openai_auth")
     return fields

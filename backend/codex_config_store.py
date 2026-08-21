@@ -62,6 +62,10 @@ class CodexConfigStore:
             "authMode": "",
             "hasChatgptAuth": False,
             "requiresAuth": False,
+            "envKey": "",
+            "envKeyPresent": False,
+            "authSource": "none",
+            "authReady": True,
             "reasoningEffort": "",
             "disableStorage": False,
             "modelContextWindow": "",
@@ -78,14 +82,21 @@ class CodexConfigStore:
                 data = tomllib.load(handle)
             provider = str(data.get("model_provider", ""))
             provider_data = data.get("model_providers", {}).get(provider, {})
+            env_key = str(provider_data.get("env_key", "")).strip()
+            requires_auth = bool(provider_data.get("requires_openai_auth", False))
             snapshot.update(
                 {
                     "provider": provider,
                     "baseUrl": str(provider_data.get("base_url", "")),
                     "wireApi": str(provider_data.get("wire_api", "")),
                     "model": str(data.get("model", "")),
-                    "requiresAuth": bool(
-                        provider_data.get("requires_openai_auth", False)
+                    "requiresAuth": requires_auth,
+                    "envKey": env_key,
+                    "envKeyPresent": bool(env_key and os.environ.get(env_key)),
+                    "authSource": (
+                        "auth_json" if requires_auth
+                        else "environment" if env_key
+                        else "none"
                     ),
                     "reasoningEffort": str(
                         data.get("model_reasoning_effort", "")
@@ -108,9 +119,17 @@ class CodexConfigStore:
         try:
             auth_status = self.read_auth_status()
             snapshot.update(auth_status)
+            if snapshot["authSource"] == "auth_json":
+                snapshot["authReady"] = bool(
+                    snapshot["hasKey"] or snapshot["hasChatgptAuth"]
+                )
+            elif snapshot["authSource"] == "environment":
+                snapshot["authReady"] = bool(snapshot["envKeyPresent"])
         except Exception as exc:
             LOGGER.warning("读取 Codex 认证文件失败: %s", self.auth_path, exc_info=True)
             snapshot["authError"] = f"auth.json: {exc}"
+            if snapshot["authSource"] == "auth_json":
+                snapshot["authReady"] = False
         try:
             snapshot["hasRestorableChanges"] = self._journal.has_changes()
         except Exception as exc:
@@ -121,15 +140,48 @@ class CodexConfigStore:
     def read_api_key(self) -> str:
         if not os.path.isfile(self.auth_path):
             return ""
-        with open(self.auth_path, "r", encoding="utf-8") as handle:
+        with open(self.auth_path, "r", encoding="utf-8-sig") as handle:
             auth = json.load(handle)
         return str(auth.get("OPENAI_API_KEY", "")) if isinstance(auth, dict) else ""
+
+    def read_provider_api_key(self) -> str:
+        """读取当前 provider 实际使用的 key，供模型探测复用。"""
+        return self.read_provider_auth()["key"]
+
+    def read_provider_auth(self) -> dict:
+        """解析当前 provider 的认证来源，避免 UI 探测和 Codex 配置分叉。"""
+        source = (
+            "auth_json"
+            if not os.path.isfile(self.config_path) and os.path.isfile(self.auth_path)
+            else "none"
+        )
+        env_key = ""
+        if os.path.isfile(self.config_path) and tomllib:
+            with open(self.config_path, "rb") as handle:
+                data = tomllib.load(handle)
+            provider = str(data.get("model_provider", ""))
+            provider_data = data.get("model_providers", {}).get(provider, {})
+            if bool(provider_data.get("requires_openai_auth", False)):
+                source = "auth_json"
+            else:
+                env_key = str(provider_data.get("env_key", "")).strip()
+                if env_key:
+                    source = "environment"
+        key = self.read_api_key() if source == "auth_json" else (
+            os.environ.get(env_key, "") if source == "environment" else ""
+        )
+        return {
+            "source": source,
+            "envKey": env_key,
+            "key": str(key or ""),
+            "ready": bool(key) if source != "none" else True,
+        }
 
     def read_auth_status(self) -> dict:
         status = {"hasKey": False, "authMode": "", "hasChatgptAuth": False}
         if not os.path.isfile(self.auth_path):
             return status
-        with open(self.auth_path, "r", encoding="utf-8") as handle:
+        with open(self.auth_path, "r", encoding="utf-8-sig") as handle:
             auth = json.load(handle)
         if not isinstance(auth, dict):
             raise ValueError("auth.json 根节点必须是对象")
@@ -377,6 +429,10 @@ class CodexConfigStore:
             block = self._set_block_scalar(block, "base_url", values["baseUrl"])
             if values["wireApi"]:
                 block = self._set_block_scalar(block, "wire_api", values["wireApi"])
+            if values.get("envKey", KEEP) is not KEEP:
+                block = self._set_block_scalar(
+                    block, "env_key", values.get("envKey")
+                )
             if values["requiresAuth"] is not None:
                 block = self._set_block_scalar(
                     block,
@@ -393,6 +449,8 @@ class CodexConfigStore:
         )
         if values["wireApi"]:
             block += f'wire_api = "{values["wireApi"]}"\n'
+        if values.get("envKey", KEEP) is not KEEP and values.get("envKey"):
+            block += f'env_key = "{values["envKey"]}"\n'
         if values["requiresAuth"] is not None:
             enabled = "true" if values["requiresAuth"] else "false"
             block += f"requires_openai_auth = {enabled}\n"
@@ -460,7 +518,8 @@ class CodexConfigStore:
         return self.read_snapshot()
 
     def set_key(self, key: str) -> dict:
-        return self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
+        snapshot = self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
+        return self._set_provider_auth_source("auth_json", snapshot)
 
     def set_chatgpt_auth(self, tokens: dict) -> dict:
         required = ("id_token", "access_token", "refresh_token", "account_id")
@@ -475,7 +534,60 @@ class CodexConfigStore:
             "tokens": {name: tokens[name].strip() for name in required},
             "last_refresh": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
-        return self._replace_auth(auth)
+        snapshot = self._replace_auth(auth)
+        return self._set_provider_auth_source("auth_json", snapshot)
+
+    def _set_provider_auth_source(self, source: str, snapshot=None) -> dict:
+        if source not in ("auth_json", "environment", "none"):
+            raise ValueError("未知认证来源")
+        text = ""
+        if os.path.isfile(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        current_data = parse_config_text(text)
+        provider = str(current_data.get("model_provider", ""))
+        providers = current_data.get("model_providers", {})
+        if not provider or not isinstance(providers, dict) or provider not in providers:
+            return snapshot or self.read_snapshot()
+        env_key = self._provider_env_key_for_source(source, providers[provider])
+        if source == "environment" and not env_key:
+            raise ValueError("环境变量认证缺少 env_key")
+        fields = [
+            f"provider.{provider}.env_key",
+            f"provider.{provider}.requires_openai_auth",
+        ]
+        new_text = self._set_provider_field_state(
+            text,
+            provider,
+            "env_key",
+            {"present": source == "environment", "value": env_key},
+        )
+        new_text = self._set_provider_field_state(
+            new_text,
+            provider,
+            "requires_openai_auth",
+            {"present": True, "value": source == "auth_json"},
+        )
+        new_data = parse_config_text(new_text)
+        current_fields = capture_fields(current_data, fields)
+        applied_fields = capture_fields(new_data, fields)
+        changed_fields = [
+            name for name in fields
+            if current_fields[name] != applied_fields[name]
+        ]
+        if changed_fields:
+            self._journal.record_config(
+                {name: current_fields[name] for name in changed_fields},
+                {name: applied_fields[name] for name in changed_fields},
+            )
+            self._atomic_write_text(self.config_path, new_text)
+        return self.read_snapshot()
+
+    @staticmethod
+    def _provider_env_key_for_source(source: str, provider_data: dict) -> str:
+        if source != "environment":
+            return ""
+        return str(provider_data.get("env_key", "")).strip()
 
     def _build_restored_config(self, text, entries, field_names):
         new_text = text

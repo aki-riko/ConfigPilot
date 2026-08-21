@@ -1,5 +1,6 @@
 import importlib
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -164,6 +165,93 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(backup_auth, old_auth)
             self.assertNotIn("access_token", new_auth)
             self.assertNotIn("refresh_token", new_auth)
+
+    def test_bom_auth_is_read_and_environment_provider_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_TEST_KEY"\n'
+                'requires_openai_auth = false\n',
+                encoding="utf-8",
+            )
+            (codex_home / "auth.json").write_text(
+                json.dumps({"OPENAI_API_KEY": "auth-key"}),
+                encoding="utf-8-sig",
+            )
+            with patch.dict(os.environ, {"CONFIGPILOT_TEST_KEY": "env-key"}):
+                snapshot = CodexConfigStore(str(codex_home)).read_snapshot()
+
+            self.assertTrue(snapshot["hasKey"])
+            self.assertEqual(snapshot["authSource"], "environment")
+            self.assertEqual(snapshot["envKey"], "CONFIGPILOT_TEST_KEY")
+            self.assertTrue(snapshot["envKeyPresent"])
+            self.assertTrue(snapshot["authReady"])
+
+    def test_set_key_switches_provider_from_environment_to_auth_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            config_path = codex_home / "config.toml"
+            config_path.write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_TEST_KEY"\n'
+                'requires_openai_auth = false\n',
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"CONFIGPILOT_TEST_KEY": "env-key"}):
+                snapshot = CodexConfigStore(str(codex_home)).set_key("new-key")
+
+            with config_path.open("rb") as handle:
+                config = tomllib.load(handle)
+            provider = config["model_providers"]["relay"]
+            self.assertNotIn("env_key", provider)
+            self.assertTrue(provider["requires_openai_auth"])
+            self.assertEqual(snapshot["authSource"], "auth_json")
+            self.assertTrue(snapshot["hasKey"])
+
+    def test_model_fetch_uses_provider_environment_key(self):
+        codex_config = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_TEST_KEY"\n',
+                encoding="utf-8",
+            )
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+            wait_for_idle(config)
+            authorization_used = []
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, traceback):
+                    return False
+
+                def read(self):
+                    return b'{"data":[{"id":"gpt-5.6-sol"}]}'
+
+            def urlopen(request, timeout):
+                authorization_used.append(request.get_header("Authorization"))
+                return Response()
+
+            with (
+                patch.dict(os.environ, {"CONFIGPILOT_TEST_KEY": "env-key"}),
+                patch("urllib.request.urlopen", side_effect=urlopen),
+            ):
+                config.fetchModels("https://gateway.example.com/v1", "")
+                wait_for_idle(config, "modelsLoading")
+
+            self.assertEqual(authorization_used, ["Bearer env-key"])
 
     def test_set_chatgpt_auth_backs_up_existing_auth_and_reports_mode(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -10,6 +10,10 @@ Fluent.Card {
     property string wireApiValue: ""
     property bool hasKey: false
     property bool hasChatgptAuth: false
+    property string authSource: "none"
+    property string envKey: ""
+    property bool envKeyPresent: false
+    property bool authReady: true
     property bool configBusy: false
     readonly property string keyDraft: keyInput.text
 
@@ -75,9 +79,13 @@ Fluent.Card {
             }
 
             Fluent.Badge {
-                text: root.hasChatgptAuth ? "ChatGPT 已登录"
-                      : (root.hasKey ? "API 密钥已设置" : "未设置认证")
-                level: root.hasChatgptAuth || root.hasKey
+                text: root.authSource === "environment"
+                      ? (root.envKeyPresent
+                         ? "环境变量已设置"
+                         : "环境变量未设置")
+                      : root.hasChatgptAuth ? "ChatGPT 已登录"
+                      : root.hasKey ? "API 密钥已设置" : "未设置认证"
+                level: root.authSource !== "none" && root.authReady
                        ? Fluent.Enums.statusLevel.success
                        : Fluent.Enums.statusLevel.warning
             }
@@ -228,7 +236,9 @@ Fluent.Card {
             }
             Text {
                 width: parent.width
-                text: "输入完成后自动保存；留空不会改动现有 auth.json"
+                text: root.authSource === "environment"
+                      ? "当前使用 env_key · " + (root.envKey || "未指定")
+                      : "输入完成后自动保存；留空不会改动现有 auth.json"
                 color: Fluent.Enums.textColor.tertiary
                 font.pixelSize: Fluent.Enums.typography.caption
                 font.family: Fluent.Enums.fontFamily

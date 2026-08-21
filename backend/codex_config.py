@@ -68,6 +68,10 @@ class CodexConfig(QObject):
         self._auth_mode = ""
         self._has_chatgpt_auth = False
         self._requires_auth = False
+        self._env_key = ""
+        self._env_key_present = False
+        self._auth_source = "none"
+        self._auth_ready = True
         self._reasoning_effort = ""
         self._disable_storage = False
         self._model_context_window = ""
@@ -185,6 +189,22 @@ class CodexConfig(QObject):
         return self._requires_auth
 
     @Property(str, notify=changed)
+    def envKey(self):
+        return self._env_key
+
+    @Property(bool, notify=changed)
+    def envKeyPresent(self):
+        return self._env_key_present
+
+    @Property(str, notify=changed)
+    def authSource(self):
+        return self._auth_source
+
+    @Property(bool, notify=changed)
+    def authReady(self):
+        return self._auth_ready
+
+    @Property(str, notify=changed)
     def reasoningEffort(self):
         return self._reasoning_effort
 
@@ -260,6 +280,10 @@ class CodexConfig(QObject):
         self._auth_mode = str(snapshot.get("authMode", ""))
         self._has_chatgpt_auth = bool(snapshot.get("hasChatgptAuth", False))
         self._requires_auth = bool(snapshot["requiresAuth"])
+        self._env_key = str(snapshot.get("envKey", ""))
+        self._env_key_present = bool(snapshot.get("envKeyPresent", False))
+        self._auth_source = str(snapshot.get("authSource", "none"))
+        self._auth_ready = bool(snapshot.get("authReady", True))
         self._reasoning_effort = str(snapshot["reasoningEffort"])
         self._disable_storage = bool(snapshot["disableStorage"])
         self._model_context_window = str(snapshot["modelContextWindow"])
@@ -385,7 +409,24 @@ class CodexConfig(QObject):
         wire_api = str(cfg.get("wireApi", "")).strip()
         model = str(cfg.get("model", "")).strip()
         # 高级项: 缺省键 -> None(不写); 显式给值才写
-        req = cfg.get("requiresAuth", None)
+        auth_source = cfg.get("authSource", None)
+        env_key = KEEP
+        if auth_source == "auth_json":
+            req = True
+            env_key = None
+        elif auth_source == "environment":
+            req = False
+            env_key = str(cfg.get("envKey", "")).strip()
+            if not env_key:
+                self.notify.emit(2, "参数无效", "环境变量认证必须填写 env_key")
+                return
+        elif auth_source == "none":
+            req = False
+            env_key = None
+        else:
+            req = cfg.get("requiresAuth", None)
+            if req is True:
+                env_key = None
         eff = cfg.get("reasoningEffort", None)
         dis = cfg.get("disableStorage", None)
         req = None if req is None else bool(req)
@@ -423,6 +464,7 @@ class CodexConfig(QObject):
             "wireApi": wire_api,
             "model": model,
             "requiresAuth": req,
+            "envKey": env_key,
             "reasoningEffort": eff,
             "disableStorage": dis,
             "contextWindow": context_window,
@@ -539,14 +581,24 @@ class CodexConfig(QObject):
             return
         key = (key_override or "").strip()
         self._set_models_loading(True)
+        if key:
+            self._queue_models_fetch(base_url, key)
+            return
         if not key:
             self._config_tasks.submit(
-                self._store.read_api_key,
-                lambda stored_key: self._queue_models_fetch(base_url, stored_key),
+                self._store.read_provider_auth,
+                lambda auth: self._queue_models_auth_fetch(base_url, auth),
                 self._models_fetch_failed,
             )
             return
-        self._queue_models_fetch(base_url, key)
+
+    def _queue_models_auth_fetch(self, base_url, auth):
+        if not auth["ready"]:
+            source = auth["envKey"] if auth["source"] == "environment" else "auth.json"
+            self._set_models_loading(False)
+            self.notify.emit(2, "无法获取", f"认证来源 {source} 未设置")
+            return
+        self._queue_models_fetch(base_url, auth["key"])
 
     def _queue_models_fetch(self, base_url, key):
         self._network_tasks.submit(

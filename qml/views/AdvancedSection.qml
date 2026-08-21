@@ -24,7 +24,7 @@ Fluent.Expander {
             controlType: Fluent.Enums.toggle.control_switch
             type: Fluent.Enums.toggle.type_subtitle
             text: "启用本地路由映射"
-            subtitle: "requires_openai_auth · Chat Completions 或非 GPT 模型时使用"
+            subtitle: "requires_openai_auth · 使用 auth.json 的 OpenAI 认证"
             Component.onCompleted: Qt.callLater(function() {
                 checked = root.requiresAuthValue
             })

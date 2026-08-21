@@ -140,12 +140,20 @@ Item {
         commitTypedModel(fModel)
         var key = connectionSection ? connectionSection.keyDraft.trim() : ""
         if (key.length > 0) CodexConfig.setKey(key)
+        var authSource = key.length > 0
+                         ? "auth_json"
+                         : (fRequiresAuth
+                            ? "auth_json"
+                            : (CodexConfig.authSource === "environment"
+                               ? "environment" : "none"))
         CodexConfig.applyConfig({
             "baseUrl": fBaseUrl,
             "provider": fProvider,
             "wireApi": fWireApi,
             "model": fModel,
             "requiresAuth": fRequiresAuth,
+            "authSource": authSource,
+            "envKey": CodexConfig.envKey,
             "reasoningEffort": fReasoningEffort,
             "disableStorage": fDisableStorage,
             "modelContextWindow": fContextWindow,
@@ -277,6 +285,10 @@ Item {
                 wireApiValue: root.fWireApi
                 hasKey: CodexConfig ? CodexConfig.hasKey : false
                 hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
+                authSource: CodexConfig ? CodexConfig.authSource : "none"
+                envKey: CodexConfig ? CodexConfig.envKey : ""
+                envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
+                authReady: CodexConfig ? CodexConfig.authReady : true
                 configBusy: root.configBusy
                 onBaseUrlEdited: function(value) { root.fBaseUrl = value }
                 onProviderEdited: function(value) { root.fProvider = value }

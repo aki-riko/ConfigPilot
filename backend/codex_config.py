@@ -570,6 +570,17 @@ class CodexConfig(QObject):
         else:
             self.notify.emit(3, "401 修复失败", "刷新 Codex 认证失败，请检查日志")
 
+    def _relay_auth_repair_failed(self, exc):
+        LOGGER.error(
+            "Codex 中转站认证修复失败: %s",
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        if isinstance(exc, ValueError):
+            self.notify.emit(2, "中转站 401 修复失败", str(exc))
+        else:
+            self.notify.emit(3, "中转站 401 修复失败", "写入中转站认证失败，请检查日志")
+
     @Slot(str)
     def importAuthJson(self, raw_json: str):
         value = str(raw_json or "").strip()
@@ -597,6 +608,20 @@ class CodexConfig(QObject):
                 "ChatGPT 会话已刷新，请完全重启 Codex 生效",
             ),
             self._chatgpt_auth_refresh_failed,
+        )
+
+    @Slot(str)
+    def repairRelayAuth(self, key=""):
+        """补齐中转 provider 的 env_key 并同步用户环境变量。"""
+        value = str(key or "").strip()
+        self._config_tasks.submit(
+            lambda: self._store.repair_relay_auth(value),
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "中转站 401 修复成功",
+                "已同步环境密钥，请完全重启 Codex 后重试",
+            ),
+            self._relay_auth_repair_failed,
         )
 
     # ---------- 获取模型列表(后台线程,不阻塞 UI) ----------

@@ -22,7 +22,7 @@ Fluent.Card {
     signal wireApiEdited(string value)
     signal saveKeyRequested(string value)
     signal importAuthJsonRequested(string value)
-    signal refreshChatgptAuthRequested()
+    signal repairRelayAuthRequested(string value)
 
     function commitKey() {
         var value = keyInput.text.trim()
@@ -270,6 +270,21 @@ Fluent.Card {
                     onClicked: root.commitKey()
                 }
             }
+
+            Fluent.Button {
+                objectName: "repairRelayAuthButton"
+                width: parent.width
+                style: Fluent.Enums.button.style_default
+                text: root.configBusy
+                      ? "处理中..."
+                      : "修复中转站 401"
+                enabled: !root.configBusy
+                         && (root.hasKey
+                             || (root.authSource === "environment"
+                                 && root.authReady)
+                             || keyInput.text.trim().length > 0)
+                onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
+            }
         }
 
         Fluent.Separator {
@@ -319,18 +334,6 @@ Fluent.Card {
                     enabled: !root.configBusy
                              && authJsonInput.text.trim().length > 0
                     onClicked: root.commitAuthJson()
-                }
-                Fluent.Button {
-                    objectName: "refreshChatgptAuthButton"
-                    Layout.fillWidth: true
-                    style: Fluent.Enums.button.style_default
-                    text: root.configBusy
-                          ? "处理中..."
-                          : "修复 401（刷新 ChatGPT 会话）"
-                    enabled: !root.configBusy
-                             && root.authSource === "auth_json"
-                             && root.hasChatgptAuth
-                    onClicked: root.refreshChatgptAuthRequested()
                 }
             }
         }

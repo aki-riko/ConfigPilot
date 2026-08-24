@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
 import os
@@ -31,6 +32,40 @@ LOGGER = logging.getLogger(__name__)
 LEGACY_MANAGED_CONTEXT_CATALOG = "gpt-5.5-1m.json"
 KEEP = object()
 _PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+DEFAULT_CODEX_API_KEY_ENV = "OPENAI_API_KEY"
+
+
+def persist_user_environment(name: str, value: str) -> None:
+    """更新当前进程和 Windows 用户环境，供之后启动的 Codex 继承。"""
+    if not _ENV_KEY_PATTERN.fullmatch(name or ""):
+        raise ValueError("环境变量名无效")
+    if not isinstance(value, str) or not value:
+        raise ValueError("环境变量值不能为空")
+    os.environ[name] = value
+    if os.name != "nt":
+        return
+    import winreg
+
+    with winreg.CreateKeyEx(
+        winreg.HKEY_CURRENT_USER,
+        r"Environment",
+        0,
+        winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+    try:
+        ctypes.windll.user32.SendMessageTimeoutW(
+            0xFFFF,
+            0x001A,
+            0,
+            "Environment",
+            0x0002,
+            1000,
+            None,
+        )
+    except Exception as exc:
+        LOGGER.debug("广播用户环境变量更新失败: %s", exc)
 
 
 class CodexConfigStore:
@@ -538,6 +573,38 @@ class CodexConfigStore:
         snapshot = self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
         return self._set_provider_auth_source("auth_json", snapshot)
 
+    def repair_relay_auth(self, key: str) -> dict:
+        """让中转 provider 按环境变量认证，修复新 Codex 会话的 401。"""
+        key = str(key or "").strip()
+        if not key:
+            key = self.read_provider_auth()["key"] or self.read_api_key()
+        if not key:
+            raise ValueError("没有可用的 API key")
+        text = ""
+        if os.path.isfile(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        current_data = parse_config_text(text)
+        provider = str(current_data.get("model_provider", ""))
+        providers = current_data.get("model_providers", {})
+        provider_data = (
+            providers.get(provider) if isinstance(providers, dict) else None
+        )
+        if not provider or not isinstance(provider_data, dict):
+            raise ValueError("请先应用中转站连接配置")
+        env_key = str(provider_data.get("env_key") or DEFAULT_CODEX_API_KEY_ENV).strip()
+        if not _ENV_KEY_PATTERN.fullmatch(env_key):
+            raise ValueError("provider.env_key 无效")
+
+        snapshot = self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
+        snapshot = self._set_provider_auth_source(
+            "environment",
+            snapshot,
+            env_key_override=env_key,
+        )
+        persist_user_environment(env_key, key)
+        return self.read_snapshot()
+
     def set_chatgpt_auth(self, tokens: dict) -> dict:
         required = ("id_token", "access_token", "refresh_token", "account_id")
         if not isinstance(tokens, dict) or any(
@@ -554,7 +621,9 @@ class CodexConfigStore:
         snapshot = self._replace_auth(auth)
         return self._set_provider_auth_source("auth_json", snapshot)
 
-    def _set_provider_auth_source(self, source: str, snapshot=None) -> dict:
+    def _set_provider_auth_source(
+        self, source: str, snapshot=None, env_key_override=KEEP
+    ) -> dict:
         if source not in ("auth_json", "environment", "none"):
             raise ValueError("未知认证来源")
         text = ""
@@ -566,7 +635,11 @@ class CodexConfigStore:
         providers = current_data.get("model_providers", {})
         if not provider or not isinstance(providers, dict) or provider not in providers:
             return snapshot or self.read_snapshot()
-        env_key = self._provider_env_key_for_source(source, providers[provider])
+        env_key = (
+            str(env_key_override).strip()
+            if env_key_override is not KEEP
+            else self._provider_env_key_for_source(source, providers[provider])
+        )
         if source == "environment" and not env_key:
             raise ValueError("环境变量认证缺少 env_key")
         fields = [

@@ -200,6 +200,23 @@ class CodexConfigStore:
             "hasChatgptAuth": has_chatgpt_auth,
         }
 
+    def read_chatgpt_refresh_token(self) -> str:
+        """读取当前 ChatGPT 会话的 refresh token，不返回其它敏感凭据。"""
+        if not os.path.isfile(self.auth_path):
+            raise ValueError("auth.json 不存在")
+        with open(self.auth_path, "r", encoding="utf-8-sig") as handle:
+            auth = json.load(handle)
+        if (
+            not isinstance(auth, dict)
+            or str(auth.get("auth_mode") or "") != "chatgpt"
+        ):
+            raise ValueError("当前 auth.json 不是 ChatGPT OAuth 会话")
+        tokens = auth.get("tokens")
+        refresh_token = tokens.get("refresh_token") if isinstance(tokens, dict) else None
+        if not isinstance(refresh_token, str) or not refresh_token.strip():
+            raise ValueError("auth.json 中缺少 refresh_token")
+        return refresh_token.strip()
+
     @staticmethod
     def _set_top_scalar(text, key, value, is_str=True):
         if value is None:

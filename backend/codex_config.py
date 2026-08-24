@@ -551,6 +551,25 @@ class CodexConfig(QObject):
         else:
             self.notify.emit(3, "导入失败", "写入 Codex 认证失败，请检查日志")
 
+    def _refresh_chatgpt_auth(self):
+        refresh_token = self._store.read_chatgpt_refresh_token()
+        settings = load_codex_oauth_settings(
+            os.path.join(_app_dir(), "app_config.json")
+        )
+        tokens = exchange_refresh_token(refresh_token, settings)
+        return self._store.set_chatgpt_auth(tokens)
+
+    def _chatgpt_auth_refresh_failed(self, exc):
+        LOGGER.error(
+            "Codex ChatGPT 会话刷新失败: %s",
+            exc,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        if isinstance(exc, (CodexOAuthError, ValueError)):
+            self.notify.emit(2, "401 修复失败", str(exc))
+        else:
+            self.notify.emit(3, "401 修复失败", "刷新 Codex 认证失败，请检查日志")
+
     @Slot(str)
     def importAuthJson(self, raw_json: str):
         value = str(raw_json or "").strip()
@@ -565,6 +584,19 @@ class CodexConfig(QObject):
                 "OAuth 凭据已保存到 auth.json，请完全重启 Codex 生效",
             ),
             self._auth_json_import_failed,
+        )
+
+    @Slot()
+    def refreshChatgptAuth(self):
+        """使用现有 refresh token 获取新凭据，单独处理已过期 access token。"""
+        self._config_tasks.submit(
+            self._refresh_chatgpt_auth,
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "401 修复成功",
+                "ChatGPT 会话已刷新，请完全重启 Codex 生效",
+            ),
+            self._chatgpt_auth_refresh_failed,
         )
 
     # ---------- 获取模型列表(后台线程,不阻塞 UI) ----------

@@ -299,6 +299,9 @@ Item {
                 onImportAuthJsonRequested: function(value) {
                     if (CodexConfig) CodexConfig.importAuthJson(value)
                 }
+                onRefreshChatgptAuthRequested: {
+                    if (CodexConfig) CodexConfig.refreshChatgptAuth()
+                }
             }
 
             ModelSection {

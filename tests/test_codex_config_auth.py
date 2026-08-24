@@ -323,6 +323,58 @@ class CodexConfigAuthTests(unittest.TestCase):
                 any(title == "ChatGPT 认证导入成功" for _, title, _ in notices)
             )
 
+    def test_refresh_chatgpt_auth_button_refreshes_stored_session(self):
+        codex_config = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            codex_home = tmp_path / ".codex"
+            codex_home.mkdir()
+            (codex_home / "auth.json").write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "tokens": {
+                            "id_token": "old-id-token",
+                            "access_token": "expired-access-token",
+                            "refresh_token": "stored-refresh-token",
+                            "account_id": "account-123",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+            wait_for_idle(config)
+            notices = []
+            config.notify.connect(lambda *args: notices.append(args))
+            exchanged = {
+                "id_token": "new-id-token",
+                "access_token": "new-access-token",
+                "refresh_token": "rotated-refresh-token",
+                "account_id": "account-123",
+            }
+
+            with patch.object(
+                codex_config,
+                "exchange_refresh_token",
+                return_value=exchanged,
+            ) as exchange:
+                config.refreshChatgptAuth()
+                wait_for_idle(config)
+
+            exchange.assert_called_once()
+            self.assertEqual(exchange.call_args.args[0], "stored-refresh-token")
+            auth = json.loads(
+                (codex_home / "auth.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(auth["tokens"]["access_token"], "new-access-token")
+            self.assertEqual(auth["tokens"]["refresh_token"], "rotated-refresh-token")
+            self.assertTrue(
+                any(title == "401 修复成功" for _, title, _ in notices)
+            )
+
     def test_complete_auth_json_import_skips_exchange(self):
         codex_config = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:

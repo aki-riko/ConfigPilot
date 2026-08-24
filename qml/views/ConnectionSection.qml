@@ -22,6 +22,7 @@ Fluent.Card {
     signal wireApiEdited(string value)
     signal saveKeyRequested(string value)
     signal importAuthJsonRequested(string value)
+    signal refreshChatgptAuthRequested()
 
     function commitKey() {
         var value = keyInput.text.trim()
@@ -318,6 +319,18 @@ Fluent.Card {
                     enabled: !root.configBusy
                              && authJsonInput.text.trim().length > 0
                     onClicked: root.commitAuthJson()
+                }
+                Fluent.Button {
+                    objectName: "refreshChatgptAuthButton"
+                    Layout.fillWidth: true
+                    style: Fluent.Enums.button.style_default
+                    text: root.configBusy
+                          ? "处理中..."
+                          : "修复 401（刷新 ChatGPT 会话）"
+                    enabled: !root.configBusy
+                             && root.authSource === "auth_json"
+                             && root.hasChatgptAuth
+                    onClicked: root.refreshChatgptAuthRequested()
                 }
             }
         }

@@ -1,5 +1,5 @@
 {
-  "version": "1.0.26",
+  "version": "1.0.27",
   "codex_oauth": {
     "token_url": "https://auth.openai.com/oauth/token",
     "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",

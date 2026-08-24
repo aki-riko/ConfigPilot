@@ -149,8 +149,8 @@ class AppUpdaterTests(unittest.TestCase):
         )
 
     def test_real_configuration_builds_verified_engine_contract(self):
-        self.assertEqual(self.controller.version, "1.0.26")
-        self.assertEqual(self.controller.currentVersion, "v1.0.26")
+        self.assertEqual(self.controller.version, "1.0.27")
+        self.assertEqual(self.controller.currentVersion, "v1.0.27")
         self.assertEqual(self.controller.prismqmlVersion, "0.3.1.27")
         self.assertEqual(self.engine.repo, "aki-riko/ConfigPilot")
         self.assertEqual(self.engine.asset_keyword, "Setup")

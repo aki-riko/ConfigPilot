@@ -612,14 +612,14 @@ class CodexConfig(QObject):
 
     @Slot(str)
     def repairRelayAuth(self, key=""):
-        """补齐中转 provider 的 env_key 并同步用户环境变量。"""
+        """修复中转 provider 认证，不覆盖已有 ChatGPT OAuth 凭据。"""
         value = str(key or "").strip()
         self._config_tasks.submit(
             lambda: self._store.repair_relay_auth(value),
             lambda snapshot: self._complete_config_change(
                 snapshot,
                 "中转站 401 修复成功",
-                "已同步环境密钥，请完全重启 Codex 后重试",
+                "已修正中转站认证来源，请完全重启 Codex 后重试",
             ),
             self._relay_auth_repair_failed,
         )

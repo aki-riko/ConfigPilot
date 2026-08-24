@@ -188,6 +188,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('objectName: "authJsonInput"', connection)
         self.assertIn('objectName: "authJsonImportButton"', connection)
         self.assertIn('objectName: "repairRelayAuthButton"', connection)
+        self.assertIn("enabled: !root.configBusy", connection)
         self.assertIn("importAuthJson", view)
         self.assertIn("repairRelayAuth", view)
         self.assertIn('text: "套用稳定上下文"', context)

@@ -279,10 +279,6 @@ Fluent.Card {
                       ? "处理中..."
                       : "修复中转站 401"
                 enabled: !root.configBusy
-                         && (root.hasKey
-                             || (root.authSource === "environment"
-                                 && root.authReady)
-                             || keyInput.text.trim().length > 0)
                 onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
             }
         }

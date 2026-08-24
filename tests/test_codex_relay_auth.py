@@ -10,11 +10,22 @@ from backend.codex_config_store import CodexConfigStore
 
 
 class CodexRelayAuthTests(unittest.TestCase):
-    def test_repair_relay_auth_writes_env_key_and_syncs_key(self):
+    def test_repair_relay_auth_uses_env_for_explicit_key_without_replacing_auth(self):
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp) / ".codex"
             codex_home.mkdir()
             config_path = codex_home / "config.toml"
+            auth_path = codex_home / "auth.json"
+            original_auth = {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "id_token": "id",
+                    "access_token": "access",
+                    "refresh_token": "refresh",
+                    "account_id": "account",
+                },
+            }
+            auth_path.write_text(json.dumps(original_auth), encoding="utf-8")
             config_path.write_text(
                 'model_provider = "relay"\n\n[model_providers.relay]\n'
                 'base_url = "https://gateway.example.com/v1"\n'
@@ -34,15 +45,47 @@ class CodexRelayAuthTests(unittest.TestCase):
 
             with config_path.open("rb") as handle:
                 provider = tomllib.load(handle)["model_providers"]["relay"]
-            auth = json.loads((codex_home / "auth.json").read_text(encoding="utf-8"))
             self.assertEqual(provider["env_key"], "OPENAI_API_KEY")
             self.assertFalse(provider["requires_openai_auth"])
-            self.assertEqual(auth["OPENAI_API_KEY"], "relay-key")
+            self.assertEqual(
+                json.loads(auth_path.read_text(encoding="utf-8")), original_auth
+            )
             self.assertEqual(
                 persist_mock.call_args.args, ("OPENAI_API_KEY", "relay-key")
             )
             self.assertEqual(snapshot["authSource"], "environment")
             self.assertTrue(snapshot["envKeyPresent"])
+
+    def test_repair_relay_auth_uses_existing_auth_json_key_without_env_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            config_path = codex_home / "config.toml"
+            auth_path = codex_home / "auth.json"
+            original_auth = {"OPENAI_API_KEY": "stored-key", "auth_mode": "apikey"}
+            auth_path.write_text(json.dumps(original_auth), encoding="utf-8")
+            config_path.write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n',
+                encoding="utf-8",
+            )
+            store = CodexConfigStore(str(codex_home))
+
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "backend.codex_config_store.persist_user_environment"
+            ) as persist_mock:
+                snapshot = store.repair_relay_auth("")
+
+            with config_path.open("rb") as handle:
+                provider = tomllib.load(handle)["model_providers"]["relay"]
+            self.assertNotIn("env_key", provider)
+            self.assertTrue(provider["requires_openai_auth"])
+            self.assertEqual(
+                json.loads(auth_path.read_text(encoding="utf-8")), original_auth
+            )
+            persist_mock.assert_not_called()
+            self.assertEqual(snapshot["authSource"], "auth_json")
+            self.assertTrue(snapshot["hasKey"])
 
 
 if __name__ == "__main__":

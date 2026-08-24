@@ -67,7 +67,7 @@ class CodexModelCatalogTests(unittest.TestCase):
         self.assertEqual(profiles.highest_reasoning_effort("gpt-5.6-sol"), "high")
         self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-sol", "xhigh"))
 
-    def test_remote_catalog_excludes_special_max_and_ultra_modes(self):
+    def test_remote_catalog_includes_gpt56_max_but_excludes_ultra(self):
         profiles = ModelProfiles.from_file("model_profiles.json")
         payload = json.loads(
             (FIXTURES / "codex_gpt56_sol_catalog.json").read_text(encoding="utf-8")
@@ -80,10 +80,31 @@ class CodexModelCatalogTests(unittest.TestCase):
                 option["value"]
                 for option in profiles.reasoning_options("gpt-5.6-sol")
             ],
-            ["low", "medium", "high", "xhigh"],
+            ["low", "medium", "high", "xhigh", "max"],
         )
-        self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-sol", "max"))
+        self.assertTrue(profiles.supports_reasoning_effort("gpt-5.6-sol", "max"))
         self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-sol", "ultra"))
+
+    def test_remote_max_remains_filtered_for_models_without_static_support(self):
+        profiles = ModelProfiles.from_file("model_profiles.json")
+        updated = profiles.update_reasoning_from_models(
+            [
+                {
+                    "slug": "gpt-5.5",
+                    "supported_reasoning_levels": [
+                        {"effort": "high"},
+                        {"effort": "max"},
+                    ],
+                }
+            ]
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(
+            [option["value"] for option in profiles.reasoning_options("gpt-5.5")],
+            ["high"],
+        )
+        self.assertFalse(profiles.supports_reasoning_effort("gpt-5.5", "max"))
 
 
 if __name__ == "__main__":

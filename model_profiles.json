@@ -11,7 +11,8 @@
     "low": "轻度",
     "medium": "中",
     "high": "高",
-    "xhigh": "极高"
+    "xhigh": "极高",
+    "max": "MAX"
   },
   "stableContextPreset": {
     "menuText": "稳定上下文",
@@ -40,7 +41,8 @@
         { "value": "low", "text": "轻度" },
         { "value": "medium", "text": "中" },
         { "value": "high", "text": "高" },
-        { "value": "xhigh", "text": "极高" }
+        { "value": "xhigh", "text": "极高" },
+        { "value": "max", "text": "MAX" }
       ]
     }
   ]

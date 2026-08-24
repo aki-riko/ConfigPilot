@@ -492,14 +492,14 @@ class CodexConfigAuthTests(unittest.TestCase):
             config = codex_config.CodexConfig()
             wait_for_idle(config)
 
-            expected_values = ["low", "medium", "high", "xhigh"]
-            expected_text = ["轻度", "中", "高", "极高"]
+            expected_values = ["low", "medium", "high", "xhigh", "max"]
+            expected_text = ["轻度", "中", "高", "极高", "MAX"]
             for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
                 options = config.reasoningOptionsForModel(model)
                 self.assertEqual([item["value"] for item in options], expected_values)
                 self.assertEqual([item["text"] for item in options], expected_text)
                 self.assertEqual(
-                    config.highestReasoningEffortForModel(model), "xhigh"
+                    config.highestReasoningEffortForModel(model), "max"
                 )
                 self.assertEqual(
                     config.contextPresetForModel(model),
@@ -584,14 +584,25 @@ class CodexConfigAuthTests(unittest.TestCase):
                     "reasoningEffort": "max",
                 }
             )
+            wait_for_idle(config)
+            with config_path.open("rb") as handle:
+                saved_max = tomllib.load(handle)
+            self.assertEqual(saved_max["model"], "gpt-5.6-sol")
+            self.assertEqual(saved_max["model_reasoning_effort"], "max")
+
+            config.applyConfig(
+                {
+                    "baseUrl": "https://api.9li.life/v1",
+                    "provider": "relay",
+                    "wireApi": "responses",
+                    "model": "gpt-5.6-sol",
+                    "reasoningEffort": "ultra",
+                }
+            )
             self.assertEqual(
                 notices[-1],
-                (2, "参数无效", "gpt-5.6-sol 不支持思考等级 max"),
+                (2, "参数无效", "gpt-5.6-sol 不支持思考等级 ultra"),
             )
-            with config_path.open("rb") as handle:
-                rejected = tomllib.load(handle)
-            self.assertNotIn("model", rejected)
-            self.assertNotIn("model_reasoning_effort", rejected)
 
             config.applyConfig(
                 {
@@ -694,6 +705,7 @@ class CodexConfigAuthTests(unittest.TestCase):
                     {"value": "medium", "text": "中"},
                     {"value": "high", "text": "高"},
                     {"value": "xhigh", "text": "极高"},
+                    {"value": "max", "text": "MAX"},
                 ],
             )
 

@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-# Max 和 Ultra 是 Codex 需要单独开启的特殊模式，不属于普通思考等级选择器。
+# Ultra 是 Codex 的多代理模式；GPT-5.6 的 Max 是普通思考等级。
 SPECIAL_REASONING_EFFORTS = frozenset({"max", "ultra"})
 
 
@@ -136,7 +136,10 @@ class ModelProfiles:
                 ).strip().lower()
                 if (
                     not effort
-                    or effort in SPECIAL_REASONING_EFFORTS
+                    or (
+                        effort in SPECIAL_REASONING_EFFORTS
+                        and not self._catalog_allows_special_effort(model, effort)
+                    )
                     or effort in seen
                 ):
                     continue
@@ -146,6 +149,19 @@ class ModelProfiles:
                 self._reasoning_overrides[model] = options
                 updated += 1
         return updated
+
+    def _catalog_allows_special_effort(self, model, effort):
+        """仅接纳模型静态档位声明过的特殊思考等级。"""
+        if effort != "max":
+            return False
+        profile = self.profile_for(model)
+        return bool(
+            profile
+            and any(
+                option["value"].strip().lower() == effort
+                for option in profile["reasoningOptions"]
+            )
+        )
 
     def highest_reasoning_effort(self, model):
         """返回当前模型可用的最高非空思考档位。"""

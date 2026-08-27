@@ -129,7 +129,7 @@ def main() -> int:
     else:
         # QML 创建的 Window 不会经过 Python WindowCore.show()，需要显式
         # 交给 PrismQML 的 FastSplash 交接入口完成元数据同步和首帧交接。
-        if not app._attach_fast_splash(window_instance):
+        if not app.attach_startup_window(window_instance):
             print("[WARN] FastSplash 主窗口绑定失败", file=sys.stderr)
         if not taskbar_icon.isNull():
             window_instance.setIcon(taskbar_icon)

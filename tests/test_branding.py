@@ -231,7 +231,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('splash_subtitle="正在加载..."', main_py)
         self.assertIn("splash_width=APP_WINDOW_WIDTH", main_py)
         self.assertIn("splash_height=APP_WINDOW_HEIGHT", main_py)
-        self.assertIn('app._attach_fast_splash(window_instance)', main_py)
+        self.assertIn('app.attach_startup_window(window_instance)', main_py)
         self.assertIn("visible: false", main_qml)
 
     def test_windows_default_pages_only_receive_visual_items(self):

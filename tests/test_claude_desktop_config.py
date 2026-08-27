@@ -74,7 +74,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                 third_party / "configLibrary" / "_meta.json",
                 {
                     "appliedId": profile_id,
-                    "entries": [{"id": profile_id, "name": "Gateway"}],
+                    "entries": [{"id": profile_id, "name": "ConfigPilot"}],
                 },
             )
             self.write_json(
@@ -99,8 +99,131 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertEqual(config.modelsText, "model-a\nmodel-b")
             self.assertTrue(config.hasApiKey)
             self.assertEqual(config.headerCount, 1)
-            self.assertEqual(config.profileName, "Gateway")
+            self.assertEqual(config.profileName, "ConfigPilot")
             self.assertNotIn("secret-value", vars(config).values())
+
+    def test_reload_ignores_unrelated_active_profile(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            configpilot_id = "47d9f41b-7b52-46e3-ac29-f64626682da3"
+            other_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": other_id,
+                    "entries": [
+                        {"id": configpilot_id, "name": "ConfigPilot"},
+                        {"id": other_id, "name": "CC Switch"},
+                    ],
+                },
+            )
+            self.write_json(
+                third_party / "configLibrary" / f"{configpilot_id}.json",
+                {
+                    "inferenceProvider": "gateway",
+                    "inferenceGatewayBaseUrl": "https://configpilot.example.com",
+                    "inferenceModels": [
+                        {
+                            "name": "claude-sonnet-5",
+                            "labelOverride": "Claude Sonnet 5",
+                            "supports1m": True,
+                            "prefer1m": True,
+                        }
+                    ],
+                },
+            )
+            self.write_json(
+                third_party / "configLibrary" / f"{other_id}.json",
+                {
+                    "inferenceProvider": "gateway",
+                    "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                    "inferenceGatewayApiKey": "other-secret",
+                },
+            )
+
+            config, _, _ = self.make_config(module, root)
+
+            self.assertEqual(config.profileName, "ConfigPilot")
+            self.assertEqual(config.endpoint, "https://configpilot.example.com")
+            self.assertEqual(config.modelsText, "claude-sonnet-5")
+            self.assertFalse(config.thirdPartyEnabled)
+
+    def test_apply_updates_configpilot_without_replacing_unrelated_profile(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            other_id = "00000000-0000-4000-8000-000000157210"
+            configpilot_id = "47d9f41b-7b52-46e3-ac29-f64626682da3"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": other_id,
+                    "entries": [
+                        {"id": configpilot_id, "name": "ConfigPilot"},
+                        {"id": other_id, "name": "CC Switch"},
+                    ],
+                },
+            )
+            original_other = {
+                "inferenceProvider": "gateway",
+                "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                "inferenceGatewayApiKey": "other-secret",
+            }
+            self.write_json(
+                third_party / "configLibrary" / f"{other_id}.json",
+                original_other,
+            )
+            self.write_json(
+                third_party / "configLibrary" / f"{configpilot_id}.json",
+                {
+                    "inferenceProvider": "gateway",
+                    "inferenceGatewayBaseUrl": "https://old.example.com",
+                },
+            )
+
+            config, _, _ = self.make_config(module, root)
+            config.applyConfig(
+                {
+                    "endpoint": "https://new.example.com",
+                    "authScheme": "bearer",
+                    "modelsText": "claude-sonnet-5",
+                }
+            )
+            wait_for_idle(config)
+
+            meta = json.loads(
+                (third_party / "configLibrary" / "_meta.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(meta["appliedId"], configpilot_id)
+            self.assertEqual(len(meta["entries"]), 2)
+            self.assertEqual(
+                json.loads(
+                    (third_party / "configLibrary" / f"{other_id}.json").read_text(
+                        encoding="utf-8"
+                    )
+                ),
+                original_other,
+            )
+            profile = json.loads(
+                (third_party / "configLibrary" / f"{configpilot_id}.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(profile["inferenceGatewayBaseUrl"], "https://new.example.com")
+            self.assertEqual(profile["inferenceModels"], ["claude-sonnet-5"])
 
     def test_slow_install_detection_does_not_block_gui_thread(self):
         module = self.load_module()
@@ -238,7 +361,7 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
                 third_party / "configLibrary" / "_meta.json",
                 {
                     "appliedId": profile_id,
-                    "entries": [{"id": profile_id, "name": "Gateway"}],
+                    "entries": [{"id": profile_id, "name": "ConfigPilot"}],
                 },
             )
             profile_path = third_party / "configLibrary" / f"{profile_id}.json"

@@ -186,15 +186,15 @@ class ClaudeDesktopConfig(QObject):
         return entries
 
     def _active_profile(self, meta: dict) -> tuple[str, str]:
+        """Return ConfigPilot's own profile, independent of Claude's active profile."""
         entries = self._validated_entries(meta)
-        applied_id = meta.get("appliedId", "")
         for entry in entries:
             if (
                 isinstance(entry, dict)
-                and entry.get("id") == applied_id
-                and valid_profile_id(applied_id)
+                and entry.get("name") == DEFAULT_PROFILE_NAME
+                and valid_profile_id(entry.get("id"))
             ):
-                return applied_id, str(entry.get("name", ""))
+                return str(entry["id"]), DEFAULT_PROFILE_NAME
         return "", ""
 
     def _empty_snapshot(self) -> dict:
@@ -247,6 +247,7 @@ class ClaudeDesktopConfig(QObject):
                 "headerCount": len(headers) if isinstance(headers, dict) else 0,
                 "thirdPartyEnabled": (
                     desktop_config.get("deploymentMode") == "3p"
+                    and meta.get("appliedId") == profile_id
                     and profile.get("inferenceProvider") == "gateway"
                     and bool(endpoint)
                 ),
@@ -293,23 +294,13 @@ class ClaudeDesktopConfig(QObject):
 
         profile_id, _ = self._active_profile(meta)
         if not profile_id:
-            valid_entry = next(
-                (
-                    entry
-                    for entry in entries
-                    if isinstance(entry, dict) and valid_profile_id(entry.get("id"))
-                ),
-                None,
-            )
-            if valid_entry:
-                profile_id = str(valid_entry["id"])
-                meta["appliedId"] = profile_id
-            else:
-                profile_id = str(uuid.uuid4())
-                entry = {"id": profile_id, "name": DEFAULT_PROFILE_NAME}
-                entries.append(entry)
-                meta["entries"] = entries
-                meta["appliedId"] = profile_id
+            profile_id = str(uuid.uuid4())
+            entries.append({"id": profile_id, "name": DEFAULT_PROFILE_NAME})
+            meta["entries"] = entries
+
+        # ConfigPilot must activate its own profile without replacing other tools'
+        # profiles (for example CC Switch or Default).
+        meta["appliedId"] = profile_id
 
         profile_path = self._config_library_dir / f"{profile_id}.json"
         profile = read_json_object(profile_path)
@@ -416,6 +407,12 @@ class ClaudeDesktopConfig(QObject):
     def _set_third_party_worker(self, enabled: bool) -> dict:
         if enabled:
             self._saved_gateway_profile()
+            meta = read_json_object(self._meta_path)
+            profile_id, _ = self._active_profile(meta)
+            if not profile_id:
+                raise ValueError("尚未保存 ConfigPilot Gateway 配置，请先填写并应用")
+            meta["appliedId"] = profile_id
+            atomic_write_json(self._meta_path, meta)
         desktop_config = read_json_object(self._desktop_config_path)
         desktop_config["deploymentMode"] = "3p" if enabled else "1p"
         atomic_write_json(self._desktop_config_path, desktop_config)

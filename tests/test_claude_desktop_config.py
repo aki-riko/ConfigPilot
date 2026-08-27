@@ -225,6 +225,174 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertEqual(profile["inferenceGatewayBaseUrl"], "https://new.example.com")
             self.assertEqual(profile["inferenceModels"], ["claude-sonnet-5"])
 
+    def test_apply_creates_configpilot_without_overwriting_cc_switch(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            cc_switch_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": cc_switch_id,
+                    "entries": [{"id": cc_switch_id, "name": "CC Switch"}],
+                },
+            )
+            cc_switch_profile = {
+                "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                "inferenceGatewayApiKey": "cc-switch-secret",
+                "modelDiscoveryEnabled": True,
+                "modelPrefer1mContext": True,
+                "inferenceModels": [
+                    {
+                        "name": "claude-sonnet-5",
+                        "labelOverride": "Claude Sonnet 5",
+                        "supports1m": True,
+                        "prefer1m": True,
+                    }
+                ],
+                "inferenceProvider": "gateway",
+                "inferenceCredentialKind": "static",
+            }
+            cc_switch_path = (
+                third_party / "configLibrary" / f"{cc_switch_id}.json"
+            )
+            self.write_json(cc_switch_path, cc_switch_profile)
+            original_cc_switch = cc_switch_path.read_text(encoding="utf-8")
+
+            config, _, _ = self.make_config(module, root)
+            config.applyConfig(
+                {
+                    "endpoint": "https://configpilot.example.com",
+                    "authScheme": "bearer",
+                    "modelsText": "claude-opus-5",
+                }
+            )
+            wait_for_idle(config)
+
+            meta = json.loads(
+                (third_party / "configLibrary" / "_meta.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(len(meta["entries"]), 2)
+            configpilot_entries = [
+                entry for entry in meta["entries"] if entry["name"] == "ConfigPilot"
+            ]
+            self.assertEqual(len(configpilot_entries), 1)
+            self.assertEqual(meta["appliedId"], configpilot_entries[0]["id"])
+            self.assertNotEqual(meta["appliedId"], cc_switch_id)
+            self.assertEqual(cc_switch_path.read_text(encoding="utf-8"), original_cc_switch)
+            self.assertFalse(cc_switch_path.with_name(cc_switch_path.name + ".bak").exists())
+
+    def test_profile_id_collision_with_cc_switch_is_rejected(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            shared_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": shared_id,
+                    "entries": [
+                        {"id": shared_id, "name": "ConfigPilot"},
+                        {"id": shared_id, "name": "CC Switch"},
+                    ],
+                },
+            )
+            profile_path = third_party / "configLibrary" / f"{shared_id}.json"
+            self.write_json(
+                profile_path,
+                {
+                    "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                    "inferenceGatewayApiKey": "cc-switch-secret",
+                },
+            )
+            original_profile = profile_path.read_text(encoding="utf-8")
+            config, _, _ = self.make_config(module, root)
+            notices = []
+            config.notify.connect(
+                lambda level, title, message: notices.append((level, title, message))
+            )
+            config.applyConfig(
+                {
+                    "endpoint": "https://configpilot.example.com",
+                    "authScheme": "bearer",
+                    "modelsText": "claude-opus-5",
+                }
+            )
+            wait_for_idle(config)
+
+            self.assertEqual(profile_path.read_text(encoding="utf-8"), original_profile)
+            self.assertEqual(notices[-1][0], 2)
+            self.assertIn("CC Switch", notices[-1][2])
+
+    def test_new_configpilot_id_collision_is_rejected(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            cc_switch_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": cc_switch_id,
+                    "entries": [{"id": cc_switch_id, "name": "CC Switch"}],
+                },
+            )
+            cc_switch_path = (
+                third_party / "configLibrary" / f"{cc_switch_id}.json"
+            )
+            self.write_json(
+                cc_switch_path,
+                {
+                    "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                    "inferenceGatewayApiKey": "cc-switch-secret",
+                },
+            )
+            original_meta = (third_party / "configLibrary" / "_meta.json").read_text(
+                encoding="utf-8"
+            )
+            original_profile = cc_switch_path.read_text(encoding="utf-8")
+
+            config, _, _ = self.make_config(module, root)
+            notices = []
+            config.notify.connect(
+                lambda level, title, message: notices.append((level, title, message))
+            )
+            with mock.patch.object(module.uuid, "uuid4", return_value=mock.Mock(__str__=lambda _: cc_switch_id)):
+                config.applyConfig(
+                    {
+                        "endpoint": "https://configpilot.example.com",
+                        "authScheme": "bearer",
+                        "modelsText": "claude-opus-5",
+                    }
+                )
+                wait_for_idle(config)
+
+            self.assertEqual(
+                (third_party / "configLibrary" / "_meta.json").read_text(
+                    encoding="utf-8"
+                ),
+                original_meta,
+            )
+            self.assertEqual(cc_switch_path.read_text(encoding="utf-8"), original_profile)
+            self.assertEqual(notices[-1][0], 2)
+            self.assertIn("冲突", notices[-1][2])
+
     def test_slow_install_detection_does_not_block_gui_thread(self):
         module = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:

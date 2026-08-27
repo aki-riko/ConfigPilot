@@ -188,14 +188,24 @@ class ClaudeDesktopConfig(QObject):
     def _active_profile(self, meta: dict) -> tuple[str, str]:
         """Return ConfigPilot's own profile, independent of Claude's active profile."""
         entries = self._validated_entries(meta)
-        for entry in entries:
-            if (
-                isinstance(entry, dict)
-                and entry.get("name") == DEFAULT_PROFILE_NAME
-                and valid_profile_id(entry.get("id"))
-            ):
-                return str(entry["id"]), DEFAULT_PROFILE_NAME
-        return "", ""
+        configpilot_entries = [
+            entry
+            for entry in entries
+            if entry.get("name") == DEFAULT_PROFILE_NAME
+        ]
+        if len(configpilot_entries) > 1:
+            raise ValueError("_meta.json 中存在多个 ConfigPilot 档案，已拒绝覆盖")
+        if not configpilot_entries:
+            return "", ""
+
+        configpilot_id = str(configpilot_entries[0]["id"])
+        if any(
+            entry.get("name") == "CC Switch"
+            and entry.get("id") == configpilot_id
+            for entry in entries
+        ):
+            raise ValueError("ConfigPilot 与 CC Switch 档案 ID 冲突，已拒绝覆盖")
+        return configpilot_id, DEFAULT_PROFILE_NAME
 
     def _empty_snapshot(self) -> dict:
         return {
@@ -295,6 +305,8 @@ class ClaudeDesktopConfig(QObject):
         profile_id, _ = self._active_profile(meta)
         if not profile_id:
             profile_id = str(uuid.uuid4())
+            if any(entry.get("id") == profile_id for entry in entries):
+                raise ValueError("新建 ConfigPilot 档案 ID 与现有档案冲突，已拒绝覆盖")
             entries.append({"id": profile_id, "name": DEFAULT_PROFILE_NAME})
             meta["entries"] = entries
 

@@ -7,6 +7,10 @@ ConfigPilot 应用入口。
 import os
 import sys
 
+
+APP_WINDOW_WIDTH = 980
+APP_WINDOW_HEIGHT = 640
+
 # 让 QML XHR 可读本地文件(Translator 加载 i18n 所需)
 os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
@@ -32,20 +36,25 @@ def main() -> int:
         print(f"[ERROR] 加载应用配置失败: {exc}", file=sys.stderr)
         return -1
 
-    app = App(
-        sys.argv,
-        config_path=resolve_prismqml_config_path(),
-        persist_appearance=True,
-    )
-    app.setApplicationVersion(app_settings.version)
-    engine = app.engine
-
-    # 在创建 QML Window 前设置应用级图标，避免 Windows 任务栏先缓存通用图标。
     taskbar_icon_path = os.path.join(
         app_dir,
         "resources",
         "app_icon.ico" if sys.platform == "win32" else "app_icon.png",
     )
+    app = App(
+        sys.argv,
+        application_icon=taskbar_icon_path,
+        splash_subtitle="正在加载...",
+        splash_width=APP_WINDOW_WIDTH,
+        splash_height=APP_WINDOW_HEIGHT,
+        config_path=resolve_prismqml_config_path(),
+        persist_appearance=True,
+    )
+    app.setApplicationName("ConfigPilot")
+    app.setApplicationVersion(app_settings.version)
+    engine = app.engine
+
+    # 在创建 QML Window 前设置应用级图标，避免 Windows 任务栏先缓存通用图标。
     taskbar_icon = QIcon(taskbar_icon_path)
     if taskbar_icon.isNull():
         print(f"[WARN] 应用图标加载失败: {taskbar_icon_path}", file=sys.stderr)
@@ -113,13 +122,19 @@ def main() -> int:
         print("[ERROR] 加载 main.qml 失败,检查组件路径或语法")
         return -1
 
-    # QML 窗口已在 Component.onCompleted 中创建并显示；此时再设置原生
-    # QWindow 图标，确保 Windows 任务栏收到当前窗口的图标刷新事件。
+    # QML 窗口已创建但保持隐藏；先完成 FastSplash 尺寸/元数据交接，再显示主窗。
     window_instance = engine.rootObjects()[0].property("windowInstance")
     if window_instance is None:
         print("[WARN] 未找到主窗口实例，无法刷新原生窗口图标", file=sys.stderr)
-    elif not taskbar_icon.isNull():
-        window_instance.setIcon(taskbar_icon)
+    else:
+        # QML 创建的 Window 不会经过 Python WindowCore.show()，需要显式
+        # 交给 PrismQML 的 FastSplash 交接入口完成元数据同步和首帧交接。
+        if not app._attach_fast_splash(window_instance):
+            print("[WARN] FastSplash 主窗口绑定失败", file=sys.stderr)
+        if not taskbar_icon.isNull():
+            window_instance.setIcon(taskbar_icon)
+        if not window_instance.isVisible():
+            window_instance.show()
 
     # headless 自检:设了 SELFTEST 则加载成功后定时退出
     if os.environ.get("SELFTEST"):

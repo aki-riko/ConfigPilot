@@ -48,6 +48,7 @@ QtObject {
         Fluent.Windows {
             id: appWindow
             width: root.windowWidth; height: root.windowHeight
+            visible: false
             minimumWidth: 760
             minimumHeight: 560
             windowTitle: root.windowTitle
@@ -61,12 +62,12 @@ QtObject {
             splashTitle: root.windowTitle
             splashSubtitle: "正在加载..."
 
-            Component {
+            property Component updateProgressPresenter: Component {
                 id: updateProgressPresenter
                 Fluent.AutoUpdaterProgressDialogPresenter {}
             }
 
-            Fluent.AutoUpdater {
+            property QtObject autoUpdater: Fluent.AutoUpdater {
                 id: autoUpdater
                 objectName: "configPilotAutoUpdater"
                 updater: appUpdater
@@ -78,12 +79,10 @@ QtObject {
 
             // PrismQML 0.4+ 自动创建并管理 splashComponent；业务只配置外观。
             Component.onCompleted: {
-                if (AppAutoCheckEnabled) {
-                    updateCheckTimer.start()
-                }
+                if (AppAutoCheckEnabled) updateCheckTimer.start()
             }
 
-            Item {
+            property Item updateLayer: Item {
                 id: updateLayer
                 anchors.fill: parent
                 z: 10000

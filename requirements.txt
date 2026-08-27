@@ -1,5 +1,5 @@
 # ConfigPilot 运行依赖
 # 安装: pip install -r requirements.txt
 
-prismqml==0.4.0.8
+prismqml==0.4.1.5
 PySide6>=6.9.0

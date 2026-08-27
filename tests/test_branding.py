@@ -206,7 +206,7 @@ class BrandingTests(unittest.TestCase):
         about = self.read("qml/views/AboutView.qml")
         main = self.read("qml/main.qml")
 
-        self.assertIn("prismqml==0.4.0.8", requirements)
+        self.assertIn("prismqml==0.4.1.5", requirements)
         self.assertIn("PrismQMLVersion", about)
         self.assertIn("minimumWidth: 760", main)
         self.assertIn("minimumHeight: 560", main)

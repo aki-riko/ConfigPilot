@@ -56,7 +56,7 @@ class CodexRelayAuthTests(unittest.TestCase):
             self.assertEqual(snapshot["authSource"], "environment")
             self.assertTrue(snapshot["envKeyPresent"])
 
-    def test_repair_relay_auth_uses_existing_auth_json_key_without_env_write(self):
+    def test_repair_relay_auth_migrates_existing_auth_json_key_to_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             codex_home = Path(tmp) / ".codex"
             codex_home.mkdir()
@@ -71,21 +71,28 @@ class CodexRelayAuthTests(unittest.TestCase):
             )
             store = CodexConfigStore(str(codex_home))
 
+            def persist(name, value):
+                os.environ[name] = value
+
             with patch.dict(os.environ, {}, clear=True), patch(
-                "backend.codex_config_store.persist_user_environment"
+                "backend.codex_config_store.persist_user_environment",
+                side_effect=persist,
             ) as persist_mock:
                 snapshot = store.repair_relay_auth("")
 
             with config_path.open("rb") as handle:
                 provider = tomllib.load(handle)["model_providers"]["relay"]
-            self.assertNotIn("env_key", provider)
-            self.assertTrue(provider["requires_openai_auth"])
+            self.assertEqual(provider["env_key"], "OPENAI_API_KEY")
+            self.assertFalse(provider["requires_openai_auth"])
             self.assertEqual(
                 json.loads(auth_path.read_text(encoding="utf-8")), original_auth
             )
-            persist_mock.assert_not_called()
-            self.assertEqual(snapshot["authSource"], "auth_json")
+            self.assertEqual(
+                persist_mock.call_args.args, ("OPENAI_API_KEY", "stored-key")
+            )
+            self.assertEqual(snapshot["authSource"], "environment")
             self.assertTrue(snapshot["hasKey"])
+            self.assertTrue(snapshot["envKeyPresent"])
 
 
 if __name__ == "__main__":

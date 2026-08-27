@@ -576,7 +576,6 @@ class CodexConfigStore:
     def repair_relay_auth(self, key: str) -> dict:
         """修复中转 provider 的认证来源，同时保留现有 OAuth 凭据。"""
         key = str(key or "").strip()
-        explicit_key = bool(key)
         provider_auth = self.read_provider_auth()
         if not key:
             key = provider_auth["key"] or self.read_api_key()
@@ -598,23 +597,11 @@ class CodexConfigStore:
         if not _ENV_KEY_PATTERN.fullmatch(env_key):
             raise ValueError("provider.env_key 无效")
 
-        # An existing API key in auth.json can use Codex's auth-json path. An
-        # explicitly entered key uses the provider env path so a ChatGPT OAuth
-        # auth.json is never replaced as a side effect of relay repair.
-        use_auth_json = (
-            not explicit_key
-            and not str(provider_auth.get("envKey") or "").strip()
-            and bool(self.read_api_key())
-        )
-        if use_auth_json:
-            return self._set_provider_auth_source("auth_json")
-
-        snapshot = self._set_provider_auth_source(
+        persist_user_environment(env_key, key)
+        return self._set_provider_auth_source(
             "environment",
             env_key_override=env_key,
         )
-        persist_user_environment(env_key, key)
-        return self.read_snapshot()
 
     def set_chatgpt_auth(self, tokens: dict) -> dict:
         required = ("id_token", "access_token", "refresh_token", "account_id")

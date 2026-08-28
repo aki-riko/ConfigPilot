@@ -37,6 +37,7 @@ DEVELOPER_SETTINGS_FILE_NAME = "developer_settings.json"
 CONFIG_LIBRARY_DIR_NAME = "configLibrary"
 CONFIG_LIBRARY_META_FILE_NAME = "_meta.json"
 DEFAULT_PROFILE_NAME = "ConfigPilot"
+CC_SWITCH_PROFILE_NAME = "CC Switch"
 SUPPORTED_AUTH_SCHEMES = {"bearer", "x-api-key"}
 
 
@@ -105,6 +106,9 @@ class ClaudeDesktopConfig(QObject):
         self._has_api_key = False
         self._header_count = 0
         self._profile_name = ""
+        self._configpilot_profile_exists = False
+        self._active_profile_name = ""
+        self._can_import_active_profile = False
         self.reload()
 
     @Property(str, notify=changed)
@@ -150,6 +154,18 @@ class ClaudeDesktopConfig(QObject):
     @Property(str, notify=changed)
     def profileName(self):
         return self._profile_name
+
+    @Property(bool, notify=changed)
+    def configPilotProfileExists(self):
+        return self._configpilot_profile_exists
+
+    @Property(str, notify=changed)
+    def activeProfileName(self):
+        return self._active_profile_name
+
+    @Property(bool, notify=changed)
+    def canImportActiveProfile(self):
+        return self._can_import_active_profile
 
     @Property(bool, notify=operationBusyChanged)
     def operationBusy(self):
@@ -200,12 +216,21 @@ class ClaudeDesktopConfig(QObject):
 
         configpilot_id = str(configpilot_entries[0]["id"])
         if any(
-            entry.get("name") == "CC Switch"
+            entry.get("name") == CC_SWITCH_PROFILE_NAME
             and entry.get("id") == configpilot_id
             for entry in entries
         ):
             raise ValueError("ConfigPilot 与 CC Switch 档案 ID 冲突，已拒绝覆盖")
         return configpilot_id, DEFAULT_PROFILE_NAME
+
+    def _active_profile_entry(self, meta: dict) -> tuple[str, str]:
+        applied_id = meta.get("appliedId", "")
+        if not valid_profile_id(applied_id):
+            return "", ""
+        for entry in self._validated_entries(meta):
+            if entry.get("id") == applied_id:
+                return str(applied_id), str(entry["name"])
+        return "", ""
 
     def _empty_snapshot(self) -> dict:
         return {
@@ -218,6 +243,9 @@ class ClaudeDesktopConfig(QObject):
             "hasApiKey": False,
             "headerCount": 0,
             "profileName": "",
+            "configPilotProfileExists": False,
+            "activeProfileName": "",
+            "canImportActiveProfile": False,
             "activeConfigPath": self._config_library_dir,
         }
 
@@ -230,12 +258,35 @@ class ClaudeDesktopConfig(QObject):
         )
         desktop_config = read_json_object(self._desktop_config_path)
         meta = read_json_object(self._meta_path)
-        profile_id, profile_name = self._active_profile(meta)
-        if not profile_id:
+        configpilot_id, profile_name = self._active_profile(meta)
+        active_id, active_name = self._active_profile_entry(meta)
+        snapshot.update(
+            {
+                "configPilotProfileExists": bool(configpilot_id),
+                "activeProfileName": active_name,
+                "canImportActiveProfile": bool(
+                    active_id
+                    and active_id != configpilot_id
+                    and active_name != DEFAULT_PROFILE_NAME
+                    and not configpilot_id
+                ),
+            }
+        )
+        profile = {}
+        profile_path = self._config_library_dir
+        if configpilot_id:
+            profile_path = self._config_library_dir / f"{configpilot_id}.json"
+            profile = read_json_object(profile_path)
+        elif active_id:
+            source_path = self._config_library_dir / f"{active_id}.json"
+            source_profile = read_json_object(source_path)
+            if source_profile.get("inferenceProvider") == "gateway":
+                profile = source_profile
+                profile_path = source_path
+
+        if not profile:
             return snapshot
 
-        profile_path = self._config_library_dir / f"{profile_id}.json"
-        profile = read_json_object(profile_path)
         endpoint = str(profile.get("inferenceGatewayBaseUrl", ""))
         auth_scheme = str(
             profile.get("inferenceGatewayAuthScheme", "bearer")
@@ -247,7 +298,7 @@ class ClaudeDesktopConfig(QObject):
         snapshot.update(
             {
                 "activeConfigPath": profile_path,
-                "profileName": profile_name,
+                "profileName": profile_name if configpilot_id else "",
                 "endpoint": endpoint,
                 "authScheme": (
                     auth_scheme if auth_scheme in SUPPORTED_AUTH_SCHEMES else "bearer"
@@ -257,7 +308,8 @@ class ClaudeDesktopConfig(QObject):
                 "headerCount": len(headers) if isinstance(headers, dict) else 0,
                 "thirdPartyEnabled": (
                     desktop_config.get("deploymentMode") == "3p"
-                    and meta.get("appliedId") == profile_id
+                    and bool(configpilot_id)
+                    and meta.get("appliedId") == configpilot_id
                     and profile.get("inferenceProvider") == "gateway"
                     and bool(endpoint)
                 ),
@@ -275,6 +327,9 @@ class ClaudeDesktopConfig(QObject):
         self._has_api_key = bool(snapshot["hasApiKey"])
         self._header_count = int(snapshot["headerCount"])
         self._profile_name = str(snapshot["profileName"])
+        self._configpilot_profile_exists = bool(snapshot["configPilotProfileExists"])
+        self._active_profile_name = str(snapshot["activeProfileName"])
+        self._can_import_active_profile = bool(snapshot["canImportActiveProfile"])
         self._active_config_path = Path(snapshot["activeConfigPath"])
         self.changed.emit()
 
@@ -302,6 +357,7 @@ class ClaudeDesktopConfig(QObject):
         meta = read_json_object(self._meta_path)
         entries = self._validated_entries(meta)
 
+        active_id, active_name = self._active_profile_entry(meta)
         profile_id, _ = self._active_profile(meta)
         if not profile_id:
             profile_id = str(uuid.uuid4())
@@ -316,6 +372,13 @@ class ClaudeDesktopConfig(QObject):
 
         profile_path = self._config_library_dir / f"{profile_id}.json"
         profile = read_json_object(profile_path)
+        if not profile:
+            if active_id and active_name != DEFAULT_PROFILE_NAME:
+                source_profile = read_json_object(
+                    self._config_library_dir / f"{active_id}.json"
+                )
+                if source_profile.get("inferenceProvider") == "gateway":
+                    profile = source_profile
         endpoint = validate_endpoint(str(cfg.get("endpoint", "")))
         auth_scheme = str(cfg.get("authScheme", "bearer")).strip()
         if auth_scheme not in SUPPORTED_AUTH_SCHEMES:
@@ -361,6 +424,36 @@ class ClaudeDesktopConfig(QObject):
             raise ValueError("当前配置档案不是 Gateway 类型")
         validate_endpoint(str(profile.get("inferenceGatewayBaseUrl", "")))
         return profile
+
+    def _clone_active_profile_worker(self) -> dict:
+        meta = read_json_object(self._meta_path)
+        entries = self._validated_entries(meta)
+        active_id, active_name = self._active_profile_entry(meta)
+        if not active_id:
+            raise ValueError("当前没有可复制的 Claude 档案")
+        if active_name == DEFAULT_PROFILE_NAME:
+            raise ValueError("当前已经是 ConfigPilot 档案")
+
+        source_path = self._config_library_dir / f"{active_id}.json"
+        source_profile = read_json_object(source_path)
+        if source_profile.get("inferenceProvider") != "gateway":
+            raise ValueError("当前激活档案不是 Gateway 配置，无法复制")
+        validate_endpoint(str(source_profile.get("inferenceGatewayBaseUrl", "")))
+
+        configpilot_id, _ = self._active_profile(meta)
+        if configpilot_id:
+            raise ValueError("ConfigPilot 档案已存在，请直接编辑，不会覆盖现有档案")
+        configpilot_id = str(uuid.uuid4())
+        if any(entry.get("id") == configpilot_id for entry in entries):
+            raise ValueError("新建 ConfigPilot 档案 ID 与现有档案冲突，已拒绝覆盖")
+        entries.append({"id": configpilot_id, "name": DEFAULT_PROFILE_NAME})
+        meta["entries"] = entries
+
+        target_path = self._config_library_dir / f"{configpilot_id}.json"
+        atomic_write_json(target_path, source_profile)
+        meta["appliedId"] = configpilot_id
+        atomic_write_json(self._meta_path, meta)
+        return self._read_snapshot()
 
     @Slot(str)
     def installProduct(self, product):
@@ -445,6 +538,22 @@ class ClaudeDesktopConfig(QObject):
                 exc,
                 invalid_title="无法启用 Gateway",
                 failure_title="切换 Gateway 失败",
+            ),
+        )
+
+    @Slot()
+    def cloneActiveProfileToConfigPilot(self):
+        self._tasks.submit(
+            self._clone_active_profile_worker,
+            lambda snapshot: self._complete_change(
+                snapshot,
+                "已创建 ConfigPilot 档案",
+                "当前档案已复制为 ConfigPilot；后续修改不会影响来源档案。",
+            ),
+            lambda exc: self._change_failed(
+                exc,
+                invalid_title="无法创建 ConfigPilot 档案",
+                failure_title="创建 ConfigPilot 档案失败",
             ),
         )
 

@@ -20,15 +20,20 @@ Item {
                                        ? Fluent.Enums.spacing.l
                                        : Fluent.Enums.spacing.xl
     readonly property bool needsActivation: ClaudeDesktopConfig
+                                                 && ClaudeDesktopConfig.configPilotProfileExists
                                                  && (!ClaudeDesktopConfig.developerModeEnabled
                                                       || !ClaudeDesktopConfig.thirdPartyEnabled)
+    readonly property bool configPilotProfileExists: ClaudeDesktopConfig
+                                                    ? ClaudeDesktopConfig.configPilotProfileExists
+                                                    : false
     readonly property bool configBusy: ClaudeDesktopConfig
                                                ? ClaudeDesktopConfig.operationBusy
                                                : false
     readonly property int controlHeight: Fluent.Enums.controlSize.buttonHeight
     readonly property bool hasDraftChanges: {
         if (!ClaudeDesktopConfig) return false
-        return needsActivation
+        return (root.configPilotProfileExists && needsActivation)
+            || (!root.configPilotProfileExists && fEndpoint.trim().length > 0)
             || fEndpoint !== (ClaudeDesktopConfig.endpoint || "")
             || fAuthScheme !== (ClaudeDesktopConfig.authScheme || "bearer")
             || fModels !== (ClaudeDesktopConfig.modelsText || "")
@@ -133,8 +138,10 @@ Item {
                 }
 
                 Fluent.Badge {
-                    text: root.needsActivation ? "待配置" : "已就绪"
-                    level: root.needsActivation
+                    text: !root.configPilotProfileExists
+                          ? "待创建"
+                          : (root.needsActivation ? "待配置" : "已就绪")
+                    level: !root.configPilotProfileExists || root.needsActivation
                            ? Fluent.Enums.statusLevel.attention
                            : Fluent.Enums.statusLevel.success
                 }
@@ -163,6 +170,15 @@ Item {
                                   && profileName.length > 0
                 profileName: ClaudeDesktopConfig ? ClaudeDesktopConfig.profileName : ""
                 configPath: ClaudeDesktopConfig ? ClaudeDesktopConfig.configPath : ""
+                configPilotProfileExists: ClaudeDesktopConfig
+                                           ? ClaudeDesktopConfig.configPilotProfileExists
+                                           : false
+                activeProfileName: ClaudeDesktopConfig
+                                  ? ClaudeDesktopConfig.activeProfileName
+                                  : ""
+                canImportActiveProfile: ClaudeDesktopConfig
+                                        ? ClaudeDesktopConfig.canImportActiveProfile
+                                        : false
                 onDeveloperModeToggled: function(value) {
                     if (ClaudeDesktopConfig) {
                         ClaudeDesktopConfig.setDeveloperModeEnabled(value)
@@ -180,6 +196,9 @@ Item {
                 }
                 onCancelInstallRequested: if (ClaudeDesktopConfig) {
                     ClaudeDesktopConfig.cancelInstall()
+                }
+                onCloneActiveProfileRequested: if (ClaudeDesktopConfig) {
+                    ClaudeDesktopConfig.cloneActiveProfileToConfigPilot()
                 }
             }
 
@@ -238,14 +257,21 @@ Item {
             Text {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
-                text: root.hasDraftChanges
-                      ? "有未应用的更改 · 应用后请完全退出并重新打开 Claude Desktop"
-                      : "Claude Desktop 配置已同步"
-                color: root.hasDraftChanges
+                text: !root.configPilotProfileExists
+                      ? (ClaudeDesktopConfig.activeProfileName.length > 0
+                         ? "已读取 " + ClaudeDesktopConfig.activeProfileName
+                           + " · 应用将新建 ConfigPilot"
+                         : (root.hasDraftChanges
+                            ? "将新建 ConfigPilot · 应用后请完全退出并重新打开 Claude Desktop"
+                            : "尚未创建 ConfigPilot 档案"))
+                      : (root.hasDraftChanges
+                         ? "有未应用的更改 · 应用后请完全退出并重新打开 Claude Desktop"
+                         : "Claude Desktop 配置已同步")
+                color: root.hasDraftChanges && root.configPilotProfileExists
                        ? Fluent.Enums.statusLevel.warningColor
                        : Fluent.Enums.textColor.secondary
                 font.pixelSize: Fluent.Enums.typography.bodySmall
-                font.bold: root.hasDraftChanges
+                font.bold: root.hasDraftChanges && root.configPilotProfileExists
                 font.family: Fluent.Enums.fontFamily
                 elide: Text.ElideRight
             }
@@ -280,7 +306,11 @@ Item {
                 style: Fluent.Enums.button.style_primary
                 text: root.configBusy
                       ? "处理中..."
-                      : (root.needsActivation ? "启用并应用" : "应用更改")
+                      : (root.needsActivation
+                         ? "启用并应用"
+                         : (!root.configPilotProfileExists
+                            ? "创建并应用 ConfigPilot"
+                            : "应用更改"))
                 enabled: !root.configBusy
                          && root.hasDraftChanges
                          && root.fEndpoint.trim().length > 0

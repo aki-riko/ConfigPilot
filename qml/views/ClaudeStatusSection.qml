@@ -16,6 +16,9 @@ Fluent.Card {
     property string installStatus: ""
     property string profileName: ""
     property string configPath: ""
+    property bool configPilotProfileExists: false
+    property string activeProfileName: ""
+    property bool canImportActiveProfile: false
     readonly property var installOptions: [
         { "text": "Claude Code CLI", "id": "claude-code" },
         { "text": "Claude Desktop 官网版", "id": "claude-desktop" }
@@ -25,6 +28,7 @@ Fluent.Card {
     signal gatewayToggled(bool value)
     signal installRequested(string product)
     signal cancelInstallRequested()
+    signal cloneActiveProfileRequested()
 
     autoHeight: true
 
@@ -246,8 +250,30 @@ Fluent.Card {
                                ? Fluent.Enums.statusLevel.info
                                : Fluent.Enums.statusLevel.attention
                     }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.activeProfileName.length > 0
+                                 && root.activeProfileName !== "ConfigPilot"
+                        text: "当前 Claude 档案：" + root.activeProfileName + "（只读）"
+                        horizontalAlignment: Text.AlignHCenter
+                        color: Fluent.Enums.textColor.tertiary
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideRight
+                    }
                 }
             }
+
+        }
+
+        Fluent.Button {
+            objectName: "claudeCloneProfileButton"
+            width: cardColumn.innerWidth
+            visible: root.canImportActiveProfile
+            enabled: !root.configBusy && !root.installBusy
+            style: Fluent.Enums.button.style_default
+            text: "复制当前档案为 ConfigPilot"
+            onClicked: root.cloneActiveProfileRequested()
         }
     }
 }

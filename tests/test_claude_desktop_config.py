@@ -154,6 +154,40 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertEqual(config.modelsText, "claude-sonnet-5")
             self.assertFalse(config.thirdPartyEnabled)
 
+    def test_reload_exposes_unrelated_active_profile_for_import(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            active_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p"},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": active_id,
+                    "entries": [{"id": active_id, "name": "CC Switch"}],
+                },
+            )
+            self.write_json(
+                third_party / "configLibrary" / f"{active_id}.json",
+                {
+                    "inferenceProvider": "gateway",
+                    "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                },
+            )
+
+            config, _, _ = self.make_config(module, root)
+
+            self.assertFalse(config.configPilotProfileExists)
+            self.assertEqual(config.activeProfileName, "CC Switch")
+            self.assertTrue(config.canImportActiveProfile)
+            self.assertEqual(config.profileName, "")
+            self.assertEqual(config.endpoint, "https://cc-switch.example.com")
+            self.assertEqual(config.modelsText, "")
+
     def test_apply_updates_configpilot_without_replacing_unrelated_profile(self):
         module = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:
@@ -288,6 +322,78 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertNotEqual(meta["appliedId"], cc_switch_id)
             self.assertEqual(cc_switch_path.read_text(encoding="utf-8"), original_cc_switch)
             self.assertFalse(cc_switch_path.with_name(cc_switch_path.name + ".bak").exists())
+            configpilot_path = third_party / "configLibrary" / f"{meta['appliedId']}.json"
+            configpilot_profile = json.loads(configpilot_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                configpilot_profile["inferenceGatewayApiKey"],
+                "cc-switch-secret",
+            )
+            self.assertTrue(configpilot_profile["modelDiscoveryEnabled"])
+            self.assertTrue(configpilot_profile["modelPrefer1mContext"])
+
+    def test_clone_active_profile_creates_configpilot_and_preserves_source(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            third_party = root / "Claude-3p"
+            cc_switch_id = "00000000-0000-4000-8000-000000157210"
+            self.write_json(
+                third_party / "claude_desktop_config.json",
+                {"deploymentMode": "3p", "preferences": {"sidebarMode": "epitaxy"}},
+            )
+            self.write_json(
+                third_party / "configLibrary" / "_meta.json",
+                {
+                    "appliedId": cc_switch_id,
+                    "entries": [{"id": cc_switch_id, "name": "CC Switch"}],
+                },
+            )
+            source_profile = {
+                "inferenceGatewayBaseUrl": "https://cc-switch.example.com",
+                "inferenceGatewayApiKey": "cc-switch-secret",
+                "modelDiscoveryEnabled": True,
+                "modelPrefer1mContext": True,
+                "inferenceModels": [
+                    {
+                        "name": "claude-sonnet-5",
+                        "labelOverride": "Claude Sonnet 5",
+                        "supports1m": True,
+                        "prefer1m": True,
+                    }
+                ],
+                "inferenceProvider": "gateway",
+                "inferenceCredentialKind": "static",
+            }
+            source_path = third_party / "configLibrary" / f"{cc_switch_id}.json"
+            self.write_json(source_path, source_profile)
+            original_source = source_path.read_text(encoding="utf-8")
+
+            config, _, _ = self.make_config(module, root)
+            config.cloneActiveProfileToConfigPilot()
+            wait_for_idle(config)
+
+            meta = json.loads(
+                (third_party / "configLibrary" / "_meta.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            configpilot_entries = [
+                entry for entry in meta["entries"] if entry["name"] == "ConfigPilot"
+            ]
+            self.assertEqual(len(configpilot_entries), 1)
+            configpilot_id = configpilot_entries[0]["id"]
+            self.assertNotEqual(configpilot_id, cc_switch_id)
+            self.assertEqual(meta["appliedId"], configpilot_id)
+            self.assertEqual(source_path.read_text(encoding="utf-8"), original_source)
+            self.assertFalse(source_path.with_name(source_path.name + ".bak").exists())
+
+            cloned_path = third_party / "configLibrary" / f"{configpilot_id}.json"
+            self.assertEqual(json.loads(cloned_path.read_text(encoding="utf-8")), source_profile)
+            self.assertEqual(config.profileName, "ConfigPilot")
+            self.assertEqual(config.activeProfileName, "ConfigPilot")
+            self.assertFalse(config.canImportActiveProfile)
+            self.assertEqual(config.endpoint, "https://cc-switch.example.com")
+            self.assertEqual(config.modelsText, "claude-sonnet-5")
 
     def test_profile_id_collision_with_cc_switch_is_rejected(self):
         module = self.load_module()

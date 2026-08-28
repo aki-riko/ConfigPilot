@@ -26,6 +26,7 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         status = self.read("qml/views/ClaudeStatusSection.qml")
         gateway = self.read("qml/views/ClaudeGatewaySection.qml")
         advanced = self.read("qml/views/ClaudeAdvancedSection.qml")
+        model_entry = self.read("qml/views/ClaudeModelEntry.qml")
 
         for component in (
             "ClaudeStatusSection",
@@ -33,7 +34,11 @@ class ClaudeDesktopUiTests(unittest.TestCase):
             "ClaudeAdvancedSection",
         ):
             self.assertIn(component, page)
+        self.assertIn("ClaudeModelEntry", advanced)
         self.assertIn("ClaudeDesktopConfig.applyConfig", page)
+        self.assertIn('"modelsJson": fModelsJson', page)
+        self.assertIn('"modelDiscoveryState": fModelDiscoveryState', page)
+        self.assertIn('"modelPrefer1mContextState": fModelPrefer1mContextState', page)
         self.assertIn('"clearApiKey": fClearApiKey', page)
         self.assertIn('"clearHeaders": fClearHeaders', page)
         self.assertIn("完全退出并重新打开 Claude Desktop", page)
@@ -136,28 +141,41 @@ class ClaudeDesktopUiTests(unittest.TestCase):
 
         self.assertIn("/v1/models", advanced)
         self.assertIn("Fluent.Expander", advanced)
-        self.assertIn("columns: width < 680 ? 1 : 2", advanced)
+        self.assertIn("columns: width < 620 ? 1 : 2", advanced)
         self.assertIn("uniformCellWidths: columns === 2", advanced)
-        self.assertIn("readonly property real equalItemWidth", advanced)
-        self.assertEqual(
-            advanced.count("Layout.preferredWidth: advancedGrid.equalItemWidth"), 2
-        )
-        self.assertEqual(
-            advanced.count("Layout.maximumWidth: advancedGrid.equalItemWidth"), 2
-        )
-        self.assertEqual(advanced.count("Layout.alignment: Qt.AlignTop"), 2)
+        self.assertIn("modelDiscoveryStateValue", advanced)
+        self.assertIn("modelPrefer1mContextStateValue", advanced)
+        self.assertIn("stateOptions", advanced)
+        self.assertIn("tierOptions", advanced)
+        self.assertIn("Repeater", advanced)
+        self.assertIn('objectName: "claudeAddModelButton"', advanced)
+        self.assertIn('text: "添加模型"', advanced)
+        self.assertIn("modelsJsonEdited", advanced)
+        self.assertIn("modelDiscoveryStateSelected", advanced)
+        self.assertIn("modelPrefer1mContextStateSelected", advanced)
+        for field in (
+            "Model ID",
+            "Display name",
+            "Offer 1M-context variant",
+            "Default to 1M context",
+            "Tier alias",
+            "Default for tier",
+            "anthropicFamilyTier",
+            "isFamilyDefault",
+        ):
+            self.assertIn(field, model_entry)
         self.assertIn("输入 JSON 对象覆盖现有值", advanced)
         self.assertIn("敏感内容不会回显", advanced)
         self.assertIn('objectName: "claudeClearHeadersToggle"', advanced)
         self.assertIn("Fluent.Enums.toggle.control_checkbox", advanced)
-        self.assertNotIn("Fluent.Enums.toggle.control_switch", advanced)
+        self.assertIn("Fluent.Enums.toggle.control_switch", model_entry)
         self.assertIn('text: "应用时删除"', advanced)
         self.assertIn("visible: root.headerCount > 0", advanced)
         self.assertEqual(
             advanced.count(
                 "Layout.preferredHeight: Fluent.Enums.controlSize.checkboxOuter"
             ),
-            2,
+            1,
         )
 
 

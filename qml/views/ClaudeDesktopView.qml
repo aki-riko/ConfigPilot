@@ -10,7 +10,9 @@ Item {
 
     property string fEndpoint: ""
     property string fAuthScheme: "bearer"
-    property string fModels: ""
+    property string fModelsJson: "[]"
+    property string fModelDiscoveryState: "auto"
+    property string fModelPrefer1mContextState: "auto"
     property string fApiKey: ""
     property string fHeaders: ""
     property bool fClearApiKey: false
@@ -36,7 +38,9 @@ Item {
             || (!root.configPilotProfileExists && fEndpoint.trim().length > 0)
             || fEndpoint !== (ClaudeDesktopConfig.endpoint || "")
             || fAuthScheme !== (ClaudeDesktopConfig.authScheme || "bearer")
-            || fModels !== (ClaudeDesktopConfig.modelsText || "")
+            || fModelsJson !== (ClaudeDesktopConfig.modelsJson || "[]")
+            || fModelDiscoveryState !== (ClaudeDesktopConfig.modelDiscoveryState || "auto")
+            || fModelPrefer1mContextState !== (ClaudeDesktopConfig.modelPrefer1mContextState || "auto")
             || fApiKey.trim().length > 0
             || fHeaders.trim().length > 0
             || fClearApiKey
@@ -46,7 +50,11 @@ Item {
     function syncFromConfig() {
         fEndpoint = (ClaudeDesktopConfig && ClaudeDesktopConfig.endpoint) || ""
         fAuthScheme = (ClaudeDesktopConfig && ClaudeDesktopConfig.authScheme) || "bearer"
-        fModels = (ClaudeDesktopConfig && ClaudeDesktopConfig.modelsText) || ""
+        fModelsJson = (ClaudeDesktopConfig && ClaudeDesktopConfig.modelsJson) || "[]"
+        fModelDiscoveryState = (ClaudeDesktopConfig
+                                && ClaudeDesktopConfig.modelDiscoveryState) || "auto"
+        fModelPrefer1mContextState = (ClaudeDesktopConfig
+                                      && ClaudeDesktopConfig.modelPrefer1mContextState) || "auto"
         fApiKey = ""
         fHeaders = ""
         fClearApiKey = false
@@ -58,7 +66,9 @@ Item {
         ClaudeDesktopConfig.applyConfig({
             "endpoint": fEndpoint,
             "authScheme": fAuthScheme,
-            "modelsText": fModels,
+            "modelsJson": fModelsJson,
+            "modelDiscoveryState": fModelDiscoveryState,
+            "modelPrefer1mContextState": fModelPrefer1mContextState,
             "apiKey": fApiKey,
             "headersText": fHeaders,
             "clearApiKey": fClearApiKey,
@@ -221,11 +231,19 @@ Item {
                 objectName: "claudeAdvancedSection"
                 width: pageColumn.innerWidth
                 enabled: !root.configBusy
-                modelsValue: root.fModels
+                modelsJsonValue: root.fModelsJson
+                modelDiscoveryStateValue: root.fModelDiscoveryState
+                modelPrefer1mContextStateValue: root.fModelPrefer1mContextState
                 headersValue: root.fHeaders
                 headerCount: ClaudeDesktopConfig ? ClaudeDesktopConfig.headerCount : 0
                 clearHeadersValue: root.fClearHeaders
-                onModelsEdited: function(value) { root.fModels = value }
+                onModelsJsonEdited: function(value) { root.fModelsJson = value }
+                onModelDiscoveryStateSelected: function(value) {
+                    root.fModelDiscoveryState = value
+                }
+                onModelPrefer1mContextStateSelected: function(value) {
+                    root.fModelPrefer1mContextState = value
+                }
                 onHeadersEdited: function(value) { root.fHeaders = value }
                 onClearHeadersToggled: function(value) { root.fClearHeaders = value }
             }

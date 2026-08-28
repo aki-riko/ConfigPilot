@@ -30,7 +30,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **恢复初始设置**：只恢复 ConfigPilot 实际改过且此后未被外部修改的字段；保留 `[projects.*]` 工作区信任项和其它 Codex 配置
 - **常驻操作栏**：随时查看未应用状态，并可重新读取或应用配置
 - **Claude Desktop Subpage**：直接写入 Claude 自己的本地配置库，一键启用 Developer Mode 与 `deploymentMode=3p`
-- **第三方推理 Gateway**：配置 endpoint、`bearer` / `x-api-key`、API key、模型列表和额外 Header；endpoint 原样写入，Claude Desktop 自行请求 `/v1/messages`
+- **第三方推理 Gateway**：配置 endpoint、`bearer` / `x-api-key`、API key、模型发现、模型 ID、显示名、1M 上下文、Tier alias 和额外 Header；endpoint 原样写入，Claude Desktop 自行请求 `/v1/messages`
 - **Claude 配置安全**：编辑当前已应用配置，敏感字段留空默认保留；写入前创建 `.bak`，损坏的现有 JSON 会拒绝覆盖
 
 > Claude Desktop 配置写入后必须完全退出并重新打开。ConfigPilot 不会强制结束正在运行的 Cowork / Code 会话。

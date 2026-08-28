@@ -20,8 +20,10 @@ from backend.system_launcher import open_external_target
 from backend.claude_config_io import (
     atomic_write_json,
     models_to_text,
+    models_to_json,
     parse_headers,
     parse_models,
+    parse_models_json,
     read_json_object,
     valid_profile_id,
     validate_endpoint,
@@ -106,6 +108,9 @@ class ClaudeDesktopConfig(QObject):
         self._has_api_key = False
         self._header_count = 0
         self._profile_name = ""
+        self._models_json = "[]"
+        self._model_discovery_state = "auto"
+        self._model_prefer_1m_context_state = "auto"
         self._configpilot_profile_exists = False
         self._active_profile_name = ""
         self._can_import_active_profile = False
@@ -142,6 +147,18 @@ class ClaudeDesktopConfig(QObject):
     @Property(str, notify=changed)
     def modelsText(self):
         return self._models_text
+
+    @Property(str, notify=changed)
+    def modelsJson(self):
+        return self._models_json
+
+    @Property(str, notify=changed)
+    def modelDiscoveryState(self):
+        return self._model_discovery_state
+
+    @Property(str, notify=changed)
+    def modelPrefer1mContextState(self):
+        return self._model_prefer_1m_context_state
 
     @Property(bool, notify=changed)
     def hasApiKey(self):
@@ -240,6 +257,9 @@ class ClaudeDesktopConfig(QObject):
             "endpoint": "",
             "authScheme": "bearer",
             "modelsText": "",
+            "modelsJson": "[]",
+            "modelDiscoveryState": "auto",
+            "modelPrefer1mContextState": "auto",
             "hasApiKey": False,
             "headerCount": 0,
             "profileName": "",
@@ -304,6 +324,21 @@ class ClaudeDesktopConfig(QObject):
                     auth_scheme if auth_scheme in SUPPORTED_AUTH_SCHEMES else "bearer"
                 ),
                 "modelsText": models_to_text(profile.get("inferenceModels")),
+                "modelsJson": models_to_json(profile.get("inferenceModels")),
+                "modelDiscoveryState": (
+                    "enabled"
+                    if profile.get("modelDiscoveryEnabled") is True
+                    else "disabled"
+                    if profile.get("modelDiscoveryEnabled") is False
+                    else "auto"
+                ),
+                "modelPrefer1mContextState": (
+                    "enabled"
+                    if profile.get("modelPrefer1mContext") is True
+                    else "disabled"
+                    if profile.get("modelPrefer1mContext") is False
+                    else "auto"
+                ),
                 "hasApiKey": bool(profile.get("inferenceGatewayApiKey")),
                 "headerCount": len(headers) if isinstance(headers, dict) else 0,
                 "thirdPartyEnabled": (
@@ -324,6 +359,11 @@ class ClaudeDesktopConfig(QObject):
         self._endpoint = str(snapshot["endpoint"])
         self._auth_scheme = str(snapshot["authScheme"])
         self._models_text = str(snapshot["modelsText"])
+        self._models_json = str(snapshot["modelsJson"])
+        self._model_discovery_state = str(snapshot["modelDiscoveryState"])
+        self._model_prefer_1m_context_state = str(
+            snapshot["modelPrefer1mContextState"]
+        )
         self._has_api_key = bool(snapshot["hasApiKey"])
         self._header_count = int(snapshot["headerCount"])
         self._profile_name = str(snapshot["profileName"])
@@ -390,12 +430,39 @@ class ClaudeDesktopConfig(QObject):
         profile["inferenceCredentialKind"] = "static"
         profile["inferenceGatewayAuthScheme"] = auth_scheme
 
-        if models_text != current_models_text:
+        models_json_text = str(cfg.get("modelsJson", "")).strip()
+        if models_json_text:
+            models = parse_models_json(models_json_text)
+            if models:
+                profile["inferenceModels"] = models
+            else:
+                profile.pop("inferenceModels", None)
+        elif models_text != current_models_text:
             models = parse_models(models_text)
             if models:
                 profile["inferenceModels"] = models
             else:
                 profile.pop("inferenceModels", None)
+
+        for cfg_key, profile_key in (
+            ("modelDiscoveryState", "modelDiscoveryEnabled"),
+            ("modelPrefer1mContextState", "modelPrefer1mContext"),
+        ):
+            state = cfg.get(cfg_key)
+            if state is None:
+                continue
+            state = str(state).strip()
+            if state == "auto":
+                profile.pop(profile_key, None)
+            elif state in {"enabled", "disabled"}:
+                profile[profile_key] = state == "enabled"
+            else:
+                raise ValueError(f"{cfg_key} 状态无效")
+        if (
+            cfg.get("modelDiscoveryState") == "disabled"
+            and not profile.get("inferenceModels")
+        ):
+            raise ValueError("关闭模型发现时至少需要保留一个固定模型")
 
         api_key = str(cfg.get("apiKey", "")).strip()
         if bool(cfg.get("clearApiKey", False)):

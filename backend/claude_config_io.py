@@ -92,6 +92,65 @@ def models_to_text(value: object) -> str:
     return "\n".join(names)
 
 
+def models_to_json(value: object) -> str:
+    """Serialize Claude's structured model list without dropping entry metadata."""
+    if not isinstance(value, list):
+        value = []
+    return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _normalize_model_entry(index: int, item: object) -> object:
+    if isinstance(item, str):
+        name = item.strip()
+        if not name:
+            raise ValueError(f"第 {index} 个模型 ID 不能为空")
+        return name
+    if not isinstance(item, dict):
+        raise ValueError(f"第 {index} 个模型必须是字符串或 JSON 对象")
+
+    name = str(item.get("name", "")).strip()
+    if not name:
+        raise ValueError(f"第 {index} 个模型缺少 name")
+    normalized = dict(item)
+    normalized["name"] = name
+    for key in ("supports1m", "prefer1m", "isFamilyDefault"):
+        if key in normalized and not isinstance(normalized[key], bool):
+            raise ValueError(f"第 {index} 个模型的 {key} 必须是布尔值")
+    if normalized.get("prefer1m") and not normalized.get("supports1m"):
+        raise ValueError(f"第 {index} 个模型启用 prefer1m 前必须启用 supports1m")
+
+    allowed_tiers = {"haiku", "sonnet", "opus", "fable", "mythos"}
+    if "anthropicFamilyTier" in normalized:
+        tier = str(normalized["anthropicFamilyTier"]).strip().lower()
+        if tier and tier not in allowed_tiers:
+            raise ValueError(f"第 {index} 个模型的 Tier alias 无效")
+        if tier:
+            normalized["anthropicFamilyTier"] = tier
+        else:
+            normalized.pop("anthropicFamilyTier", None)
+    if normalized.get("isFamilyDefault") and "anthropicFamilyTier" not in normalized:
+        raise ValueError(f"第 {index} 个模型设置 Default for tier 时必须有 Tier alias")
+    if "labelOverride" in normalized:
+        if not isinstance(normalized["labelOverride"], str):
+            raise ValueError(f"第 {index} 个模型的 labelOverride 必须是字符串")
+        label = normalized["labelOverride"].strip()
+        if label:
+            normalized["labelOverride"] = label
+        else:
+            normalized.pop("labelOverride", None)
+    return normalized
+
+
+def parse_models_json(text: str) -> list[object]:
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"模型列表不是有效 JSON：{exc.msg}") from exc
+    if not isinstance(value, list):
+        raise ValueError("模型列表必须是 JSON 数组")
+    return [_normalize_model_entry(index, item) for index, item in enumerate(value, 1)]
+
+
 def parse_headers(text: str) -> dict[str, str]:
     try:
         value = json.loads(text)

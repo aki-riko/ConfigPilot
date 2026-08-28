@@ -97,6 +97,12 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertEqual(config.endpoint, "https://gateway.example.com")
             self.assertEqual(config.authScheme, "x-api-key")
             self.assertEqual(config.modelsText, "model-a\nmodel-b")
+            self.assertEqual(
+                json.loads(config.modelsJson),
+                ["model-a", {"name": "model-b"}],
+            )
+            self.assertEqual(config.modelDiscoveryState, "auto")
+            self.assertEqual(config.modelPrefer1mContextState, "auto")
             self.assertTrue(config.hasApiKey)
             self.assertEqual(config.headerCount, 1)
             self.assertEqual(config.profileName, "ConfigPilot")
@@ -258,6 +264,90 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             )
             self.assertEqual(profile["inferenceGatewayBaseUrl"], "https://new.example.com")
             self.assertEqual(profile["inferenceModels"], ["claude-sonnet-5"])
+
+    def test_apply_writes_structured_models_and_context_states(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config, _, third_party = self.make_config(module, Path(tmp))
+            config.applyConfig(
+                {
+                    "endpoint": "https://gateway.example.com",
+                    "authScheme": "bearer",
+                    "modelsJson": json.dumps(
+                        [
+                            {
+                                "name": "claude-sonnet-5",
+                                "labelOverride": "Claude Sonnet 5",
+                                "supports1m": True,
+                                "prefer1m": True,
+                                "anthropicFamilyTier": "sonnet",
+                                "isFamilyDefault": True,
+                                "futureCapability": "preserve-me",
+                            },
+                            "claude-haiku-4-5-20251001",
+                        ]
+                    ),
+                    "modelDiscoveryState": "enabled",
+                    "modelPrefer1mContextState": "disabled",
+                }
+            )
+            wait_for_idle(config)
+
+            meta = json.loads(
+                (third_party / "configLibrary" / "_meta.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            profile = json.loads(
+                (
+                    third_party
+                    / "configLibrary"
+                    / f"{meta['appliedId']}.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                profile["inferenceModels"],
+                [
+                    {
+                        "name": "claude-sonnet-5",
+                        "labelOverride": "Claude Sonnet 5",
+                        "supports1m": True,
+                        "prefer1m": True,
+                        "anthropicFamilyTier": "sonnet",
+                        "isFamilyDefault": True,
+                        "futureCapability": "preserve-me",
+                    },
+                    "claude-haiku-4-5-20251001",
+                ],
+            )
+            self.assertTrue(profile["modelDiscoveryEnabled"])
+            self.assertFalse(profile["modelPrefer1mContext"])
+            self.assertEqual(config.modelsText, "claude-sonnet-5\nclaude-haiku-4-5-20251001")
+            self.assertEqual(config.modelDiscoveryState, "enabled")
+            self.assertEqual(config.modelPrefer1mContextState, "disabled")
+
+    def test_disabling_model_discovery_requires_fixed_models(self):
+        module = self.load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            config, _, third_party = self.make_config(module, Path(tmp))
+            notices = []
+            config.notify.connect(
+                lambda level, title, message: notices.append((level, title, message))
+            )
+            config.applyConfig(
+                {
+                    "endpoint": "https://gateway.example.com",
+                    "authScheme": "bearer",
+                    "modelsJson": "[]",
+                    "modelDiscoveryState": "disabled",
+                }
+            )
+            wait_for_idle(config)
+
+            self.assertFalse((third_party / "configLibrary").exists())
+            self.assertEqual(notices[-1][0], 2)
+            self.assertIn("固定模型", notices[-1][2])
 
     def test_apply_creates_configpilot_without_overwriting_cc_switch(self):
         module = self.load_module()

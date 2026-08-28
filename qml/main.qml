@@ -24,12 +24,14 @@ QtObject {
     ]
 
     property var bottomNavItems: [
+        { "text": "设置", "icon": iconPath("Settings"), "key": "SettingsView" },
         { "text": "帮助", "icon": iconPath("Info"), "key": "AboutView" }
     ]
 
     property var pagePaths: [
         Qt.resolvedUrl("views/CodexView.qml"),
         Qt.resolvedUrl("views/ClaudeDesktopView.qml"),
+        Qt.resolvedUrl("views/SettingsView.qml"),
         Qt.resolvedUrl("views/AboutView.qml")
     ]
 
@@ -47,6 +49,7 @@ QtObject {
     property Component windowComponent: Component {
         Fluent.Windows {
             id: appWindow
+            readonly property var autoUpdaterController: autoUpdater
             width: root.windowWidth; height: root.windowHeight
             visible: false
             minimumWidth: 760
@@ -57,6 +60,7 @@ QtObject {
             navigationItems: root.navItems
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
+            micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
             lazyLoading: true
             splashIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
             splashTitle: root.windowTitle

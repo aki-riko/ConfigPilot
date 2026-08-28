@@ -4,6 +4,8 @@ import QtQuick.Layouts
 import QtQuick.Window
 import PrismQML as Fluent
 
+import "../components"
+
 Item {
     id: root
     objectName: "claudeDesktopView"
@@ -18,9 +20,6 @@ Item {
     property bool fClearApiKey: false
     property bool fClearHeaders: false
 
-    readonly property int pagePadding: width < 720
-                                       ? Fluent.Enums.spacing.l
-                                       : Fluent.Enums.spacing.xl
     readonly property bool needsActivation: ClaudeDesktopConfig
                                                  && ClaudeDesktopConfig.configPilotProfileExists
                                                  && (!ClaudeDesktopConfig.developerModeEnabled
@@ -101,157 +100,124 @@ Item {
         }
     }
 
-    Fluent.ScrollArea {
+    PageScaffold {
         id: scrollArea
         objectName: "claudeScrollArea"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: actionBar.top
+        maxContentWidth: 960
 
-        Column {
-            id: pageColumn
-            width: parent ? parent.width : 0
-            leftPadding: root.pagePadding
-            rightPadding: root.pagePadding
-            topPadding: Fluent.Enums.spacing.l
-            bottomPadding: Fluent.Enums.spacing.l
-            spacing: Fluent.Enums.spacing.m
+        PageHeader {
+            title: "Claude Desktop"
+            subtitle: "开发者模式与第三方推理网关"
+            details: ClaudeDesktopConfig ? ClaudeDesktopConfig.configPath : ""
 
-            readonly property real innerWidth: Math.max(
-                0, width - leftPadding - rightPadding
-            )
+            Fluent.Badge {
+                text: !root.configPilotProfileExists
+                      ? "待创建"
+                      : (root.needsActivation ? "待配置" : "已就绪")
+                level: !root.configPilotProfileExists || root.needsActivation
+                       ? Fluent.Enums.statusLevel.attention
+                       : Fluent.Enums.statusLevel.success
+            }
+        }
 
-            RowLayout {
-                width: pageColumn.innerWidth
-                spacing: Fluent.Enums.spacing.m
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: Fluent.Enums.spacing.xxs
-
-                    Text {
-                        text: "Claude Desktop"
-                        color: Fluent.Enums.textColor.primary
-                        font.pixelSize: Fluent.Enums.typography.displayLarge
-                        font.bold: true
-                        font.family: Fluent.Enums.fontFamily
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: "开发者模式与第三方推理网关"
-                        color: Fluent.Enums.textColor.secondary
-                        font.pixelSize: Fluent.Enums.typography.body
-                        font.family: Fluent.Enums.fontFamily
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                Fluent.Badge {
-                    text: !root.configPilotProfileExists
-                          ? "待创建"
-                          : (root.needsActivation ? "待配置" : "已就绪")
-                    level: !root.configPilotProfileExists || root.needsActivation
-                           ? Fluent.Enums.statusLevel.attention
-                           : Fluent.Enums.statusLevel.success
+        ClaudeStatusSection {
+            objectName: "claudeStatusSection"
+            width: scrollArea.contentWidth
+            installed: ClaudeDesktopConfig ? ClaudeDesktopConfig.installed : false
+            developerModeEnabled: ClaudeDesktopConfig
+                                  ? ClaudeDesktopConfig.developerModeEnabled
+                                  : false
+            thirdPartyEnabled: ClaudeDesktopConfig
+                               ? ClaudeDesktopConfig.thirdPartyEnabled
+                               : false
+            configBusy: root.configBusy
+            installBusy: ClaudeDesktopConfig ? ClaudeDesktopConfig.installBusy : false
+            installCancelable: ClaudeDesktopConfig
+                               ? ClaudeDesktopConfig.installCancelable
+                               : false
+            installProgress: ClaudeDesktopConfig
+                             ? ClaudeDesktopConfig.installProgress
+                             : -1
+            installStatus: ClaudeDesktopConfig ? ClaudeDesktopConfig.installStatus : ""
+            gatewayCanEnable: root.fEndpoint.trim().length > 0
+                              && profileName.length > 0
+            profileName: ClaudeDesktopConfig ? ClaudeDesktopConfig.profileName : ""
+            configPath: ClaudeDesktopConfig ? ClaudeDesktopConfig.configPath : ""
+            configPilotProfileExists: ClaudeDesktopConfig
+                                       ? ClaudeDesktopConfig.configPilotProfileExists
+                                       : false
+            activeProfileName: ClaudeDesktopConfig
+                              ? ClaudeDesktopConfig.activeProfileName
+                              : ""
+            canImportActiveProfile: ClaudeDesktopConfig
+                                  ? ClaudeDesktopConfig.canImportActiveProfile
+                                  : false
+            onDeveloperModeToggled: function(value) {
+                if (ClaudeDesktopConfig) {
+                    ClaudeDesktopConfig.setDeveloperModeEnabled(value)
                 }
             }
-
-            ClaudeStatusSection {
-                objectName: "claudeStatusSection"
-                width: pageColumn.innerWidth
-                installed: ClaudeDesktopConfig ? ClaudeDesktopConfig.installed : false
-                developerModeEnabled: ClaudeDesktopConfig
-                                      ? ClaudeDesktopConfig.developerModeEnabled
-                                      : false
-                thirdPartyEnabled: ClaudeDesktopConfig
-                                   ? ClaudeDesktopConfig.thirdPartyEnabled
-                                   : false
-                configBusy: root.configBusy
-                installBusy: ClaudeDesktopConfig ? ClaudeDesktopConfig.installBusy : false
-                installCancelable: ClaudeDesktopConfig
-                                   ? ClaudeDesktopConfig.installCancelable
-                                   : false
-                installProgress: ClaudeDesktopConfig
-                                 ? ClaudeDesktopConfig.installProgress
-                                 : -1
-                installStatus: ClaudeDesktopConfig ? ClaudeDesktopConfig.installStatus : ""
-                gatewayCanEnable: root.fEndpoint.trim().length > 0
-                                  && profileName.length > 0
-                profileName: ClaudeDesktopConfig ? ClaudeDesktopConfig.profileName : ""
-                configPath: ClaudeDesktopConfig ? ClaudeDesktopConfig.configPath : ""
-                configPilotProfileExists: ClaudeDesktopConfig
-                                           ? ClaudeDesktopConfig.configPilotProfileExists
-                                           : false
-                activeProfileName: ClaudeDesktopConfig
-                                  ? ClaudeDesktopConfig.activeProfileName
-                                  : ""
-                canImportActiveProfile: ClaudeDesktopConfig
-                                        ? ClaudeDesktopConfig.canImportActiveProfile
-                                        : false
-                onDeveloperModeToggled: function(value) {
-                    if (ClaudeDesktopConfig) {
-                        ClaudeDesktopConfig.setDeveloperModeEnabled(value)
-                    }
-                }
-                onGatewayToggled: function(value) {
-                    if (ClaudeDesktopConfig) {
-                        ClaudeDesktopConfig.setThirdPartyEnabled(value)
-                    }
-                }
-                onInstallRequested: function(product) {
-                    if (ClaudeDesktopConfig) {
-                        ClaudeDesktopConfig.installProduct(product)
-                    }
-                }
-                onCancelInstallRequested: if (ClaudeDesktopConfig) {
-                    ClaudeDesktopConfig.cancelInstall()
-                }
-                onCloneActiveProfileRequested: if (ClaudeDesktopConfig) {
-                    ClaudeDesktopConfig.cloneActiveProfileToConfigPilot()
+            onGatewayToggled: function(value) {
+                if (ClaudeDesktopConfig) {
+                    ClaudeDesktopConfig.setThirdPartyEnabled(value)
                 }
             }
-
-            ClaudeGatewaySection {
-                objectName: "claudeGatewaySection"
-                width: pageColumn.innerWidth
-                enabled: !root.configBusy
-                endpointValue: root.fEndpoint
-                authSchemeValue: root.fAuthScheme
-                apiKeyValue: root.fApiKey
-                hasApiKey: ClaudeDesktopConfig ? ClaudeDesktopConfig.hasApiKey : false
-                clearApiKeyValue: root.fClearApiKey
-                onEndpointEdited: function(value) { root.fEndpoint = value }
-                onAuthSchemeSelected: function(value) { root.fAuthScheme = value }
-                onApiKeyEdited: function(value) { root.fApiKey = value }
-                onClearApiKeyToggled: function(value) { root.fClearApiKey = value }
-            }
-
-            ClaudeAdvancedSection {
-                objectName: "claudeAdvancedSection"
-                width: pageColumn.innerWidth
-                enabled: !root.configBusy
-                modelsJsonValue: root.fModelsJson
-                modelDiscoveryStateValue: root.fModelDiscoveryState
-                modelPrefer1mContextStateValue: root.fModelPrefer1mContextState
-                headersValue: root.fHeaders
-                headerCount: ClaudeDesktopConfig ? ClaudeDesktopConfig.headerCount : 0
-                clearHeadersValue: root.fClearHeaders
-                onModelsJsonEdited: function(value) { root.fModelsJson = value }
-                onModelDiscoveryStateSelected: function(value) {
-                    root.fModelDiscoveryState = value
+            onInstallRequested: function(product) {
+                if (ClaudeDesktopConfig) {
+                    ClaudeDesktopConfig.installProduct(product)
                 }
-                onModelPrefer1mContextStateSelected: function(value) {
-                    root.fModelPrefer1mContextState = value
-                }
-                onHeadersEdited: function(value) { root.fHeaders = value }
-                onClearHeadersToggled: function(value) { root.fClearHeaders = value }
             }
+            onCancelInstallRequested: if (ClaudeDesktopConfig) {
+                ClaudeDesktopConfig.cancelInstall()
+            }
+            onCloneActiveProfileRequested: if (ClaudeDesktopConfig) {
+                ClaudeDesktopConfig.cloneActiveProfileToConfigPilot()
+            }
+        }
 
-            Item {
-                width: 1
-                height: Fluent.Enums.spacing.s
+        ClaudeGatewaySection {
+            objectName: "claudeGatewaySection"
+            width: scrollArea.contentWidth
+            enabled: !root.configBusy
+            endpointValue: root.fEndpoint
+            authSchemeValue: root.fAuthScheme
+            apiKeyValue: root.fApiKey
+            hasApiKey: ClaudeDesktopConfig ? ClaudeDesktopConfig.hasApiKey : false
+            clearApiKeyValue: root.fClearApiKey
+            onEndpointEdited: function(value) { root.fEndpoint = value }
+            onAuthSchemeSelected: function(value) { root.fAuthScheme = value }
+            onApiKeyEdited: function(value) { root.fApiKey = value }
+            onClearApiKeyToggled: function(value) { root.fClearApiKey = value }
+        }
+
+        ClaudeAdvancedSection {
+            objectName: "claudeAdvancedSection"
+            width: scrollArea.contentWidth
+            enabled: !root.configBusy
+            modelsJsonValue: root.fModelsJson
+            modelDiscoveryStateValue: root.fModelDiscoveryState
+            modelPrefer1mContextStateValue: root.fModelPrefer1mContextState
+            headersValue: root.fHeaders
+            headerCount: ClaudeDesktopConfig ? ClaudeDesktopConfig.headerCount : 0
+            clearHeadersValue: root.fClearHeaders
+            onModelsJsonEdited: function(value) { root.fModelsJson = value }
+            onModelDiscoveryStateSelected: function(value) {
+                root.fModelDiscoveryState = value
             }
+            onModelPrefer1mContextStateSelected: function(value) {
+                root.fModelPrefer1mContextState = value
+            }
+            onHeadersEdited: function(value) { root.fHeaders = value }
+            onClearHeadersToggled: function(value) { root.fClearHeaders = value }
+        }
+
+        Item {
+            width: 1
+            height: Fluent.Enums.spacing.s
         }
     }
 
@@ -268,8 +234,12 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: root.pagePadding
-            anchors.rightMargin: root.pagePadding
+            anchors.leftMargin: root.width < 720
+                               ? Fluent.Enums.spacing.l
+                               : Fluent.Enums.spacing.xl
+            anchors.rightMargin: root.width < 720
+                                ? Fluent.Enums.spacing.l
+                                : Fluent.Enums.spacing.xl
             spacing: Fluent.Enums.spacing.m
 
             Text {

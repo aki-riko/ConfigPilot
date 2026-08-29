@@ -492,14 +492,14 @@ class CodexConfigAuthTests(unittest.TestCase):
             config = codex_config.CodexConfig()
             wait_for_idle(config)
 
-            expected_values = ["low", "medium", "high", "xhigh", "max"]
-            expected_text = ["轻度", "中", "高", "极高", "MAX"]
+            expected_values = ["low", "medium", "high", "xhigh", "max", "ultra"]
+            expected_text = ["轻度", "中", "高", "极高", "MAX", "Ultra"]
             for model in ("gpt-5.6-sol", "gpt-5.6-terra"):
                 options = config.reasoningOptionsForModel(model)
                 self.assertEqual([item["value"] for item in options], expected_values)
                 self.assertEqual([item["text"] for item in options], expected_text)
                 self.assertEqual(
-                    config.highestReasoningEffortForModel(model), "max"
+                    config.highestReasoningEffortForModel(model), "ultra"
                 )
                 self.assertEqual(
                     config.contextPresetForModel(model),
@@ -599,18 +599,6 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(saved_max["model"], "gpt-5.6-sol")
             self.assertEqual(saved_max["model_reasoning_effort"], "max")
 
-            config._model_profiles.update_reasoning_from_models(
-                [
-                    {
-                        "slug": "gpt-5.6-sol",
-                        "supported_reasoning_levels": [
-                            {"effort": "xhigh"},
-                            {"effort": "max"},
-                            {"effort": "ultra"},
-                        ],
-                    }
-                ]
-            )
             config.applyConfig(
                 {
                     "baseUrl": "https://api.9li.life/v1",

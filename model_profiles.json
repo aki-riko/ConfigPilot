@@ -43,7 +43,8 @@
         { "value": "medium", "text": "中" },
         { "value": "high", "text": "高" },
         { "value": "xhigh", "text": "极高" },
-        { "value": "max", "text": "MAX" }
+        { "value": "max", "text": "MAX" },
+        { "value": "ultra", "text": "Ultra" }
       ],
       "catalogSpecialReasoningEfforts": ["max", "ultra"]
     },

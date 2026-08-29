@@ -19,7 +19,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **Codex API 连接配置**：填写 `base_url`、provider、wire API 和模型；地址末尾缺少 `/v1` 时自动补全
 - **高级选项**（都是 Codex 原生 `config.toml` 字段）：
   - `requires_openai_auth` —— 供应商用 Chat Completions 协议或非 GPT 模型时开启
-  - `model_reasoning_effort` —— 优先从远端模型目录读取；GPT-5.6 显示“轻度 / 中 / 高 / 极高 / MAX”五档，Ultra 不进入普通选择器
+  - `model_reasoning_effort` —— 优先从远端模型目录读取；GPT-5.6 显示“轻度 / 中 / 高 / 极高 / MAX”，当前账号的远端目录确认 Sol 或 Terra 支持时再显示 Ultra，Luna 最高为 MAX
   - `disable_response_storage` —— 禁用响应存储
 - **稳定上下文预设**：所有受支持模型统一使用 GPT-5.5 的稳定值 `258400 / 245000 / 6000`
 - **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列

@@ -494,7 +494,7 @@ class CodexConfigAuthTests(unittest.TestCase):
 
             expected_values = ["low", "medium", "high", "xhigh", "max"]
             expected_text = ["轻度", "中", "高", "极高", "MAX"]
-            for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
+            for model in ("gpt-5.6-sol", "gpt-5.6-terra"):
                 options = config.reasoningOptionsForModel(model)
                 self.assertEqual([item["value"] for item in options], expected_values)
                 self.assertEqual([item["text"] for item in options], expected_text)
@@ -512,6 +512,15 @@ class CodexConfigAuthTests(unittest.TestCase):
                         "maxAutoCompactLimit": 245000,
                     },
                 )
+
+            luna_options = config.reasoningOptionsForModel("gpt-5.6-luna")
+            self.assertEqual(
+                [item["value"] for item in luna_options],
+                ["low", "medium", "high", "xhigh", "max"],
+            )
+            self.assertEqual(
+                config.highestReasoningEffortForModel("gpt-5.6-luna"), "max"
+            )
 
             gpt55_options = config.reasoningOptionsForModel("gpt-5.5")
             self.assertEqual(
@@ -590,6 +599,18 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(saved_max["model"], "gpt-5.6-sol")
             self.assertEqual(saved_max["model_reasoning_effort"], "max")
 
+            config._model_profiles.update_reasoning_from_models(
+                [
+                    {
+                        "slug": "gpt-5.6-sol",
+                        "supported_reasoning_levels": [
+                            {"effort": "xhigh"},
+                            {"effort": "max"},
+                            {"effort": "ultra"},
+                        ],
+                    }
+                ]
+            )
             config.applyConfig(
                 {
                     "baseUrl": "https://api.9li.life/v1",
@@ -599,10 +620,10 @@ class CodexConfigAuthTests(unittest.TestCase):
                     "reasoningEffort": "ultra",
                 }
             )
-            self.assertEqual(
-                notices[-1],
-                (2, "参数无效", "gpt-5.6-sol 不支持思考等级 ultra"),
-            )
+            wait_for_idle(config)
+            with config_path.open("rb") as handle:
+                saved_ultra = tomllib.load(handle)
+            self.assertEqual(saved_ultra["model_reasoning_effort"], "ultra")
 
             config.applyConfig(
                 {
@@ -706,6 +727,7 @@ class CodexConfigAuthTests(unittest.TestCase):
                     {"value": "high", "text": "高"},
                     {"value": "xhigh", "text": "极高"},
                     {"value": "max", "text": "MAX"},
+                    {"value": "ultra", "text": "Ultra"},
                 ],
             )
 

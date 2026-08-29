@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-# Max 和 Ultra 只对 Codex 目录明确支持的模型开放。
+# Ultra 不进入 ConfigPilot 选择器；GPT-5.6 的 Max 是普通思考等级。
 SPECIAL_REASONING_EFFORTS = frozenset({"max", "ultra"})
 
 
@@ -72,43 +72,14 @@ class ModelProfiles:
             pattern = re.compile(pattern_text, re.IGNORECASE)
         except re.error as exc:
             raise ValueError(f"{profile_id} 的 modelPattern 无效: {exc}") from exc
-        reasoning_options = cls._normalize_options(
-            raw_profile.get("reasoningOptions"),
-            f"{profile_id}.reasoningOptions",
-        )
-        catalog_efforts = cls._normalize_catalog_special_efforts(
-            profile_id,
-            raw_profile.get("catalogSpecialReasoningEfforts"),
-            reasoning_options,
-        )
         return {
             "id": profile_id,
             "pattern": pattern,
-            "reasoningOptions": reasoning_options,
-            "catalogSpecialReasoningEfforts": catalog_efforts,
+            "reasoningOptions": cls._normalize_options(
+                raw_profile.get("reasoningOptions"),
+                f"{profile_id}.reasoningOptions",
+            ),
         }
-
-    @staticmethod
-    def _normalize_catalog_special_efforts(profile_id, raw_efforts, options):
-        """解析远端目录可启用的特殊档位；默认沿用静态档位。"""
-        if raw_efforts is None:
-            return frozenset(
-                option["value"].strip().lower()
-                for option in options
-                if option["value"].strip().lower() in SPECIAL_REASONING_EFFORTS
-            )
-        if not isinstance(raw_efforts, list):
-            raise ValueError(
-                f"{profile_id}.catalogSpecialReasoningEfforts 必须是数组"
-            )
-        catalog_efforts = {str(effort).strip().lower() for effort in raw_efforts}
-        invalid_efforts = catalog_efforts - SPECIAL_REASONING_EFFORTS
-        if invalid_efforts:
-            raise ValueError(
-                f"{profile_id}.catalogSpecialReasoningEfforts 包含无效值: "
-                + ", ".join(sorted(invalid_efforts))
-            )
-        return frozenset(catalog_efforts)
 
     @staticmethod
     def _normalize_context(raw_context, field_name):
@@ -181,12 +152,15 @@ class ModelProfiles:
 
     def _catalog_allows_special_effort(self, model, effort):
         """仅接纳模型静态档位声明过的特殊思考等级。"""
-        if effort not in SPECIAL_REASONING_EFFORTS:
+        if effort != "max":
             return False
         profile = self.profile_for(model)
         return bool(
             profile
-            and effort in profile["catalogSpecialReasoningEfforts"]
+            and any(
+                option["value"].strip().lower() == effort
+                for option in profile["reasoningOptions"]
+            )
         )
 
     def highest_reasoning_effort(self, model):

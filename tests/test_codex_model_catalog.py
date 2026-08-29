@@ -67,7 +67,7 @@ class CodexModelCatalogTests(unittest.TestCase):
         self.assertEqual(profiles.highest_reasoning_effort("gpt-5.6-sol"), "high")
         self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-sol", "xhigh"))
 
-    def test_remote_catalog_includes_supported_gpt56_special_efforts(self):
+    def test_remote_catalog_includes_gpt56_max_but_excludes_ultra(self):
         profiles = ModelProfiles.from_file("model_profiles.json")
         payload = json.loads(
             (FIXTURES / "codex_gpt56_sol_catalog.json").read_text(encoding="utf-8")
@@ -80,32 +80,10 @@ class CodexModelCatalogTests(unittest.TestCase):
                 option["value"]
                 for option in profiles.reasoning_options("gpt-5.6-sol")
             ],
-            ["low", "medium", "high", "xhigh", "max", "ultra"],
+            ["low", "medium", "high", "xhigh", "max"],
         )
         self.assertTrue(profiles.supports_reasoning_effort("gpt-5.6-sol", "max"))
-        self.assertTrue(profiles.supports_reasoning_effort("gpt-5.6-sol", "ultra"))
-
-    def test_remote_ultra_remains_filtered_for_unsupported_gpt56_variant(self):
-        profiles = ModelProfiles.from_file("model_profiles.json")
-        updated = profiles.update_reasoning_from_models(
-            [
-                {
-                    "slug": "gpt-5.6-luna",
-                    "supported_reasoning_levels": [
-                        {"effort": "high"},
-                        {"effort": "max"},
-                        {"effort": "ultra"},
-                    ],
-                }
-            ]
-        )
-
-        self.assertEqual(updated, 1)
-        self.assertEqual(
-            [option["value"] for option in profiles.reasoning_options("gpt-5.6-luna")],
-            ["high", "max"],
-        )
-        self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-luna", "ultra"))
+        self.assertFalse(profiles.supports_reasoning_effort("gpt-5.6-sol", "ultra"))
 
     def test_remote_max_remains_filtered_for_models_without_static_support(self):
         profiles = ModelProfiles.from_file("model_profiles.json")

@@ -1,5 +1,6 @@
 import QtQuick
 import PrismQML as Fluent
+import "../i18n/ConfigPilotI18n.js" as AppI18n
 
 Column {
     id: root
@@ -19,10 +20,27 @@ Column {
     }
 
     function reloadEffortOptions() {
-        effortBox.effortOptions = CodexConfig
-                                  ? CodexConfig.reasoningOptionsForModel(root.modelName)
-                                  : []
+        var sourceOptions = CodexConfig
+                            ? CodexConfig.reasoningOptionsForModel(root.modelName)
+                            : []
+        var displayOptions = []
+        for (var i = 0; i < sourceOptions.length; i++) {
+            var option = sourceOptions[i]
+            displayOptions.push({
+                "value": option.value,
+                "text": option.value === "max"
+                        ? AppI18n.tr("reasoning_max", activeLanguage())
+                        : option.text
+            })
+        }
+        effortBox.effortOptions = displayOptions
         effortBox.syncCurrentIndex()
+    }
+
+    function activeLanguage() {
+        return Fluent.Translator.language === "auto"
+               ? Fluent.Translator.detectSystemLanguage()
+               : Fluent.Translator.language
     }
 
     onModelNameChanged: reloadEffortOptions()
@@ -67,6 +85,13 @@ Column {
         Connections {
             target: CodexConfig
             function onReasoningProfilesChanged() {
+                root.reloadEffortOptions()
+            }
+        }
+
+        Connections {
+            target: Fluent.Translator
+            function onLanguageUpdated() {
                 root.reloadEffortOptions()
             }
         }

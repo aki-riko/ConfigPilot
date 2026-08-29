@@ -2,8 +2,6 @@
 import QtQuick
 import PrismQML as Fluent
 
-import "../components"
-
 Item {
     id: root
 
@@ -22,20 +20,22 @@ Item {
         feedbackPresenter: progressPresenter
     }
 
-    PageScaffold {
-        id: scaffold
+    Fluent.ScrollArea {
         anchors.fill: parent
-        maxContentWidth: 920
 
-        PageHeader {
-            title: "帮助"
-            subtitle: "了解 ConfigPilot 的配置范围和操作方式"
-            details: "版本 " + AppVersion
-        }
+        Column {
+            width: parent ? parent.width : 0
+            spacing: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.xxxl
 
-        Fluent.SettingsCardGroup {
-            width: scaffold.contentWidth
-            title: "使用说明"
+            Text {
+                text: "帮助"
+                font.pixelSize: Fluent.Enums.typography.displayLarge
+                font.bold: true
+                color: Fluent.Enums.textColor.primary
+                font.family: Fluent.Enums.fontFamily
+            }
 
             Fluent.Card {
                 width: parent ? parent.width : 0
@@ -65,23 +65,6 @@ Item {
                 }
             }
 
-            Fluent.SettingsCard {
-                width: parent ? parent.width : 0
-                title: "应用更新"
-                content: "当前版本 " + AppVersion + " · 基于 PrismQML " + PrismQMLVersion
-                icon: Fluent.Enums.icon.arrow_sync
-                type: Fluent.Enums.settingCard.type_push
-                buttonText: autoUpdater.feedbackModel.checking
-                            ? "正在检查..." : "检查更新"
-                enabled: !autoUpdater.feedbackModel.checking
-                onClicked: autoUpdater.check()
-            }
-        }
-
-        Fluent.SettingsCardGroup {
-            width: scaffold.contentWidth
-            title: "版本信息"
-
             Fluent.Card {
                 width: parent ? parent.width : 0
                 autoHeight: true
@@ -106,6 +89,13 @@ Item {
                         font.pixelSize: Fluent.Enums.typography.body
                         color: Fluent.Enums.textColor.secondary
                         font.family: Fluent.Enums.fontFamily
+                    }
+                    Fluent.Button {
+                        style: Fluent.Enums.button.style_default
+                        text: autoUpdater.feedbackModel.checking
+                            ? "正在检查..." : "检查更新"
+                        enabled: !autoUpdater.feedbackModel.checking
+                        onClicked: autoUpdater.check()
                     }
                 }
             }

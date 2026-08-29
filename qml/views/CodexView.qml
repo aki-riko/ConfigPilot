@@ -4,8 +4,6 @@ import QtQuick.Layouts
 import QtQuick.Window
 import PrismQML as Fluent
 
-import "../components"
-
 Item {
     id: root
     objectName: "codexView"
@@ -28,6 +26,9 @@ Item {
                                                 ? CodexConfig.modelsLoading
                                                 : false
 
+    readonly property int pagePadding: width < 720
+                                       ? Fluent.Enums.spacing.l
+                                       : Fluent.Enums.spacing.xl
     readonly property int profilesRevision: CodexConfig
                                             ? CodexConfig.profilesRevision
                                             : 0
@@ -212,127 +213,164 @@ Item {
         }
     }
 
-    PageScaffold {
+    Fluent.ScrollArea {
         id: scrollArea
         objectName: "mainScrollArea"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: actionBar.top
-        maxContentWidth: 960
 
-        PageHeader {
-            title: "Codex"
-            subtitle: "连接、模型与上下文配置"
-            details: CodexConfig ? CodexConfig.configPath : ""
+        Column {
+            id: pageColumn
+            objectName: "pageColumn"
+            width: parent ? parent.width : 0
+            leftPadding: root.pagePadding
+            rightPadding: root.pagePadding
+            topPadding: Fluent.Enums.spacing.xl
+            bottomPadding: Fluent.Enums.spacing.xl
+            spacing: Fluent.Enums.spacing.l
 
-            Fluent.Badge {
-                text: root.hasDraftChanges ? "待应用" : "已同步"
-                level: root.hasDraftChanges
-                       ? Fluent.Enums.statusLevel.warning
-                       : Fluent.Enums.statusLevel.success
-            }
-        }
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-        ConnectionSection {
-            id: connectionSection
-            objectName: "connectionSection"
-            width: scrollArea.contentWidth
-            enabled: !root.configBusy
-            baseUrlValue: root.fBaseUrl
-            providerValue: root.fProvider
-            wireApiValue: root.fWireApi
-            hasKey: CodexConfig ? CodexConfig.hasKey : false
-            hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
-            authSource: CodexConfig ? CodexConfig.authSource : "none"
-            envKey: CodexConfig ? CodexConfig.envKey : ""
-            envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
-            authReady: CodexConfig ? CodexConfig.authReady : true
-            configBusy: root.configBusy
-            onBaseUrlEdited: function(value) { root.fBaseUrl = value }
-            onProviderEdited: function(value) { root.fProvider = value }
-            onWireApiEdited: function(value) { root.fWireApi = value }
-            onSaveKeyRequested: function(value) {
-                if (CodexConfig) CodexConfig.setKey(value)
-            }
-            onImportAuthJsonRequested: function(value) {
-                if (CodexConfig) CodexConfig.importAuthJson(value)
-            }
-            onRepairRelayAuthRequested: function(value) {
-                if (CodexConfig) CodexConfig.repairRelayAuth(value)
-            }
-        }
+            RowLayout {
+                width: pageColumn.innerWidth
+                spacing: Fluent.Enums.spacing.m
 
-        ModelSection {
-            objectName: "modelSection"
-            width: scrollArea.contentWidth
-            enabled: !root.configBusy
-            modelValue: root.fModel
-            reasoningValue: root.fReasoningEffort
-            availableModels: CodexConfig ? CodexConfig.availableModels : []
-            loading: root.modelsLoading
-            onModelTextEdited: function(value) { root.fModel = value }
-            onModelCommitted: function(value) { root.commitTypedModel(value) }
-            onModelSelected: function(value) { root.selectModel(value) }
-            onEffortSelected: function(value) {
-                root.fReasoningEffort = value
-            }
-            onFetchRequested: {
-                if (CodexConfig) {
-                    CodexConfig.fetchModels(
-                        root.fBaseUrl, connectionSection.keyDraft
-                    )
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Fluent.Enums.spacing.xxs
+
+                    Text {
+                        text: "Codex"
+                        color: Fluent.Enums.textColor.primary
+                        font.pixelSize: Fluent.Enums.typography.displayLarge
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "连接、模型与上下文配置"
+                        color: Fluent.Enums.textColor.secondary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.family: Fluent.Enums.fontFamily
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: CodexConfig ? CodexConfig.configPath : ""
+                        color: Fluent.Enums.textColor.tertiary
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                Fluent.Badge {
+                    text: root.hasDraftChanges ? "待应用" : "已同步"
+                    level: root.hasDraftChanges
+                           ? Fluent.Enums.statusLevel.warning
+                           : Fluent.Enums.statusLevel.success
                 }
             }
-        }
 
-        ContextSection {
-            objectName: "contextSection"
-            width: scrollArea.contentWidth
-            enabled: !root.configBusy
-            currentPreset: root.currentContextPreset
-            contextWindowValue: root.fContextWindow
-            autoCompactValue: root.fAutoCompactLimit
-            toolOutputValue: root.fToolOutputLimit
-            compactRatio: root.compactRatio
-            compactRatioText: root.compactRatioLabel()
-            onPresetRequested: root.useStableContextPreset()
-            onContextWindowEdited: function(value) {
-                root.fContextWindow = value
+            ConnectionSection {
+                id: connectionSection
+                objectName: "connectionSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                baseUrlValue: root.fBaseUrl
+                providerValue: root.fProvider
+                wireApiValue: root.fWireApi
+                hasKey: CodexConfig ? CodexConfig.hasKey : false
+                hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
+                authSource: CodexConfig ? CodexConfig.authSource : "none"
+                envKey: CodexConfig ? CodexConfig.envKey : ""
+                envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
+                authReady: CodexConfig ? CodexConfig.authReady : true
+                configBusy: root.configBusy
+                onBaseUrlEdited: function(value) { root.fBaseUrl = value }
+                onProviderEdited: function(value) { root.fProvider = value }
+                onWireApiEdited: function(value) { root.fWireApi = value }
+                onSaveKeyRequested: function(value) {
+                    if (CodexConfig) CodexConfig.setKey(value)
+                }
+                onImportAuthJsonRequested: function(value) {
+                    if (CodexConfig) CodexConfig.importAuthJson(value)
+                }
+                onRepairRelayAuthRequested: function(value) {
+                    if (CodexConfig) CodexConfig.repairRelayAuth(value)
+                }
             }
-            onAutoCompactEdited: function(value) {
-                root.fAutoCompactLimit = value
-            }
-            onToolOutputEdited: function(value) {
-                root.fToolOutputLimit = value
-            }
-            onClearRequested: root.clearContext()
-        }
 
-        AdvancedSection {
-            objectName: "advancedSection"
-            width: scrollArea.contentWidth
-            enabled: !root.configBusy
-            requiresAuthValue: root.fRequiresAuth
-            disableStorageValue: root.fDisableStorage
-            onRequiresAuthToggled: function(value) {
-                root.fRequiresAuth = value
+            ModelSection {
+                objectName: "modelSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                modelValue: root.fModel
+                reasoningValue: root.fReasoningEffort
+                availableModels: CodexConfig ? CodexConfig.availableModels : []
+                loading: root.modelsLoading
+                onModelTextEdited: function(value) { root.fModel = value }
+                onModelCommitted: function(value) { root.commitTypedModel(value) }
+                onModelSelected: function(value) { root.selectModel(value) }
+                onEffortSelected: function(value) {
+                    root.fReasoningEffort = value
+                }
+                onFetchRequested: {
+                    if (CodexConfig) {
+                        CodexConfig.fetchModels(
+                            root.fBaseUrl, connectionSection.keyDraft
+                        )
+                    }
+                }
             }
-            onDisableStorageToggled: function(value) {
-                root.fDisableStorage = value
-            }
-        }
 
-        Item {
-            width: 1
-            height: Fluent.Enums.spacing.xl
+            ContextSection {
+                objectName: "contextSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                currentPreset: root.currentContextPreset
+                contextWindowValue: root.fContextWindow
+                autoCompactValue: root.fAutoCompactLimit
+                toolOutputValue: root.fToolOutputLimit
+                compactRatio: root.compactRatio
+                compactRatioText: root.compactRatioLabel()
+                onPresetRequested: root.useStableContextPreset()
+                onContextWindowEdited: function(value) {
+                    root.fContextWindow = value
+                }
+                onAutoCompactEdited: function(value) {
+                    root.fAutoCompactLimit = value
+                }
+                onToolOutputEdited: function(value) {
+                    root.fToolOutputLimit = value
+                }
+                onClearRequested: root.clearContext()
+            }
+
+            AdvancedSection {
+                objectName: "advancedSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                requiresAuthValue: root.fRequiresAuth
+                disableStorageValue: root.fDisableStorage
+                onRequiresAuthToggled: function(value) {
+                    root.fRequiresAuth = value
+                }
+                onDisableStorageToggled: function(value) {
+                    root.fDisableStorage = value
+                }
+            }
+
+            Item {
+                width: 1
+                height: Fluent.Enums.spacing.xl
+            }
         }
     }
 
-    /*
-     * The bottom bar stays outside the scroll area so applying a draft is
-     * always available, even when the form is scrolled to the end.
-     */
     Rectangle {
         id: actionBar
         anchors.left: parent.left
@@ -346,12 +384,8 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: root.width < 720
-                               ? Fluent.Enums.spacing.l
-                               : Fluent.Enums.spacing.xl
-            anchors.rightMargin: root.width < 720
-                                ? Fluent.Enums.spacing.l
-                                : Fluent.Enums.spacing.xl
+            anchors.leftMargin: root.pagePadding
+            anchors.rightMargin: root.pagePadding
             spacing: Fluent.Enums.spacing.m
 
             Text {

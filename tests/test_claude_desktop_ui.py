@@ -47,7 +47,7 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn('"创建并应用 ConfigPilot"', page)
         self.assertIn('"应用更改"', page)
         self.assertIn("ClaudeDesktopConfig.operationBusy", page)
-        self.assertIn('subtitle: "开发者模式与第三方推理网关"', page)
+        self.assertIn('text: "开发者模式与第三方推理网关"', page)
         for component in ("ClaudeGatewaySection", "ClaudeAdvancedSection"):
             self.assertRegex(
                 page,

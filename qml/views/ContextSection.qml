@@ -19,7 +19,6 @@ Fluent.Card {
     signal clearRequested()
 
     autoHeight: true
-    contentPadding: Fluent.Enums.spacing.none
 
     Column {
         id: cardColumn
@@ -73,14 +72,12 @@ Fluent.Card {
 
             Fluent.Button {
                 style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.checkmark
                 text: "套用稳定上下文"
                 enabled: root.currentPreset.contextWindow > 0
                 onClicked: root.presetRequested()
             }
             Fluent.Button {
                 style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.dismiss
                 text: "清空自定义值"
                 onClicked: root.clearRequested()
             }

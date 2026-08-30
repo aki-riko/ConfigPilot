@@ -17,7 +17,6 @@ Fluent.Card {
     signal fetchRequested()
 
     autoHeight: true
-    contentPadding: Fluent.Enums.spacing.none
 
     Column {
         id: cardColumn
@@ -157,7 +156,6 @@ Fluent.Card {
                     Fluent.Button {
                         Layout.fillWidth: pickerGrid.columns === 1
                         style: Fluent.Enums.button.style_default
-                        icon: Fluent.Enums.icon.arrow_download
                         text: root.loading ? "获取中..." : "获取模型"
                         enabled: !root.loading
                         onClicked: root.fetchRequested()

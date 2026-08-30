@@ -1,7 +1,7 @@
 import QtQuick
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property bool requiresAuthValue: false
@@ -10,41 +10,16 @@ Fluent.Card {
     signal requiresAuthToggled(bool value)
     signal disableStorageToggled(bool value)
 
-    autoHeight: true
+    title: "兼容性与隐私"
+    content: "仅第三方 API 或特殊协议场景需要调整"
+    expanded: false
 
     Column {
         width: parent ? parent.width : 0
         spacing: Fluent.Enums.spacing.l
 
-        Column {
-            width: parent.width
-            spacing: Fluent.Enums.spacing.xxs
-
-            Text {
-                text: "兼容性与隐私"
-                color: Fluent.Enums.textColor.primary
-                font.pixelSize: Fluent.Enums.typography.subtitle
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
-            }
-
-            Text {
-                width: parent.width
-                text: "第三方 API 的认证映射与响应存储行为"
-                color: Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                wrapMode: Text.WordWrap
-            }
-        }
-
-        Fluent.Separator {
-            width: parent.width
-        }
-
         Fluent.Toggle {
             id: authToggle
-
             width: parent.width
             controlType: Fluent.Enums.toggle.control_switch
             type: Fluent.Enums.toggle.type_subtitle
@@ -68,7 +43,6 @@ Fluent.Card {
 
         Fluent.Toggle {
             id: storageToggle
-
             width: parent.width
             controlType: Fluent.Enums.toggle.control_switch
             type: Fluent.Enums.toggle.type_subtitle

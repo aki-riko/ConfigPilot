@@ -22,7 +22,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
   - `model_reasoning_effort` —— 优先从远端模型目录读取；GPT-5.6 提供“轻度 / 中 / 高 / 极高 / 最高”五档，“最高”的真实配置值为 `max`
   - `disable_response_storage` —— 禁用响应存储
 - **稳定上下文预设**：所有受支持模型统一使用 GPT-5.5 的稳定值 `258400 / 245000 / 6000`
-- **任务式工作区**：连接、模型、上下文和兼容性按任务切换，窄窗口自动改用顶部标签
+- **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列
 - **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）
 - **API key**：写入 `~/.codex/auth.json`
 - **ChatGPT JSON 导入**：粘贴 Codex `auth.json`、codex2api 扁平 JSON 或 `accounts[].credentials` 单账号 JSON；完整凭据直接保存，仅有 `refresh_token` 时通过官方 OAuth 补齐
@@ -114,8 +114,7 @@ configpilot/
 │   ├── claude_desktop_config.py  Developer Mode + 第三方推理配置
 │   └── model_profiles.py    模型规则加载与校验
 ├── qml/
-│   ├── main.qml             窗口 + 全局导航 + 启动屏 + 图标
-│   ├── components/          页头、任务导航、面板滚动与操作栏
+│   ├── main.qml             窗口 + 导航 + 启动屏 + 图标
 │   └── views/
 │       ├── CodexView.qml    Codex 配置页
 │       ├── ClaudeDesktopView.qml  Claude Desktop Subpage

@@ -18,7 +18,6 @@ Fluent.Card {
     signal clearApiKeyToggled(bool value)
 
     autoHeight: true
-    contentPadding: Fluent.Enums.spacing.none
 
     Column {
         id: cardColumn

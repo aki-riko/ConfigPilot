@@ -4,8 +4,6 @@ import QtQuick.Layouts
 import QtQuick.Window
 import PrismQML as Fluent
 
-import "../components"
-
 Item {
     id: root
     objectName: "codexView"
@@ -21,30 +19,6 @@ Item {
     property string fAutoCompactLimit: ""
     property string fToolOutputLimit: ""
     property string committedModel: ""
-    property int selectedSection: 0
-    readonly property bool compactNavigation: width < 840
-    readonly property var taskItems: [
-        {
-            "title": "连接认证",
-            "subtitle": "API、协议与凭据",
-            "icon": Fluent.Enums.icon.plug_connected
-        },
-        {
-            "title": "模型推理",
-            "subtitle": "模型与思考等级",
-            "icon": Fluent.Enums.icon.brain
-        },
-        {
-            "title": "上下文",
-            "subtitle": "窗口与压缩预算",
-            "icon": Fluent.Enums.icon.document
-        },
-        {
-            "title": "兼容性",
-            "subtitle": "认证映射与存储",
-            "icon": Fluent.Enums.icon.shield
-        }
-    ]
     readonly property bool configBusy: CodexConfig
                                                ? CodexConfig.operationBusy
                                                : false
@@ -239,235 +213,219 @@ Item {
         }
     }
 
-    PageHeader {
-        id: pageHeader
-
+    Fluent.ScrollArea {
+        id: scrollArea
+        objectName: "mainScrollArea"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.leftMargin: root.pagePadding
-        anchors.rightMargin: root.pagePadding
-        anchors.topMargin: Fluent.Enums.spacing.l
-        title: "Codex"
-        subtitle: "Codex CLI 配置"
-        detail: CodexConfig ? CodexConfig.configPath : ""
-        icon: Qt.resolvedUrl("../../resources/chatgpt.svg")
-        statusText: root.hasDraftChanges ? "待应用" : "已同步"
-        statusLevel: root.hasDraftChanges
-                     ? Fluent.Enums.statusLevel.warning
-                     : Fluent.Enums.statusLevel.success
-    }
-
-    TaskNavigation {
-        id: compactTaskNavigation
-
-        objectName: "codexCompactTaskNavigation"
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: pageHeader.bottom
-        anchors.leftMargin: root.pagePadding
-        anchors.rightMargin: root.pagePadding
-        anchors.topMargin: Fluent.Enums.spacing.m
-        height: implicitHeight
-        visible: root.compactNavigation
-        compact: true
-        model: root.taskItems
-        currentIndex: root.selectedSection
-        onActivated: function(index) { root.selectedSection = index }
-    }
-
-    RowLayout {
-        id: workspaceLayout
-
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: root.compactNavigation
-                     ? compactTaskNavigation.bottom
-                     : pageHeader.bottom
         anchors.bottom: actionBar.top
-        anchors.leftMargin: root.pagePadding
-        anchors.rightMargin: root.pagePadding
-        anchors.topMargin: Fluent.Enums.spacing.m
-        anchors.bottomMargin: Fluent.Enums.spacing.m
-        spacing: Fluent.Enums.spacing.m
 
-        TaskNavigation {
-            id: taskNavigation
+        Column {
+            id: pageColumn
+            objectName: "pageColumn"
+            width: parent ? parent.width : 0
+            leftPadding: root.pagePadding
+            rightPadding: root.pagePadding
+            topPadding: Fluent.Enums.spacing.xl
+            bottomPadding: Fluent.Enums.spacing.xl
+            spacing: Fluent.Enums.spacing.l
 
-            objectName: "codexTaskNavigation"
-            Layout.preferredWidth: implicitWidth
-            Layout.fillHeight: true
-            visible: !root.compactNavigation
-            compact: false
-            model: root.taskItems
-            currentIndex: root.selectedSection
-            onActivated: function(index) { root.selectedSection = index }
-        }
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-        StackLayout {
-            id: sectionStack
+            RowLayout {
+                width: pageColumn.innerWidth
+                spacing: Fluent.Enums.spacing.m
 
-            objectName: "codexSectionStack"
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            Layout.minimumWidth: 0
-            currentIndex: root.selectedSection
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Fluent.Enums.spacing.xxs
 
-            PanelScroll {
-                id: connectionPanel
-
-                objectName: "mainScrollArea"
-
-                ConnectionSection {
-                    id: connectionSection
-                    objectName: "connectionSection"
-                    width: connectionPanel.contentWidth
-                    enabled: !root.configBusy
-                    baseUrlValue: root.fBaseUrl
-                    providerValue: root.fProvider
-                    wireApiValue: root.fWireApi
-                    hasKey: CodexConfig ? CodexConfig.hasKey : false
-                    hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
-                    authSource: CodexConfig ? CodexConfig.authSource : "none"
-                    envKey: CodexConfig ? CodexConfig.envKey : ""
-                    envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
-                    authReady: CodexConfig ? CodexConfig.authReady : true
-                    configBusy: root.configBusy
-                    onBaseUrlEdited: function(value) { root.fBaseUrl = value }
-                    onProviderEdited: function(value) { root.fProvider = value }
-                    onWireApiEdited: function(value) { root.fWireApi = value }
-                    onSaveKeyRequested: function(value) {
-                        if (CodexConfig) CodexConfig.setKey(value)
+                    Text {
+                        text: "Codex"
+                        color: Fluent.Enums.textColor.primary
+                        font.pixelSize: Fluent.Enums.typography.displayLarge
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
                     }
-                    onImportAuthJsonRequested: function(value) {
-                        if (CodexConfig) CodexConfig.importAuthJson(value)
+                    Text {
+                        Layout.fillWidth: true
+                        text: "连接、模型与上下文配置"
+                        color: Fluent.Enums.textColor.secondary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.family: Fluent.Enums.fontFamily
                     }
-                    onRepairRelayAuthRequested: function(value) {
-                        if (CodexConfig) CodexConfig.repairRelayAuth(value)
+                    Text {
+                        Layout.fillWidth: true
+                        text: CodexConfig ? CodexConfig.configPath : ""
+                        color: Fluent.Enums.textColor.tertiary
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideMiddle
+                    }
+                }
+
+                Fluent.Badge {
+                    text: root.hasDraftChanges ? "待应用" : "已同步"
+                    level: root.hasDraftChanges
+                           ? Fluent.Enums.statusLevel.warning
+                           : Fluent.Enums.statusLevel.success
+                }
+            }
+
+            ConnectionSection {
+                id: connectionSection
+                objectName: "connectionSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                baseUrlValue: root.fBaseUrl
+                providerValue: root.fProvider
+                wireApiValue: root.fWireApi
+                hasKey: CodexConfig ? CodexConfig.hasKey : false
+                hasChatgptAuth: CodexConfig ? CodexConfig.hasChatgptAuth : false
+                authSource: CodexConfig ? CodexConfig.authSource : "none"
+                envKey: CodexConfig ? CodexConfig.envKey : ""
+                envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
+                authReady: CodexConfig ? CodexConfig.authReady : true
+                configBusy: root.configBusy
+                onBaseUrlEdited: function(value) { root.fBaseUrl = value }
+                onProviderEdited: function(value) { root.fProvider = value }
+                onWireApiEdited: function(value) { root.fWireApi = value }
+                onSaveKeyRequested: function(value) {
+                    if (CodexConfig) CodexConfig.setKey(value)
+                }
+                onImportAuthJsonRequested: function(value) {
+                    if (CodexConfig) CodexConfig.importAuthJson(value)
+                }
+                onRepairRelayAuthRequested: function(value) {
+                    if (CodexConfig) CodexConfig.repairRelayAuth(value)
+                }
+            }
+
+            ModelSection {
+                objectName: "modelSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                modelValue: root.fModel
+                reasoningValue: root.fReasoningEffort
+                availableModels: CodexConfig ? CodexConfig.availableModels : []
+                loading: root.modelsLoading
+                onModelTextEdited: function(value) { root.fModel = value }
+                onModelCommitted: function(value) { root.commitTypedModel(value) }
+                onModelSelected: function(value) { root.selectModel(value) }
+                onEffortSelected: function(value) {
+                    root.fReasoningEffort = value
+                }
+                onFetchRequested: {
+                    if (CodexConfig) {
+                        CodexConfig.fetchModels(
+                            root.fBaseUrl, connectionSection.keyDraft
+                        )
                     }
                 }
             }
 
-            PanelScroll {
-                id: modelPanel
+            ContextSection {
+                objectName: "contextSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                currentPreset: root.currentContextPreset
+                contextWindowValue: root.fContextWindow
+                autoCompactValue: root.fAutoCompactLimit
+                toolOutputValue: root.fToolOutputLimit
+                compactRatio: root.compactRatio
+                compactRatioText: root.compactRatioLabel()
+                onPresetRequested: root.useStableContextPreset()
+                onContextWindowEdited: function(value) {
+                    root.fContextWindow = value
+                }
+                onAutoCompactEdited: function(value) {
+                    root.fAutoCompactLimit = value
+                }
+                onToolOutputEdited: function(value) {
+                    root.fToolOutputLimit = value
+                }
+                onClearRequested: root.clearContext()
+            }
 
-                ModelSection {
-                    objectName: "modelSection"
-                    width: modelPanel.contentWidth
-                    enabled: !root.configBusy
-                    modelValue: root.fModel
-                    reasoningValue: root.fReasoningEffort
-                    availableModels: CodexConfig ? CodexConfig.availableModels : []
-                    loading: root.modelsLoading
-                    onModelTextEdited: function(value) { root.fModel = value }
-                    onModelCommitted: function(value) {
-                        root.commitTypedModel(value)
-                    }
-                    onModelSelected: function(value) { root.selectModel(value) }
-                    onEffortSelected: function(value) {
-                        root.fReasoningEffort = value
-                    }
-                    onFetchRequested: {
-                        if (CodexConfig) {
-                            CodexConfig.fetchModels(
-                                root.fBaseUrl, connectionSection.keyDraft
-                            )
-                        }
-                    }
+            AdvancedSection {
+                objectName: "advancedSection"
+                width: pageColumn.innerWidth
+                enabled: !root.configBusy
+                requiresAuthValue: root.fRequiresAuth
+                disableStorageValue: root.fDisableStorage
+                onRequiresAuthToggled: function(value) {
+                    root.fRequiresAuth = value
+                }
+                onDisableStorageToggled: function(value) {
+                    root.fDisableStorage = value
                 }
             }
 
-            PanelScroll {
-                id: contextPanel
-
-                ContextSection {
-                    objectName: "contextSection"
-                    width: contextPanel.contentWidth
-                    enabled: !root.configBusy
-                    currentPreset: root.currentContextPreset
-                    contextWindowValue: root.fContextWindow
-                    autoCompactValue: root.fAutoCompactLimit
-                    toolOutputValue: root.fToolOutputLimit
-                    compactRatio: root.compactRatio
-                    compactRatioText: root.compactRatioLabel()
-                    onPresetRequested: root.useStableContextPreset()
-                    onContextWindowEdited: function(value) {
-                        root.fContextWindow = value
-                    }
-                    onAutoCompactEdited: function(value) {
-                        root.fAutoCompactLimit = value
-                    }
-                    onToolOutputEdited: function(value) {
-                        root.fToolOutputLimit = value
-                    }
-                    onClearRequested: root.clearContext()
-                }
-            }
-
-            PanelScroll {
-                id: advancedPanel
-
-                AdvancedSection {
-                    objectName: "advancedSection"
-                    width: advancedPanel.contentWidth
-                    enabled: !root.configBusy
-                    requiresAuthValue: root.fRequiresAuth
-                    disableStorageValue: root.fDisableStorage
-                    onRequiresAuthToggled: function(value) {
-                        root.fRequiresAuth = value
-                    }
-                    onDisableStorageToggled: function(value) {
-                        root.fDisableStorage = value
-                    }
-                }
+            Item {
+                width: 1
+                height: Fluent.Enums.spacing.xl
             }
         }
     }
 
-    PageActionBar {
+    Rectangle {
         id: actionBar
-
-        objectName: "codexActionBar"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: implicitHeight
-        horizontalPadding: root.pagePadding
-        statusText: root.hasDraftChanges
-                    ? "有未应用的配置更改"
-                    : "当前界面已与 config.toml 同步"
-        statusColor: root.hasDraftChanges
-                     ? Fluent.Enums.statusLevel.warningColor
-                     : Fluent.Enums.textColor.tertiary
+        height: 72
+        color: Fluent.Enums.stateColor.controlBg
+        border.width: Fluent.Enums.border.thin
+        border.color: Fluent.Enums.stateColor.borderLight
         z: 10
 
-        Fluent.Button {
-            objectName: "restoreInitialButton"
-            style: Fluent.Enums.button.style_default
-            icon: Fluent.Enums.icon.arrow_reset
-            text: "恢复初始设置"
-            enabled: !root.configBusy
-                     && CodexConfig
-                     && CodexConfig.hasRestorableChanges
-            onClicked: restoreInitialDialog.open()
-        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: root.pagePadding
+            anchors.rightMargin: root.pagePadding
+            spacing: Fluent.Enums.spacing.m
 
-        Fluent.Button {
-            style: Fluent.Enums.button.style_default
-            icon: Fluent.Enums.icon.arrow_sync
-            text: "重新读取"
-            enabled: !root.configBusy
-            onClicked: if (CodexConfig) CodexConfig.reload()
-        }
+            Text {
+                Layout.fillWidth: true
+                text: root.hasDraftChanges
+                      ? "有未应用的配置更改"
+                      : "当前界面已与 config.toml 同步"
+                color: root.hasDraftChanges
+                       ? Fluent.Enums.statusLevel.warningColor
+                       : Fluent.Enums.textColor.tertiary
+                font.pixelSize: Fluent.Enums.typography.caption
+                font.family: Fluent.Enums.fontFamily
+                elide: Text.ElideRight
+            }
 
-        Fluent.Button {
-            style: Fluent.Enums.button.style_primary
-            icon: Fluent.Enums.icon.save
-            text: root.configBusy ? "处理中..." : "应用更改"
-            enabled: !root.configBusy
-                     && root.hasDraftChanges
-                     && root.fBaseUrl.trim().length > 0
-            onClicked: root.applyDraft()
+            Fluent.Button {
+                objectName: "restoreInitialButton"
+                style: Fluent.Enums.button.style_default
+                text: "恢复初始设置"
+                enabled: !root.configBusy
+                         && CodexConfig
+                         && CodexConfig.hasRestorableChanges
+                onClicked: restoreInitialDialog.open()
+            }
+
+            Fluent.Button {
+                style: Fluent.Enums.button.style_default
+                text: "重新读取"
+                enabled: !root.configBusy
+                onClicked: if (CodexConfig) CodexConfig.reload()
+            }
+
+            Fluent.Button {
+                style: Fluent.Enums.button.style_primary
+                text: root.configBusy ? "处理中..." : "应用更改"
+                enabled: !root.configBusy
+                         && root.hasDraftChanges
+                         && root.fBaseUrl.trim().length > 0
+                onClicked: root.applyDraft()
+            }
         }
     }
 }

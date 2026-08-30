@@ -39,7 +39,6 @@ Fluent.Card {
     }
 
     autoHeight: true
-    contentPadding: Fluent.Enums.spacing.none
 
     Column {
         id: cardColumn
@@ -266,7 +265,6 @@ Fluent.Card {
                 Fluent.Button {
                     Layout.fillWidth: keyGrid.columns === 1
                     style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.key
                     text: "保存密钥"
                     enabled: !root.configBusy && keyInput.text.trim().length > 0
                     onClicked: root.commitKey()
@@ -277,7 +275,6 @@ Fluent.Card {
                 objectName: "repairRelayAuthButton"
                 width: parent.width
                 style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.wrench
                 text: root.configBusy
                       ? "处理中..."
                       : "修复中转站 401"
@@ -329,7 +326,6 @@ Fluent.Card {
                     objectName: "authJsonImportButton"
                     Layout.fillWidth: true
                     style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.arrow_import
                     text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
                     enabled: !root.configBusy
                              && authJsonInput.text.trim().length > 0

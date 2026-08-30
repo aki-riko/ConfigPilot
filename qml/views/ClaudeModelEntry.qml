@@ -51,7 +51,11 @@ Rectangle {
             }
             Fluent.Button {
                 objectName: "claudeRemoveModelButton" + root.indexValue
+                Layout.minimumWidth: 92
+                Layout.preferredWidth: 92
+                Layout.maximumWidth: 92
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.icon_delete
                 text: "移除"
                 onClicked: root.removeRequested()
             }

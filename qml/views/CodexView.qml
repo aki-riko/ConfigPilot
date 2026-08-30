@@ -29,6 +29,10 @@ Item {
     readonly property int pagePadding: width < 720
                                        ? Fluent.Enums.spacing.l
                                        : Fluent.Enums.spacing.xl
+    readonly property int contentMaxWidth: 1180
+    readonly property real contentInset: Math.max(
+        pagePadding, (width - contentMaxWidth) / 2
+    )
     readonly property int profilesRevision: CodexConfig
                                             ? CodexConfig.profilesRevision
                                             : 0
@@ -216,24 +220,37 @@ Item {
     Fluent.ScrollArea {
         id: scrollArea
         objectName: "mainScrollArea"
+        padding: Fluent.Enums.spacing.none
+        orientation: Qt.Vertical
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: actionBar.top
 
-        Column {
-            id: pageColumn
-            objectName: "pageColumn"
-            width: parent ? parent.width : 0
-            leftPadding: root.pagePadding
-            rightPadding: root.pagePadding
-            topPadding: Fluent.Enums.spacing.xl
-            bottomPadding: Fluent.Enums.spacing.xl
-            spacing: Fluent.Enums.spacing.l
-
-            readonly property real innerWidth: Math.max(
-                0, width - leftPadding - rightPadding
+        Item {
+            id: pageFrame
+            width: Math.min(
+                parent ? parent.width : 0, root.contentMaxWidth
             )
+            x: Math.max(
+                0, ((parent ? parent.width : 0) - width) / 2
+            )
+            implicitHeight: pageColumn.implicitHeight
+            height: pageColumn.implicitHeight
+
+            Column {
+                id: pageColumn
+                objectName: "pageColumn"
+                width: pageFrame.width
+                leftPadding: root.pagePadding
+                rightPadding: root.pagePadding
+                topPadding: Fluent.Enums.spacing.l
+                bottomPadding: Fluent.Enums.spacing.l
+                spacing: Fluent.Enums.spacing.l
+
+                readonly property real innerWidth: Math.max(
+                    0, width - leftPadding - rightPadding
+                )
 
             RowLayout {
                 width: pageColumn.innerWidth
@@ -246,7 +263,7 @@ Item {
                     Text {
                         text: "Codex"
                         color: Fluent.Enums.textColor.primary
-                        font.pixelSize: Fluent.Enums.typography.displayLarge
+                        font.pixelSize: Fluent.Enums.typography.display
                         font.bold: true
                         font.family: Fluent.Enums.fontFamily
                     }
@@ -254,8 +271,9 @@ Item {
                         Layout.fillWidth: true
                         text: "连接、模型与上下文配置"
                         color: Fluent.Enums.textColor.secondary
-                        font.pixelSize: Fluent.Enums.typography.body
+                        font.pixelSize: Fluent.Enums.typography.bodySmall
                         font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideRight
                     }
                     Text {
                         Layout.fillWidth: true
@@ -273,6 +291,12 @@ Item {
                            ? Fluent.Enums.statusLevel.warning
                            : Fluent.Enums.statusLevel.success
                 }
+            }
+
+            Rectangle {
+                width: pageColumn.innerWidth
+                height: Fluent.Enums.border.thin
+                color: Fluent.Enums.stateColor.borderLight
             }
 
             ConnectionSection {
@@ -368,6 +392,7 @@ Item {
                 width: 1
                 height: Fluent.Enums.spacing.xl
             }
+            }
         }
     }
 
@@ -376,7 +401,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        height: 72
+        height: root.controlHeight + 2 * Fluent.Enums.spacing.l
         color: Fluent.Enums.stateColor.controlBg
         border.width: Fluent.Enums.border.thin
         border.color: Fluent.Enums.stateColor.borderLight
@@ -384,12 +409,13 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: root.pagePadding
-            anchors.rightMargin: root.pagePadding
+            anchors.leftMargin: root.contentInset
+            anchors.rightMargin: root.contentInset
             spacing: Fluent.Enums.spacing.m
 
             Text {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: root.hasDraftChanges
                       ? "有未应用的配置更改"
                       : "当前界面已与 config.toml 同步"
@@ -403,7 +429,11 @@ Item {
 
             Fluent.Button {
                 objectName: "restoreInitialButton"
+                Layout.minimumWidth: 136
+                Layout.preferredWidth: 136
+                Layout.maximumWidth: 136
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.arrow_reset
                 text: "恢复初始设置"
                 enabled: !root.configBusy
                          && CodexConfig
@@ -412,14 +442,22 @@ Item {
             }
 
             Fluent.Button {
+                Layout.minimumWidth: 104
+                Layout.preferredWidth: 104
+                Layout.maximumWidth: 104
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.arrow_sync
                 text: "重新读取"
                 enabled: !root.configBusy
                 onClicked: if (CodexConfig) CodexConfig.reload()
             }
 
             Fluent.Button {
+                Layout.minimumWidth: 128
+                Layout.preferredWidth: 128
+                Layout.maximumWidth: 128
                 style: Fluent.Enums.button.style_primary
+                icon: Fluent.Enums.icon.save
                 text: root.configBusy ? "处理中..." : "应用更改"
                 enabled: !root.configBusy
                          && root.hasDraftChanges

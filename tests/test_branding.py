@@ -201,6 +201,43 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("connectionSection.keyDraft.trim()", view)
         self.assertIn("CodexConfig.setKey(key)", view)
 
+    def test_all_pages_use_constrained_content_and_compact_actions(self):
+        codex = self.read("qml/views/CodexView.qml")
+        claude = self.read("qml/views/ClaudeDesktopView.qml")
+        about = self.read("qml/views/AboutView.qml")
+        connection = self.read("qml/views/ConnectionSection.qml")
+        model = self.read("qml/views/ModelSection.qml")
+        context = self.read("qml/views/ContextSection.qml")
+        status = self.read("qml/views/ClaudeStatusSection.qml")
+
+        for page in (codex, claude, about):
+            self.assertIn("contentMaxWidth", page)
+            self.assertIn("padding: Fluent.Enums.spacing.none", page)
+            self.assertIn("orientation: Qt.Vertical", page)
+            self.assertIn("font.pixelSize: Fluent.Enums.typography.display", page)
+
+        for content in (codex, claude):
+            self.assertIn("Math.min(", content)
+            self.assertIn("implicitHeight: pageColumn.implicitHeight", content)
+
+        for content, width in (
+            (codex, "Layout.maximumWidth: 128"),
+            (claude, "Layout.maximumWidth: 220"),
+            (connection, "Layout.maximumWidth: 156"),
+            (model, "Layout.maximumWidth: 112"),
+            (context, "Layout.maximumWidth: 152"),
+            (status, "Layout.maximumWidth: 220"),
+        ):
+            self.assertIn(width, content)
+
+        self.assertIn('icon: Fluent.Enums.icon.save', codex)
+        self.assertIn('icon: Fluent.Enums.icon.arrow_import', connection)
+        self.assertIn('icon: Fluent.Enums.icon.copy', status)
+        self.assertNotIn(
+            'objectName: "repairRelayAuthButton"\n                width: parent.width',
+            connection,
+        )
+
     def test_latest_prismqml_engine_is_pinned(self):
         requirements = self.read("requirements.txt")
         about = self.read("qml/views/AboutView.qml")

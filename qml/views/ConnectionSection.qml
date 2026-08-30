@@ -44,10 +44,10 @@ Fluent.Card {
         id: cardColumn
         objectName: "connectionCardColumn"
         width: parent ? parent.width : 0
-        leftPadding: Fluent.Enums.spacing.xl
-        rightPadding: Fluent.Enums.spacing.xl
-        topPadding: Fluent.Enums.spacing.xl
-        bottomPadding: Fluent.Enums.spacing.xl
+        leftPadding: Fluent.Enums.spacing.l
+        rightPadding: Fluent.Enums.spacing.l
+        topPadding: Fluent.Enums.spacing.l
+        bottomPadding: Fluent.Enums.spacing.l
         spacing: Fluent.Enums.spacing.l
 
         readonly property real innerWidth: Math.max(
@@ -263,23 +263,46 @@ Fluent.Card {
                     onEditingFinished: root.commitKey()
                 }
                 Fluent.Button {
-                    Layout.fillWidth: keyGrid.columns === 1
+                    Layout.minimumWidth: 112
+                    Layout.preferredWidth: 112
+                    Layout.maximumWidth: 112
+                    Layout.alignment: Qt.AlignLeft
                     style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.save
                     text: "保存密钥"
                     enabled: !root.configBusy && keyInput.text.trim().length > 0
                     onClicked: root.commitKey()
                 }
             }
 
-            Fluent.Button {
-                objectName: "repairRelayAuthButton"
+            RowLayout {
                 width: parent.width
-                style: Fluent.Enums.button.style_default
-                text: root.configBusy
-                      ? "处理中..."
-                      : "修复中转站 401"
-                enabled: !root.configBusy
-                onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
+                spacing: Fluent.Enums.spacing.m
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "使用当前输入的密钥修复中转站认证"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+
+                Fluent.Button {
+                    objectName: "repairRelayAuthButton"
+                    Layout.minimumWidth: 156
+                    Layout.preferredWidth: 156
+                    Layout.maximumWidth: 156
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.wrench
+                    text: root.configBusy
+                          ? "处理中..."
+                          : "修复中转站 401"
+                    enabled: !root.configBusy
+                    onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
+                }
             }
         }
 
@@ -324,8 +347,12 @@ Fluent.Card {
                 }
                 Fluent.Button {
                     objectName: "authJsonImportButton"
-                    Layout.fillWidth: true
+                    Layout.minimumWidth: 180
+                    Layout.preferredWidth: 180
+                    Layout.maximumWidth: 180
+                    Layout.alignment: Qt.AlignLeft
                     style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.arrow_import
                     text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
                     enabled: !root.configBusy
                              && authJsonInput.text.trim().length > 0

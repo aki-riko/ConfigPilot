@@ -223,7 +223,11 @@ Fluent.Expander {
             }
             Fluent.Button {
                 objectName: "claudeAddModelButton"
+                Layout.minimumWidth: 112
+                Layout.preferredWidth: 112
+                Layout.maximumWidth: 112
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.add
                 text: "添加模型"
                 onClicked: root.addModel()
             }

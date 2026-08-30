@@ -21,10 +21,10 @@ Fluent.Card {
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
-        leftPadding: Fluent.Enums.spacing.xl
-        rightPadding: Fluent.Enums.spacing.xl
-        topPadding: Fluent.Enums.spacing.xl
-        bottomPadding: Fluent.Enums.spacing.xl
+        leftPadding: Fluent.Enums.spacing.l
+        rightPadding: Fluent.Enums.spacing.l
+        topPadding: Fluent.Enums.spacing.l
+        bottomPadding: Fluent.Enums.spacing.l
         spacing: Fluent.Enums.spacing.l
 
         readonly property real innerWidth: Math.max(
@@ -154,8 +154,12 @@ Fluent.Card {
                         }
                     }
                     Fluent.Button {
-                        Layout.fillWidth: pickerGrid.columns === 1
+                        Layout.minimumWidth: 112
+                        Layout.preferredWidth: 112
+                        Layout.maximumWidth: 112
+                        Layout.alignment: Qt.AlignLeft
                         style: Fluent.Enums.button.style_default
+                        icon: Fluent.Enums.icon.arrow_sync
                         text: root.loading ? "获取中..." : "获取模型"
                         enabled: !root.loading
                         onClicked: root.fetchRequested()

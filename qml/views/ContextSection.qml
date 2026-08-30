@@ -23,10 +23,10 @@ Fluent.Card {
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
-        leftPadding: Fluent.Enums.spacing.xl
-        rightPadding: Fluent.Enums.spacing.xl
-        topPadding: Fluent.Enums.spacing.xl
-        bottomPadding: Fluent.Enums.spacing.xl
+        leftPadding: Fluent.Enums.spacing.l
+        rightPadding: Fluent.Enums.spacing.l
+        topPadding: Fluent.Enums.spacing.l
+        bottomPadding: Fluent.Enums.spacing.l
         spacing: Fluent.Enums.spacing.l
 
         readonly property real innerWidth: Math.max(
@@ -71,13 +71,23 @@ Fluent.Card {
             spacing: Fluent.Enums.spacing.m
 
             Fluent.Button {
+                width: 152
+                Layout.minimumWidth: 152
+                Layout.preferredWidth: 152
+                Layout.maximumWidth: 152
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.checkmark
                 text: "套用稳定上下文"
                 enabled: root.currentPreset.contextWindow > 0
                 onClicked: root.presetRequested()
             }
             Fluent.Button {
+                width: 128
+                Layout.minimumWidth: 128
+                Layout.preferredWidth: 128
+                Layout.maximumWidth: 128
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.icon_delete
                 text: "清空自定义值"
                 onClicked: root.clearRequested()
             }

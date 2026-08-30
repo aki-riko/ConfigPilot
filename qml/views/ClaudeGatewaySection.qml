@@ -57,15 +57,12 @@ Fluent.Card {
                 }
             }
 
-            Text {
+            Fluent.Badge {
                 Layout.alignment: Qt.AlignVCenter
                 text: root.hasApiKey ? "已保存密钥" : "尚未保存密钥"
-                color: root.hasApiKey
-                       ? Fluent.Enums.statusLevel.successColor
-                       : Fluent.Enums.statusLevel.warningColor
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
+                level: root.hasApiKey
+                       ? Fluent.Enums.statusLevel.success
+                       : Fluent.Enums.statusLevel.attention
             }
         }
 

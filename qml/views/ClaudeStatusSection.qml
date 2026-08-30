@@ -44,6 +44,46 @@ Fluent.Card {
             0, width - leftPadding - rightPadding
         )
 
+        RowLayout {
+            width: cardColumn.innerWidth
+            spacing: Fluent.Enums.spacing.m
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    text: "应用状态"
+                    color: Fluent.Enums.textColor.primary
+                    font.pixelSize: Fluent.Enums.typography.subtitle
+                    font.bold: true
+                    font.family: Fluent.Enums.fontFamily
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "安装 Claude Desktop，启用运行模式并管理配置档案"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+            }
+
+            Fluent.Badge {
+                text: root.installed ? "已安装" : "未安装"
+                level: root.installed
+                       ? Fluent.Enums.statusLevel.success
+                       : Fluent.Enums.statusLevel.attention
+            }
+        }
+
+        Rectangle {
+            width: cardColumn.innerWidth
+            height: Fluent.Enums.border.thin
+            color: Fluent.Enums.stateColor.borderLight
+        }
+
         GridLayout {
             id: summaryLayout
             width: cardColumn.innerWidth
@@ -66,7 +106,7 @@ Fluent.Card {
                 }
                 Fluent.Badge {
                     text: root.installed ? "已安装" : "未检测到安装"
-                    visible: root.installed
+                    visible: false
                     level: root.installed
                            ? Fluent.Enums.statusLevel.success
                            : Fluent.Enums.statusLevel.warning
@@ -77,10 +117,13 @@ Fluent.Card {
 
                     Fluent.Button {
                         objectName: "claudeInstallDropdown"
-                        Layout.fillWidth: true
+                        Layout.minimumWidth: 180
+                        Layout.preferredWidth: 180
+                        Layout.maximumWidth: 180
                         enabled: !root.installBusy
                         style: Fluent.Enums.button.style_default
                         feature: Fluent.Enums.button.feature_dropdown
+                        icon: Fluent.Enums.icon.arrow_download
                         text: root.installed ? "安装/更新" : "获取 Claude"
                         menuItems: root.installOptions
                         onMenuItemClicked: function(index, text) {
@@ -91,9 +134,13 @@ Fluent.Card {
                     }
 
                     Fluent.Button {
+                        Layout.minimumWidth: 72
+                        Layout.preferredWidth: 72
+                        Layout.maximumWidth: 72
                         visible: root.installBusy
                         enabled: root.installCancelable
                         style: Fluent.Enums.button.style_default
+                        icon: Fluent.Enums.icon.dismiss
                         text: "取消"
                         onClicked: root.cancelInstallRequested()
                     }
@@ -266,14 +313,45 @@ Fluent.Card {
 
         }
 
-        Fluent.Button {
-            objectName: "claudeCloneProfileButton"
+        RowLayout {
             width: cardColumn.innerWidth
             visible: root.canImportActiveProfile
-            enabled: !root.configBusy && !root.installBusy
-            style: Fluent.Enums.button.style_default
-            text: "复制当前档案为 ConfigPilot"
-            onClicked: root.cloneActiveProfileRequested()
+            spacing: Fluent.Enums.spacing.m
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    text: "导入当前 Claude 档案"
+                    color: Fluent.Enums.textColor.secondary
+                    font.pixelSize: Fluent.Enums.typography.body
+                    font.bold: true
+                    font.family: Fluent.Enums.fontFamily
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: "复制为独立的 ConfigPilot 档案，不修改当前档案"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+            }
+
+            Fluent.Button {
+                objectName: "claudeCloneProfileButton"
+                Layout.minimumWidth: 220
+                Layout.preferredWidth: 220
+                Layout.maximumWidth: 220
+                Layout.alignment: Qt.AlignVCenter
+                enabled: !root.configBusy && !root.installBusy
+                style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.copy
+                text: "复制当前档案为 ConfigPilot"
+                onClicked: root.cloneActiveProfileRequested()
+            }
         }
     }
 }

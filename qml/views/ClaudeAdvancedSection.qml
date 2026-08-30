@@ -2,7 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Expander {
+pragma ComponentBehavior: Bound
+
+Item {
     id: root
 
     property string modelsJsonValue: "[]"
@@ -18,10 +20,6 @@ Fluent.Expander {
     signal modelPrefer1mContextStateSelected(string value)
     signal headersEdited(string value)
     signal clearHeadersToggled(bool value)
-
-    title: "模型与请求头"
-    content: "模型发现、模型展示、1M 上下文和额外请求头"
-    expanded: false
 
     readonly property var stateOptions: [
         { "text": "自动", "value": "auto" },
@@ -43,6 +41,7 @@ Fluent.Expander {
             var value = JSON.parse(root.modelsJsonValue || "[]")
             if (Array.isArray(value)) parsed = value
         } catch (error) {
+            console.warn("无法解析 Claude 模型配置:", error)
             parsed = []
         }
         root.modelEntries = parsed.map(function(item) {
@@ -102,6 +101,8 @@ Fluent.Expander {
         return stateIndex(root.tierOptions, value || "")
     }
 
+    implicitHeight: contentColumn.implicitHeight
+
     Component.onCompleted: syncModels()
     onModelsJsonValueChanged: syncModels()
 
@@ -109,6 +110,32 @@ Fluent.Expander {
         id: contentColumn
         width: parent ? parent.width : 0
         spacing: Fluent.Enums.spacing.l
+
+        Column {
+            width: parent.width
+            spacing: Fluent.Enums.spacing.xxs
+
+            Text {
+                text: "模型与请求头"
+                color: Fluent.Enums.textColor.primary
+                font.pixelSize: Fluent.Enums.typography.subtitle
+                font.bold: true
+                font.family: Fluent.Enums.fontFamily
+            }
+
+            Text {
+                width: parent.width
+                text: "模型发现、固定模型、1M 上下文与额外请求头"
+                color: Fluent.Enums.textColor.tertiary
+                font.pixelSize: Fluent.Enums.typography.caption
+                font.family: Fluent.Enums.fontFamily
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        Fluent.Separator {
+            width: parent.width
+        }
 
         GridLayout {
             id: behaviorGrid
@@ -224,6 +251,7 @@ Fluent.Expander {
             Fluent.Button {
                 objectName: "claudeAddModelButton"
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.add
                 text: "添加模型"
                 onClicked: root.addModel()
             }

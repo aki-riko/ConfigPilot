@@ -1,18 +1,26 @@
-// 帮助页
+// 帮助与版本页
 import QtQuick
+import QtQuick.Layouts
 import PrismQML as Fluent
+
+import "../components"
 
 Item {
     id: root
 
-    // 帮助页复用引擎 updater，由 PrismQML AutoUpdater 负责反馈、下载与安装。
+    readonly property int pagePadding: width < 720
+                                       ? Fluent.Enums.spacing.l
+                                       : Fluent.Enums.spacing.xl
+
     Component {
         id: progressPresenter
+
         Fluent.AutoUpdaterProgressDialogPresenter {}
     }
 
     Fluent.AutoUpdater {
         id: autoUpdater
+
         updater: appUpdater
         autoDownload: true
         silentArgs: AppInstallerSilentArgs
@@ -20,85 +28,288 @@ Item {
         feedbackPresenter: progressPresenter
     }
 
+    PageHeader {
+        id: pageHeader
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.leftMargin: root.pagePadding
+        anchors.rightMargin: root.pagePadding
+        anchors.topMargin: Fluent.Enums.spacing.l
+        title: "ConfigPilot"
+        subtitle: "帮助与版本信息"
+        detail: "基于 PrismQML " + PrismQMLVersion + " · MIT"
+        icon: Qt.resolvedUrl("../../resources/app_icon_ai.svg")
+        iconThemeAware: false
+        statusText: "版本 " + AppVersion
+        statusLevel: Fluent.Enums.statusLevel.info
+    }
+
     Fluent.ScrollArea {
-        anchors.fill: parent
+        id: scrollArea
+
+        objectName: "aboutScrollArea"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: pageHeader.bottom
+        anchors.bottom: actionBar.top
+        anchors.topMargin: Fluent.Enums.spacing.m
 
         Column {
+            id: contentColumn
+
             width: parent ? parent.width : 0
-            spacing: Fluent.Enums.spacing.l
-            topPadding: Fluent.Enums.spacing.l
-            bottomPadding: Fluent.Enums.spacing.xxxl
+            leftPadding: root.pagePadding
+            rightPadding: root.pagePadding
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.m
 
-            Text {
-                text: "帮助"
-                font.pixelSize: Fluent.Enums.typography.displayLarge
-                font.bold: true
-                color: Fluent.Enums.textColor.primary
-                font.family: Fluent.Enums.fontFamily
-            }
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-            Fluent.Card {
-                width: parent ? parent.width : 0
-                autoHeight: true
-                Column {
-                    width: parent ? parent.width : 0
-                    leftPadding: Fluent.Enums.spacing.l
-                    rightPadding: Fluent.Enums.spacing.l
-                    topPadding: Fluent.Enums.spacing.l
-                    bottomPadding: Fluent.Enums.spacing.l
-                    spacing: Fluent.Enums.spacing.m
-                    Text {
-                        text: "ConfigPilot 做什么"
-                        font.pixelSize: Fluent.Enums.typography.subtitle
-                        font.bold: true
-                        color: Fluent.Enums.textColor.primary
-                        font.family: Fluent.Enums.fontFamily
+            GridLayout {
+                id: productGrid
+
+                width: contentColumn.innerWidth
+                columns: width < 700 ? 1 : 2
+                uniformCellWidths: columns === 2
+                columnSpacing: Fluent.Enums.spacing.m
+                rowSpacing: Fluent.Enums.spacing.m
+
+                Fluent.Card {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    autoHeight: true
+
+                    Column {
+                        width: parent ? parent.width : 0
+                        spacing: Fluent.Enums.spacing.m
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: Fluent.Enums.spacing.s
+
+                            Fluent.Icon {
+                                Layout.preferredWidth: 24
+                                Layout.preferredHeight: 24
+                                icon: Qt.resolvedUrl("../../resources/chatgpt.svg")
+                                iconSize: 24
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Codex CLI"
+                                color: Fluent.Enums.textColor.primary
+                                font.pixelSize: Fluent.Enums.typography.subtitle
+                                font.bold: true
+                                font.family: Fluent.Enums.fontFamily
+                            }
+
+                            Fluent.Badge {
+                                text: "config.toml"
+                                level: Fluent.Enums.statusLevel.info
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: "连接与认证\n模型与思考等级\n上下文与自动压缩\n兼容性与响应存储"
+                            color: Fluent.Enums.textColor.secondary
+                            font.pixelSize: Fluent.Enums.typography.bodySmall
+                            font.family: Fluent.Enums.fontFamily
+                            lineHeight: 1.5
+                            wrapMode: Text.WordWrap
+                        }
                     }
-                    Text {
-                        text: "ConfigPilot 是 AI 工具配置与自动化中心。当前版本同时管理 Codex CLI 与 Claude Desktop 的第三方连接。\n\n• Codex：管理连接、模型、推理和上下文配置\n• Codex：套用统一的 GPT-5.5 稳定上下文并获取模型列表\n• Claude Desktop：一键启用 Developer Mode 与 Third-Party Inference\n• Claude Desktop：配置 Gateway endpoint、认证方式、模型和额外 Header\n• 敏感字段留空默认保留，写入前自动创建 .bak\n• 改完后必须完全退出并重新打开对应应用"
-                        font.pixelSize: Fluent.Enums.typography.body
-                        color: Fluent.Enums.textColor.secondary
-                        font.family: Fluent.Enums.fontFamily
-                        wrapMode: Text.WordWrap
-                        width: parent ? parent.width - Fluent.Enums.spacing.l * 2 : 0
+                }
+
+                Fluent.Card {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
+                    autoHeight: true
+
+                    Column {
+                        width: parent ? parent.width : 0
+                        spacing: Fluent.Enums.spacing.m
+
+                        RowLayout {
+                            width: parent.width
+                            spacing: Fluent.Enums.spacing.s
+
+                            Image {
+                                Layout.preferredWidth: 24
+                                Layout.preferredHeight: 24
+                                source: Qt.resolvedUrl("../../resources/claude.svg")
+                                sourceSize.width: width
+                                sourceSize.height: height
+                                fillMode: Image.PreserveAspectFit
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Claude Desktop"
+                                color: Fluent.Enums.textColor.primary
+                                font.pixelSize: Fluent.Enums.typography.subtitle
+                                font.bold: true
+                                font.family: Fluent.Enums.fontFamily
+                            }
+
+                            Fluent.Badge {
+                                text: "Third-Party"
+                                level: Fluent.Enums.statusLevel.attention
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            text: "Developer Mode\n第三方推理网关\n模型发现与 1M 上下文\n认证密钥与额外请求头"
+                            color: Fluent.Enums.textColor.secondary
+                            font.pixelSize: Fluent.Enums.typography.bodySmall
+                            font.family: Fluent.Enums.fontFamily
+                            lineHeight: 1.5
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }
 
             Fluent.Card {
-                width: parent ? parent.width : 0
+                width: contentColumn.innerWidth
                 autoHeight: true
+
                 Column {
                     width: parent ? parent.width : 0
-                    leftPadding: Fluent.Enums.spacing.l
-                    rightPadding: Fluent.Enums.spacing.l
-                    topPadding: Fluent.Enums.spacing.l
-                    bottomPadding: Fluent.Enums.spacing.l
-                    spacing: Fluent.Enums.spacing.s
+                    spacing: Fluent.Enums.spacing.l
+
                     Text {
-                        text: "ConfigPilot"
+                        text: "写入与恢复"
+                        color: Fluent.Enums.textColor.primary
                         font.pixelSize: Fluent.Enums.typography.subtitle
                         font.bold: true
-                        color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
                     }
-                    Text {
-                        text: "AI 工具配置与自动化中心\nConfigPilot "
-                            + AppVersion + "\n基于 PrismQML (prismqml "
-                            + PrismQMLVersion + ") · MIT"
-                        font.pixelSize: Fluent.Enums.typography.body
-                        color: Fluent.Enums.textColor.secondary
-                        font.family: Fluent.Enums.fontFamily
+
+                    Fluent.Separator {
+                        width: parent.width
                     }
-                    Fluent.Button {
-                        style: Fluent.Enums.button.style_default
-                        text: autoUpdater.feedbackModel.checking
-                            ? "正在检查..." : "检查更新"
-                        enabled: !autoUpdater.feedbackModel.checking
-                        onClicked: autoUpdater.check()
+
+                    GridLayout {
+                        width: parent.width
+                        columns: width < 640 ? 1 : 3
+                        uniformCellWidths: columns === 3
+                        columnSpacing: Fluent.Enums.spacing.l
+                        rowSpacing: Fluent.Enums.spacing.l
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: Fluent.Enums.spacing.xs
+
+                            Fluent.Icon {
+                                icon: Fluent.Enums.icon.save_copy
+                                iconSize: Fluent.Enums.iconSize.m
+                                color: Fluent.Enums.accentColor
+                            }
+                            Text {
+                                text: "自动备份"
+                                color: Fluent.Enums.textColor.primary
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                                font.bold: true
+                                font.family: Fluent.Enums.fontFamily
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "写入前创建 .bak，原文件保持可回退。"
+                                color: Fluent.Enums.textColor.tertiary
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                font.family: Fluent.Enums.fontFamily
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: Fluent.Enums.spacing.xs
+
+                            Fluent.Icon {
+                                icon: Fluent.Enums.icon.lock_closed_key
+                                iconSize: Fluent.Enums.iconSize.m
+                                color: Fluent.Enums.accentColor
+                            }
+                            Text {
+                                text: "敏感字段"
+                                color: Fluent.Enums.textColor.primary
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                                font.bold: true
+                                font.family: Fluent.Enums.fontFamily
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "密钥留空时保留现有值，不在界面回显。"
+                                color: Fluent.Enums.textColor.tertiary
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                font.family: Fluent.Enums.fontFamily
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            spacing: Fluent.Enums.spacing.xs
+
+                            Fluent.Icon {
+                                icon: Fluent.Enums.icon.arrow_sync
+                                iconSize: Fluent.Enums.iconSize.m
+                                color: Fluent.Enums.accentColor
+                            }
+                            Text {
+                                text: "完全重启"
+                                color: Fluent.Enums.textColor.primary
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                                font.bold: true
+                                font.family: Fluent.Enums.fontFamily
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "应用后完全退出并重开对应工具。"
+                                color: Fluent.Enums.textColor.tertiary
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                font.family: Fluent.Enums.fontFamily
+                                wrapMode: Text.WordWrap
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    PageActionBar {
+        id: actionBar
+
+        objectName: "aboutActionBar"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: implicitHeight
+        horizontalPadding: root.pagePadding
+        statusText: "ConfigPilot " + AppVersion + " · PrismQML "
+                    + PrismQMLVersion + " · MIT"
+        statusColor: Fluent.Enums.textColor.tertiary
+
+        Fluent.Button {
+            objectName: "checkForUpdatesButton"
+            style: Fluent.Enums.button.style_primary
+            icon: Fluent.Enums.icon.arrow_sync
+            text: autoUpdater.feedbackModel.checking
+                  ? "正在检查..."
+                  : "检查更新"
+            enabled: !autoUpdater.feedbackModel.checking
+            onClicked: autoUpdater.check()
         }
     }
 }

@@ -31,6 +31,7 @@ Fluent.Card {
     signal cloneActiveProfileRequested()
 
     autoHeight: true
+    contentPadding: Fluent.Enums.spacing.none
 
     Column {
         id: cardColumn
@@ -81,6 +82,7 @@ Fluent.Card {
                         enabled: !root.installBusy
                         style: Fluent.Enums.button.style_default
                         feature: Fluent.Enums.button.feature_dropdown
+                        icon: Fluent.Enums.icon.arrow_download
                         text: root.installed ? "安装/更新" : "获取 Claude"
                         menuItems: root.installOptions
                         onMenuItemClicked: function(index, text) {
@@ -94,6 +96,7 @@ Fluent.Card {
                         visible: root.installBusy
                         enabled: root.installCancelable
                         style: Fluent.Enums.button.style_default
+                        icon: Fluent.Enums.icon.dismiss
                         text: "取消"
                         onClicked: root.cancelInstallRequested()
                     }
@@ -272,6 +275,7 @@ Fluent.Card {
             visible: root.canImportActiveProfile
             enabled: !root.configBusy && !root.installBusy
             style: Fluent.Enums.button.style_default
+            icon: Fluent.Enums.icon.copy
             text: "复制当前档案为 ConfigPilot"
             onClicked: root.cloneActiveProfileRequested()
         }

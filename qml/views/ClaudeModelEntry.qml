@@ -5,6 +5,8 @@ import PrismQML as Fluent
 Rectangle {
     id: root
 
+    required property int index
+    required property var modelData
     property var entry: ({})
     property int indexValue: 0
     property var tierOptions: []
@@ -52,6 +54,7 @@ Rectangle {
             Fluent.Button {
                 objectName: "claudeRemoveModelButton" + root.indexValue
                 style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.delete
                 text: "移除"
                 onClicked: root.removeRequested()
             }
@@ -69,7 +72,7 @@ Rectangle {
                 Layout.minimumWidth: 0
                 spacing: Fluent.Enums.spacing.xxs
                 Text {
-                    text: "Model ID"
+                    text: "模型 ID"
                     color: Fluent.Enums.textColor.secondary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
@@ -89,7 +92,7 @@ Rectangle {
                 Layout.minimumWidth: 0
                 spacing: Fluent.Enums.spacing.xxs
                 Text {
-                    text: "Display name"
+                    text: "显示名称"
                     color: Fluent.Enums.textColor.secondary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
@@ -116,7 +119,7 @@ Rectangle {
                 Layout.fillWidth: true
                 controlType: Fluent.Enums.toggle.control_switch
                 type: Fluent.Enums.toggle.type_subtitle
-                text: "Offer 1M-context variant"
+                text: "提供 1M 上下文变体"
                 subtitle: "为此模型提供 1M 上下文变体"
                 Component.onCompleted: checked = !!root.entry.supports1m
                 onToggled: function(checkedValue) {
@@ -130,7 +133,7 @@ Rectangle {
                 enabled: !!root.entry.supports1m
                 controlType: Fluent.Enums.toggle.control_switch
                 type: Fluent.Enums.toggle.type_subtitle
-                text: "Default to 1M context"
+                text: "默认使用 1M 上下文"
                 subtitle: "将 1M 变体作为默认选择"
                 Component.onCompleted: checked = !!root.entry.prefer1m
                 onToggled: function(checkedValue) {
@@ -151,7 +154,7 @@ Rectangle {
                 Layout.minimumWidth: 0
                 spacing: Fluent.Enums.spacing.xxs
                 Text {
-                    text: "Tier alias"
+                    text: "模型层级"
                     color: Fluent.Enums.textColor.secondary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
@@ -180,7 +183,7 @@ Rectangle {
                 enabled: !!root.entry.anthropicFamilyTier
                 controlType: Fluent.Enums.toggle.control_switch
                 type: Fluent.Enums.toggle.type_subtitle
-                text: "Default for tier"
+                text: "设为该层级默认"
                 subtitle: "多个模型共享 Tier 时作为默认"
                 Component.onCompleted: checked = !!root.entry.isFamilyDefault
                 onToggled: function(checkedValue) {

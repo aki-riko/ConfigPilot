@@ -47,7 +47,11 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn('"创建并应用 ConfigPilot"', page)
         self.assertIn('"应用更改"', page)
         self.assertIn("ClaudeDesktopConfig.operationBusy", page)
-        self.assertIn('text: "开发者模式与第三方推理网关"', page)
+        self.assertIn('subtitle: "开发者模式与第三方推理网关"', page)
+        self.assertIn('objectName: "claudeTaskNavigation"', page)
+        self.assertIn('objectName: "claudeCompactTaskNavigation"', page)
+        self.assertIn('objectName: "claudeSectionStack"', page)
+        self.assertIn("currentIndex: root.selectedSection", page)
         for component in ("ClaudeGatewaySection", "ClaudeAdvancedSection"):
             self.assertRegex(
                 page,
@@ -128,10 +132,8 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         )
         self.assertEqual(gateway.count("Layout.alignment: Qt.AlignTop"), 2)
 
-        self.assertIn(
-            "height: root.controlHeight + 2 * Fluent.Enums.spacing.m",
-            page,
-        )
+        self.assertIn("PageActionBar", page)
+        self.assertIn('objectName: "claudeActionBar"', page)
         for object_name in (
             "claudeOpenDirectoryButton",
             "claudeReloadButton",
@@ -140,7 +142,8 @@ class ClaudeDesktopUiTests(unittest.TestCase):
             self.assertIn(f'objectName: "{object_name}"', page)
 
         self.assertIn("/v1/models", advanced)
-        self.assertIn("Fluent.Expander", advanced)
+        self.assertIn("implicitHeight: contentColumn.implicitHeight", advanced)
+        self.assertNotIn("Fluent.Expander", advanced)
         self.assertIn("columns: width < 620 ? 1 : 2", advanced)
         self.assertIn("uniformCellWidths: columns === 2", advanced)
         self.assertIn("modelDiscoveryStateValue", advanced)
@@ -154,12 +157,12 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn("modelDiscoveryStateSelected", advanced)
         self.assertIn("modelPrefer1mContextStateSelected", advanced)
         for field in (
-            "Model ID",
-            "Display name",
-            "Offer 1M-context variant",
-            "Default to 1M context",
-            "Tier alias",
-            "Default for tier",
+            "模型 ID",
+            "显示名称",
+            "提供 1M 上下文变体",
+            "默认使用 1M 上下文",
+            "模型层级",
+            "设为该层级默认",
             "anthropicFamilyTier",
             "isFamilyDefault",
         ):

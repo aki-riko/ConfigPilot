@@ -156,6 +156,12 @@ class AppUpdaterTests(unittest.TestCase):
             self.settings.prismqml_url,
             "https://github.com/aki-riko/PrismQML",
         )
+        self.assertEqual(
+            self.settings.project_url,
+            "https://github.com/aki-riko/ConfigPilot",
+        )
+        self.assertEqual(self.settings.author, "aki-riko")
+        self.assertEqual(self.settings.year, 2026)
         self.assertEqual(self.engine.repo, "aki-riko/ConfigPilot")
         self.assertEqual(self.engine.asset_keyword, "Setup")
 

@@ -1,5 +1,8 @@
 {
   "version": "1.0.28",
+  "author": "aki-riko",
+  "year": 2026,
+  "project_url": "https://github.com/aki-riko/ConfigPilot",
   "prismqml_url": "https://github.com/aki-riko/PrismQML",
   "codex_oauth": {
     "token_url": "https://auth.openai.com/oauth/token",

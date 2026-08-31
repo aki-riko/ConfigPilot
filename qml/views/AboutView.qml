@@ -14,6 +14,12 @@ Item {
         typeof ConfigManager !== "undefined" ? ConfigManager : null
     readonly property string appVersion:
         typeof AppVersion !== "undefined" ? AppVersion : ""
+    readonly property string appAuthor:
+        typeof AppAuthor !== "undefined" ? AppAuthor : ""
+    readonly property int appYear:
+        typeof AppYear !== "undefined" ? AppYear : 0
+    readonly property url appHomepage:
+        typeof AppHomepage !== "undefined" ? AppHomepage : ""
     readonly property string prismQmlVersion:
         typeof PrismQMLVersion !== "undefined" ? PrismQMLVersion : ""
     readonly property url prismQmlHomepage:
@@ -210,74 +216,83 @@ Item {
                     title: "关于"
                     spacing: Fluent.Enums.spacing.xs
 
-                    Fluent.Card {
+                    Item {
+                        id: aboutCardHost
                         objectName: "aboutSettingsCard"
                         width: parent ? parent.width : 0
-                        autoHeight: true
+                        implicitHeight: Fluent.Enums.settingCard.height_with_content
+                        height: implicitHeight
+
+                        Fluent.SettingsCardCore {
+                            id: aboutCard
+                            anchors.fill: parent
+                            title: ""
+                            icon: Fluent.Enums.icon.info
+                            content: " "
+                        }
 
                         Column {
-                            width: parent ? parent.width : 0
-                            leftPadding: Fluent.Enums.spacing.l
-                            rightPadding: Fluent.Enums.spacing.l
-                            topPadding: Fluent.Enums.spacing.l
-                            bottomPadding: Fluent.Enums.spacing.l
-                            spacing: Fluent.Enums.spacing.m
+                            anchors.left: parent.left
+                            anchors.leftMargin: Fluent.Enums.spacing.xl
+                                                + Fluent.Enums.settingCard.icon_size
+                                                + Fluent.Enums.spacing.xl
+                            anchors.right: projectHomepageButton.left
+                            anchors.rightMargin: Fluent.Enums.spacing.xl
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: Fluent.Enums.spacing.none
+                            z: 1
 
-                            RowLayout {
+                            Fluent.Label {
+                                objectName: "aboutTitleLabel"
                                 width: parent.width
-                                spacing: Fluent.Enums.spacing.m
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 0
-                                    text: "ConfigPilot"
-                                    font.pixelSize: Fluent.Enums.typography.subtitle
-                                    font.bold: true
-                                    color: Fluent.Enums.textColor.primary
-                                    font.family: Fluent.Enums.fontFamily
-                                }
-
-                                Fluent.Badge {
-                                    text: root.appVersion.length > 0
-                                          ? "v" + root.appVersion : ""
-                                    level: Fluent.Enums.statusLevel.info
-                                    visible: text.length > 0
-                                }
+                                type: Fluent.Enums.label.type_body_strong
+                                text: "关于 ConfigPilot"
+                                wrapMode: Text.NoWrap
+                                elide: Text.ElideRight
                             }
 
-                            Text {
-                                text: "AI 工具配置与自动化中心"
-                                font.pixelSize: Fluent.Enums.typography.body
-                                color: Fluent.Enums.textColor.secondary
-                                font.family: Fluent.Enums.fontFamily
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                width: parent.width
+                            Row {
                                 spacing: Fluent.Enums.spacing.xxs
 
-                                Text {
-                                    text: "版本 " + root.appVersion + " · 基于"
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    color: Fluent.Enums.textColor.secondary
-                                    font.family: Fluent.Enums.fontFamily
+                                Fluent.Label {
+                                    objectName: "aboutVersionPrefix"
+                                    type: Fluent.Enums.label.type_body_small
+                                    text: "版本 " + root.appVersion
+                                          + " · © " + root.appYear + " "
+                                          + root.appAuthor + " · 基于"
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
-
                                 Fluent.Label {
                                     objectName: "prismQmlHomepageLink"
                                     type: Fluent.Enums.label.type_hyperlink
                                     text: "PrismQML"
                                     url: root.prismQmlHomepage
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
-
-                                Text {
-                                    text: " · MIT"
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    color: Fluent.Enums.textColor.secondary
-                                    font.family: Fluent.Enums.fontFamily
+                                Fluent.Label {
+                                    objectName: "aboutDescriptionSuffix"
+                                    type: Fluent.Enums.label.type_body_small
+                                    text: "引擎构建。"
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
+                        }
+
+                        Fluent.Button {
+                            id: projectHomepageButton
+                            objectName: "projectHomepageButton"
+                            property bool hasProjectUrl:
+                                root.appHomepage.toString() !== ""
+                            visible: hasProjectUrl
+                            width: visible ? implicitWidth : 0
+                            anchors.right: parent.right
+                            anchors.rightMargin: Fluent.Enums.spacing.xl
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "项目主页"
+                            style: Fluent.Enums.button.style_hyperlink
+                            enabled: hasProjectUrl
+                            onClicked: Qt.openUrlExternally(root.appHomepage)
+                            z: 1
                         }
                     }
                 }

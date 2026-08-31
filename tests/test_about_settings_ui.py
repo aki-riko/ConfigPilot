@@ -38,13 +38,17 @@ class AboutSettingsUiTests(unittest.TestCase):
 
         self.assertIn('objectName: "aboutSettingsGroup"', page)
         self.assertIn('objectName: "aboutSettingsCard"', page)
-        self.assertIn('text: "ConfigPilot"', page)
-        self.assertIn('text: "AI 工具配置与自动化中心"', page)
-        self.assertIn('text: "版本 " + root.appVersion + " · 基于"', page)
+        self.assertIn("Fluent.SettingsCardCore", page)
+        self.assertIn('objectName: "aboutTitleLabel"', page)
+        self.assertIn('text: "关于 ConfigPilot"', page)
+        self.assertIn('objectName: "aboutVersionPrefix"', page)
+        self.assertIn('objectName: "aboutDescriptionSuffix"', page)
         self.assertIn('objectName: "prismQmlHomepageLink"', page)
         self.assertIn("type: Fluent.Enums.label.type_hyperlink", page)
         self.assertIn("url: root.prismQmlHomepage", page)
         self.assertIn('text: "PrismQML"', page)
+        self.assertIn('objectName: "projectHomepageButton"', page)
+        self.assertIn("onClicked: Qt.openUrlExternally(root.appHomepage)", page)
         self.assertNotIn("MessageBoxCore", page)
         self.assertNotIn('text: "版本信息"', page)
 
@@ -79,8 +83,14 @@ class AboutSettingsUiTests(unittest.TestCase):
             '"prismqml_url": "https://github.com/aki-riko/PrismQML"',
             app_config,
         )
+        self.assertIn('"project_url": "https://github.com/aki-riko/ConfigPilot"', app_config)
+        self.assertIn('"author": "aki-riko"', app_config)
+        self.assertIn('"year": 2026', app_config)
         self.assertIn('prismqml_url: str = ""', settings)
         self.assertIn('"PrismQMLHomepage", app_settings.prismqml_url', main)
+        self.assertIn('"AppHomepage", app_settings.project_url', main)
+        self.assertIn('"AppAuthor", app_settings.author', main)
+        self.assertIn('"AppYear", app_settings.year', main)
         self.assertIn("PrismQMLHomepage", page)
 
 

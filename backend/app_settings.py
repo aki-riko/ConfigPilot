@@ -60,6 +60,9 @@ class AppSettings:
     version: str
     updates: UpdateSettings
     prismqml_url: str = ""
+    project_url: str = ""
+    author: str = ""
+    year: int = 0
 
 
 def _required_string(data: dict, key: str) -> str:
@@ -112,6 +115,26 @@ def _optional_http_url(data: dict, key: str) -> str:
     return normalized
 
 
+def _optional_string(data: dict, key: str) -> str:
+    value = data.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"配置项 {key!r} 必须是字符串")
+    return value.strip()
+
+
+def _optional_year(data: dict, key: str) -> int:
+    value = data.get(key, 0)
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"配置项 {key!r} 必须是整数")
+    if value < 0 or value > 9999:
+        raise ValueError(f"配置项 {key!r} 超出有效范围")
+    return value
+
+
 def _parse_updates(data: object) -> UpdateSettings:
     if not isinstance(data, dict):
         raise ValueError("配置项 'updates' 必须是对象")
@@ -134,4 +157,7 @@ def load_app_settings(path: str | Path) -> AppSettings:
         version=_validate_version(_required_string(data, "version")),
         updates=_parse_updates(data.get("updates")),
         prismqml_url=_optional_http_url(data, "prismqml_url"),
+        project_url=_optional_http_url(data, "project_url"),
+        author=_optional_string(data, "author"),
+        year=_optional_year(data, "year"),
     )

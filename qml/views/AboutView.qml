@@ -20,8 +20,6 @@ Item {
         typeof AppYear !== "undefined" ? AppYear : 0
     readonly property url appHomepage:
         typeof AppHomepage !== "undefined" ? AppHomepage : ""
-    readonly property string prismQmlVersion:
-        typeof PrismQMLVersion !== "undefined" ? PrismQMLVersion : ""
     readonly property url prismQmlHomepage:
         typeof PrismQMLHomepage !== "undefined" ? PrismQMLHomepage : ""
 
@@ -308,7 +306,6 @@ Item {
                         width: parent ? parent.width : 0
                         title: "检查更新"
                         content: "当前版本 " + root.appVersion
-                                + " · 基于 PrismQML " + root.prismQmlVersion
                         icon: Fluent.Enums.icon.arrow_sync
                         type: Fluent.Enums.settingCard.type_push
                         buttonText: autoUpdater.feedbackModel.checking

@@ -58,7 +58,8 @@ class AboutSettingsUiTests(unittest.TestCase):
         self.assertIn('objectName: "applicationSettingsGroup"', page)
         self.assertIn('objectName: "updateSettingsCard"', page)
         self.assertIn("autoUpdater.check()", page)
-        self.assertIn("root.prismQmlVersion", page)
+        self.assertIn('content: "当前版本 " + root.appVersion', page)
+        self.assertNotIn("root.prismQmlVersion", page)
 
     def test_main_window_preserves_saved_language_and_binds_mica(self):
         main = (ROOT / "qml/main.qml").read_text(encoding="utf-8")

@@ -152,6 +152,10 @@ class AppUpdaterTests(unittest.TestCase):
         self.assertEqual(self.controller.version, "1.0.28")
         self.assertEqual(self.controller.currentVersion, "v1.0.28")
         self.assertEqual(self.controller.prismqmlVersion, "0.3.1.27")
+        self.assertEqual(
+            self.settings.prismqml_url,
+            "https://github.com/aki-riko/PrismQML",
+        )
         self.assertEqual(self.engine.repo, "aki-riko/ConfigPilot")
         self.assertEqual(self.engine.asset_keyword, "Setup")
 
@@ -265,6 +269,15 @@ class AppUpdaterTests(unittest.TestCase):
             path = Path(tmp) / "app_config.json"
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "owner/repo"):
+                load_app_settings(path)
+
+    def test_invalid_prismqml_homepage_is_rejected(self):
+        payload = json.loads((ROOT / "app_config.json").read_text(encoding="utf-8"))
+        payload["prismqml_url"] = "javascript:alert(1)"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "app_config.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, r"HTTP\(S\) URL"):
                 load_app_settings(path)
 
     def test_download_writer_preserves_bytes_off_main_thread(self):

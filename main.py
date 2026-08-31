@@ -104,6 +104,9 @@ def main() -> int:
     engine.rootContext().setContextProperty("AppVersion", app_settings.version)
     engine.rootContext().setContextProperty("PrismQMLVersion", prismqml.__version__)
     engine.rootContext().setContextProperty(
+        "PrismQMLHomepage", app_settings.prismqml_url
+    )
+    engine.rootContext().setContextProperty(
         "AppAutoCheckEnabled", app_settings.updates.auto_check
     )
     engine.rootContext().setContextProperty(

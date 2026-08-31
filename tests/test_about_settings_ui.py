@@ -33,26 +33,26 @@ class AboutSettingsUiTests(unittest.TestCase):
         ):
             self.assertIn(contract, page)
 
-    def test_current_explanation_is_presented_by_messagebox(self):
+    def test_about_section_contains_app_metadata_and_prismqml_link(self):
         page = self.read()
 
-        self.assertIn("Fluent.MessageBox", page)
-        self.assertIn('objectName: "messageBoxCoreAboutDialog"', page)
-        self.assertIn('title: "关于 MessageBoxCore"', page)
-        self.assertIn("content: root.aboutMessage", page)
-        self.assertIn("底层 DialogBoxCore", page)
-        self.assertIn("overlayTarget: root.Window.window", page)
-        self.assertIn('objectName: "messageBoxCoreAboutCard"', page)
-        self.assertIn("onClicked: messageBoxCoreAboutDialog.open()", page)
-        self.assertIn('cancelButtonVisible: false', page)
-        self.assertNotIn('text: "ConfigPilot 做什么"', page)
+        self.assertIn('objectName: "aboutSettingsGroup"', page)
+        self.assertIn('objectName: "aboutSettingsCard"', page)
+        self.assertIn('text: "ConfigPilot"', page)
+        self.assertIn('text: "AI 工具配置与自动化中心"', page)
+        self.assertIn('text: "版本 " + root.appVersion + " · 基于"', page)
+        self.assertIn('objectName: "prismQmlHomepageLink"', page)
+        self.assertIn("type: Fluent.Enums.label.type_hyperlink", page)
+        self.assertIn("url: root.prismQmlHomepage", page)
+        self.assertIn('text: "PrismQML"', page)
+        self.assertNotIn("MessageBoxCore", page)
+        self.assertNotIn('text: "版本信息"', page)
 
-    def test_update_and_version_remain_separate_from_the_explanation(self):
+    def test_update_remains_in_application_group(self):
         page = self.read()
 
         self.assertIn('objectName: "applicationSettingsGroup"', page)
         self.assertIn('objectName: "updateSettingsCard"', page)
-        self.assertIn('objectName: "versionSettingsGroup"', page)
         self.assertIn("autoUpdater.check()", page)
         self.assertIn("root.prismQmlVersion", page)
 
@@ -68,6 +68,20 @@ class AboutSettingsUiTests(unittest.TestCase):
             main,
         )
         self.assertIn("? ConfigManager.micaEnabled : false", main)
+
+    def test_prismqml_homepage_is_configured_and_injected(self):
+        app_config = (ROOT / "app_config.json").read_text(encoding="utf-8")
+        settings = (ROOT / "backend/app_settings.py").read_text(encoding="utf-8")
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+        page = self.read()
+
+        self.assertIn(
+            '"prismqml_url": "https://github.com/aki-riko/PrismQML"',
+            app_config,
+        )
+        self.assertIn('prismqml_url: str = ""', settings)
+        self.assertIn('"PrismQMLHomepage", app_settings.prismqml_url', main)
+        self.assertIn("PrismQMLHomepage", page)
 
 
 if __name__ == "__main__":

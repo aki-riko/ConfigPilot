@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 
 
 _VERSION_PATTERN = re.compile(r"^\d+(?:\.\d+)+(?:-[0-9A-Za-z.-]+)?$")
@@ -58,6 +59,7 @@ class AppSettings:
 
     version: str
     updates: UpdateSettings
+    prismqml_url: str = ""
 
 
 def _required_string(data: dict, key: str) -> str:
@@ -95,6 +97,21 @@ def _validate_repository(value: str) -> str:
     return value
 
 
+def _optional_http_url(data: dict, key: str) -> str:
+    value = data.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"配置项 {key!r} 必须是字符串")
+    normalized = value.strip()
+    if not normalized:
+        return ""
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"配置项 {key!r} 必须是 HTTP(S) URL")
+    return normalized
+
+
 def _parse_updates(data: object) -> UpdateSettings:
     if not isinstance(data, dict):
         raise ValueError("配置项 'updates' 必须是对象")
@@ -116,4 +133,5 @@ def load_app_settings(path: str | Path) -> AppSettings:
     return AppSettings(
         version=_validate_version(_required_string(data, "version")),
         updates=_parse_updates(data.get("updates")),
+        prismqml_url=_optional_http_url(data, "prismqml_url"),
     )

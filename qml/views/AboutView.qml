@@ -16,16 +16,8 @@ Item {
         typeof AppVersion !== "undefined" ? AppVersion : ""
     readonly property string prismQmlVersion:
         typeof PrismQMLVersion !== "undefined" ? PrismQMLVersion : ""
-
-    readonly property string aboutMessage:
-        "ConfigPilot 使用 PrismQML 的 MessageBox（底层 DialogBoxCore）承载说明、确认和更新反馈。"
-        + "\n\nConfigPilot 是 AI 工具配置与自动化中心。当前版本同时管理 Codex CLI 与 Claude Desktop 的第三方连接。"
-        + "\n\n• Codex：管理连接、模型、推理和上下文配置"
-        + "\n• Codex：套用统一的 GPT-5.5 稳定上下文并获取模型列表"
-        + "\n• Claude Desktop：一键启用 Developer Mode 与 Third-Party Inference"
-        + "\n• Claude Desktop：配置 Gateway endpoint、认证方式、模型和额外 Header"
-        + "\n• 敏感字段留空默认保留，写入前自动创建 .bak"
-        + "\n• 改完后必须完全退出并重新打开对应应用"
+    readonly property url prismQmlHomepage:
+        typeof PrismQMLHomepage !== "undefined" ? PrismQMLHomepage : ""
 
     // 帮助页复用引擎 updater，由 PrismQML AutoUpdater 负责反馈、下载与安装。
     Component {
@@ -40,17 +32,6 @@ Item {
         silentArgs: AppInstallerSilentArgs
         notifyWhenUpToDate: true
         feedbackPresenter: progressPresenter
-    }
-
-    Fluent.MessageBox {
-        id: messageBoxCoreAboutDialog
-        objectName: "messageBoxCoreAboutDialog"
-        overlayTarget: root.Window.window ? root.Window.window.contentItem : null
-        title: "关于 MessageBoxCore"
-        content: root.aboutMessage
-        minWidth: 520
-        confirmText: "关闭"
-        cancelButtonVisible: false
     }
 
     Fluent.ScrollArea {
@@ -229,15 +210,75 @@ Item {
                     title: "关于"
                     spacing: Fluent.Enums.spacing.xs
 
-                    Fluent.SettingsCard {
-                        objectName: "messageBoxCoreAboutCard"
+                    Fluent.Card {
+                        objectName: "aboutSettingsCard"
                         width: parent ? parent.width : 0
-                        title: "关于 MessageBoxCore"
-                        content: "查看配置范围、写入策略和重启要求"
-                        icon: Fluent.Enums.icon.info
-                        type: Fluent.Enums.settingCard.type_push
-                        buttonText: "查看说明"
-                        onClicked: messageBoxCoreAboutDialog.open()
+                        autoHeight: true
+
+                        Column {
+                            width: parent ? parent.width : 0
+                            leftPadding: Fluent.Enums.spacing.l
+                            rightPadding: Fluent.Enums.spacing.l
+                            topPadding: Fluent.Enums.spacing.l
+                            bottomPadding: Fluent.Enums.spacing.l
+                            spacing: Fluent.Enums.spacing.m
+
+                            RowLayout {
+                                width: parent.width
+                                spacing: Fluent.Enums.spacing.m
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    text: "ConfigPilot"
+                                    font.pixelSize: Fluent.Enums.typography.subtitle
+                                    font.bold: true
+                                    color: Fluent.Enums.textColor.primary
+                                    font.family: Fluent.Enums.fontFamily
+                                }
+
+                                Fluent.Badge {
+                                    text: root.appVersion.length > 0
+                                          ? "v" + root.appVersion : ""
+                                    level: Fluent.Enums.statusLevel.info
+                                    visible: text.length > 0
+                                }
+                            }
+
+                            Text {
+                                text: "AI 工具配置与自动化中心"
+                                font.pixelSize: Fluent.Enums.typography.body
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: Fluent.Enums.fontFamily
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                width: parent.width
+                                spacing: Fluent.Enums.spacing.xxs
+
+                                Text {
+                                    text: "版本 " + root.appVersion + " · 基于"
+                                    font.pixelSize: Fluent.Enums.typography.caption
+                                    color: Fluent.Enums.textColor.secondary
+                                    font.family: Fluent.Enums.fontFamily
+                                }
+
+                                Fluent.Label {
+                                    objectName: "prismQmlHomepageLink"
+                                    type: Fluent.Enums.label.type_hyperlink
+                                    text: "PrismQML"
+                                    url: root.prismQmlHomepage
+                                }
+
+                                Text {
+                                    text: " · MIT"
+                                    font.pixelSize: Fluent.Enums.typography.caption
+                                    color: Fluent.Enums.textColor.secondary
+                                    font.family: Fluent.Enums.fontFamily
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -259,44 +300,6 @@ Item {
                                     ? "正在检查..." : "检查更新"
                         enabled: !autoUpdater.feedbackModel.checking
                         onClicked: autoUpdater.check()
-                    }
-                }
-
-                Fluent.SettingsCardGroup {
-                    objectName: "versionSettingsGroup"
-                    width: pageColumn.innerWidth
-                    title: "版本信息"
-                    spacing: Fluent.Enums.spacing.xs
-
-                    Fluent.Card {
-                        width: pageColumn.innerWidth
-                        autoHeight: true
-
-                        Column {
-                            width: parent ? parent.width : 0
-                            leftPadding: Fluent.Enums.spacing.l
-                            rightPadding: Fluent.Enums.spacing.l
-                            topPadding: Fluent.Enums.spacing.l
-                            bottomPadding: Fluent.Enums.spacing.l
-                            spacing: Fluent.Enums.spacing.s
-
-                            Text {
-                                text: "ConfigPilot"
-                                font.pixelSize: Fluent.Enums.typography.subtitle
-                                font.bold: true
-                                color: Fluent.Enums.textColor.primary
-                                font.family: Fluent.Enums.fontFamily
-                            }
-                            Text {
-                                text: "AI 工具配置与自动化中心\nConfigPilot "
-                                    + root.appVersion + "\n基于 PrismQML (prismqml "
-                                    + root.prismQmlVersion + ") · MIT"
-                                font.pixelSize: Fluent.Enums.typography.body
-                                color: Fluent.Enums.textColor.secondary
-                                font.family: Fluent.Enums.fontFamily
-                                wrapMode: Text.WordWrap
-                            }
-                        }
                     }
                 }
             }

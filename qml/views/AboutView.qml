@@ -80,7 +80,7 @@ Item {
                         spacing: Fluent.Enums.spacing.xxs
 
                         Text {
-                            text: "帮助"
+                            text: "设置"
                             font.pixelSize: Fluent.Enums.typography.display
                             font.bold: true
                             color: Fluent.Enums.textColor.primary
@@ -98,7 +98,7 @@ Item {
 
                     Fluent.Badge {
                         text: root.appVersion.length > 0
-                              ? "v" + root.appVersion : "帮助"
+                              ? "v" + root.appVersion : "设置"
                         level: Fluent.Enums.statusLevel.info
                     }
                 }

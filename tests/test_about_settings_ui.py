@@ -63,6 +63,8 @@ class AboutSettingsUiTests(unittest.TestCase):
     def test_main_window_preserves_saved_language_and_binds_mica(self):
         main = (ROOT / "qml/main.qml").read_text(encoding="utf-8")
 
+        self.assertIn('{ "text": "设置", "icon": iconPath("Info"), "key": "AboutView" }', main)
+
         self.assertIn(
             'if (typeof ConfigManager === "undefined" || !ConfigManager)',
             main,

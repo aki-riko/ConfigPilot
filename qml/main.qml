@@ -24,7 +24,7 @@ QtObject {
     ]
 
     property var bottomNavItems: [
-        { "text": "帮助", "icon": iconPath("Info"), "key": "AboutView" }
+        { "text": "设置", "icon": iconPath("Info"), "key": "AboutView" }
     ]
 
     property var pagePaths: [

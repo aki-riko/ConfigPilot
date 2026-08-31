@@ -36,7 +36,9 @@ QtObject {
     property var windowInstance: null
 
     Component.onCompleted: {
-        Fluent.Translator.setLanguage(Fluent.Enums.lang.zh_CN)
+        if (typeof ConfigManager === "undefined" || !ConfigManager) {
+            Fluent.Translator.setLanguage(Fluent.Enums.lang.zh_CN)
+        }
         windowInstance = windowComponent.createObject(null)
         if (windowInstance) {
             windowInstance.show()
@@ -57,6 +59,8 @@ QtObject {
             navigationItems: root.navItems
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
+            micaEnabled: typeof ConfigManager !== "undefined" && ConfigManager
+                         ? ConfigManager.micaEnabled : false
             lazyLoading: true
             splashIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
             splashTitle: root.windowTitle

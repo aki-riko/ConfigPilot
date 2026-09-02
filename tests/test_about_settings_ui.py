@@ -40,25 +40,37 @@ class AboutSettingsUiTests(unittest.TestCase):
         self.assertIn('objectName: "aboutSettingsCard"', page)
         self.assertIn("Fluent.SettingsCardCore", page)
         self.assertIn('objectName: "aboutTitleLabel"', page)
-        self.assertIn('text: "关于 ConfigPilot"', page)
+        self.assertIn('text: "关于"', page)
         self.assertIn('objectName: "aboutVersionPrefix"', page)
         self.assertIn('objectName: "aboutDescriptionSuffix"', page)
         self.assertIn('objectName: "prismQmlHomepageLink"', page)
         self.assertIn("type: Fluent.Enums.label.type_hyperlink", page)
         self.assertIn("url: root.prismQmlHomepage", page)
         self.assertIn('text: "PrismQML"', page)
-        self.assertIn('objectName: "projectHomepageButton"', page)
-        self.assertIn("onClicked: Qt.openUrlExternally(root.appHomepage)", page)
         self.assertNotIn("MessageBoxCore", page)
         self.assertNotIn('text: "版本信息"', page)
 
-    def test_update_remains_in_application_group(self):
+    def test_app_title_is_hyperlink_to_project_homepage(self):
         page = self.read()
 
-        self.assertIn('objectName: "applicationSettingsGroup"', page)
+        # 标题里的 ConfigPilot 取代原“项目主页”按钮承担跳转。
+        self.assertIn('objectName: "projectHomepageLink"', page)
+        self.assertIn('text: "ConfigPilot"', page)
+        self.assertIn("url: root.appHomepage", page)
+        self.assertIn("font.weight: Font.DemiBold", page)
+        self.assertNotIn('objectName: "projectHomepageButton"', page)
+        self.assertNotIn('text: "项目主页"', page)
+
+    def test_update_action_merged_into_about_card(self):
+        page = self.read()
+
+        # “关于”与“检查更新”二合一：更新按钮占据原项目主页按钮位置。
         self.assertIn('objectName: "updateSettingsCard"', page)
         self.assertIn("autoUpdater.check()", page)
-        self.assertIn('content: "当前版本 " + root.appVersion', page)
+        self.assertIn("style: Fluent.Enums.button.style_default", page)
+        self.assertIn("anchors.right: checkUpdateButton.left", page)
+        self.assertNotIn('objectName: "applicationSettingsGroup"', page)
+        self.assertNotIn('title: "应用"', page)
         self.assertNotIn("root.prismQmlVersion", page)
 
     def test_main_window_preserves_saved_language_and_binds_mica(self):

@@ -234,19 +234,34 @@ Item {
                             anchors.leftMargin: Fluent.Enums.spacing.xl
                                                 + Fluent.Enums.settingCard.icon_size
                                                 + Fluent.Enums.spacing.xl
-                            anchors.right: projectHomepageButton.left
+                            anchors.right: checkUpdateButton.left
                             anchors.rightMargin: Fluent.Enums.spacing.xl
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: Fluent.Enums.spacing.none
                             z: 1
 
-                            Fluent.Label {
-                                objectName: "aboutTitleLabel"
-                                width: parent.width
-                                type: Fluent.Enums.label.type_body_strong
-                                text: "关于 ConfigPilot"
-                                wrapMode: Text.NoWrap
-                                elide: Text.ElideRight
+                            Row {
+                                spacing: Fluent.Enums.spacing.xxs
+
+                                Fluent.Label {
+                                    objectName: "aboutTitleLabel"
+                                    type: Fluent.Enums.label.type_body_strong
+                                    text: "关于"
+                                    wrapMode: Text.NoWrap
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                                Fluent.Label {
+                                    objectName: "projectHomepageLink"
+                                    type: Fluent.Enums.label.type_hyperlink
+                                    text: "ConfigPilot"
+                                    url: root.appHomepage
+                                    // 标题行超链接保持与"关于"同一字重，避免视觉降级。
+                                    font.weight: Font.DemiBold
+                                    wrapMode: Text.NoWrap
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
                             }
 
                             Row {
@@ -277,41 +292,18 @@ Item {
                         }
 
                         Fluent.Button {
-                            id: projectHomepageButton
-                            objectName: "projectHomepageButton"
-                            property bool hasProjectUrl:
-                                root.appHomepage.toString() !== ""
-                            visible: hasProjectUrl
-                            width: visible ? implicitWidth : 0
+                            id: checkUpdateButton
+                            objectName: "updateSettingsCard"
                             anchors.right: parent.right
                             anchors.rightMargin: Fluent.Enums.spacing.xl
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "项目主页"
-                            style: Fluent.Enums.button.style_hyperlink
-                            enabled: hasProjectUrl
-                            onClicked: Qt.openUrlExternally(root.appHomepage)
+                            text: autoUpdater.feedbackModel.checking
+                                  ? "正在检查..." : "检查更新"
+                            style: Fluent.Enums.button.style_default
+                            enabled: !autoUpdater.feedbackModel.checking
+                            onClicked: autoUpdater.check()
                             z: 1
                         }
-                    }
-                }
-
-                Fluent.SettingsCardGroup {
-                    objectName: "applicationSettingsGroup"
-                    width: pageColumn.innerWidth
-                    title: "应用"
-                    spacing: Fluent.Enums.spacing.xs
-
-                    Fluent.SettingsCard {
-                        objectName: "updateSettingsCard"
-                        width: parent ? parent.width : 0
-                        title: "检查更新"
-                        content: "当前版本 " + root.appVersion
-                        icon: Fluent.Enums.icon.arrow_sync
-                        type: Fluent.Enums.settingCard.type_push
-                        buttonText: autoUpdater.feedbackModel.checking
-                                    ? "正在检查..." : "检查更新"
-                        enabled: !autoUpdater.feedbackModel.checking
-                        onClicked: autoUpdater.check()
                     }
                 }
             }

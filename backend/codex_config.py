@@ -78,6 +78,7 @@ class CodexConfig(QObject):
         self._model_auto_compact_token_limit = ""
         self._tool_output_token_limit = ""
         self._model_catalog_json = ""
+        self._sandbox_mode = ""
         self._has_restorable_changes = False
         self._available_models = []
         self._models_loading = False
@@ -228,6 +229,10 @@ class CodexConfig(QObject):
     def modelCatalogJson(self):
         return self._model_catalog_json
 
+    @Property(str, notify=changed)
+    def sandboxMode(self):
+        return self._sandbox_mode
+
     @Property("QVariantList", notify=modelsChanged)
     def availableModels(self):
         return self._available_models
@@ -292,6 +297,7 @@ class CodexConfig(QObject):
         )
         self._tool_output_token_limit = str(snapshot["toolOutputTokenLimit"])
         self._model_catalog_json = str(snapshot["modelCatalogJson"])
+        self._sandbox_mode = str(snapshot.get("sandboxMode", ""))
         self._has_restorable_changes = bool(
             snapshot.get("hasRestorableChanges", False)
         )
@@ -622,6 +628,20 @@ class CodexConfig(QObject):
                 "已修正中转站认证来源，请完全重启 Codex 后重试",
             ),
             self._relay_auth_repair_failed,
+        )
+
+    @Slot()
+    def applySandboxStopgap(self):
+        """按 CC Switch 的做法写入非沙盒档，止血 Codex 的 Windows 沙盒配置循环。"""
+        self._config_tasks.submit(
+            self._store.apply_sandbox_stopgap,
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "沙盒止血已写入",
+                'config.toml 已写入 sandbox_mode = "danger-full-access"，'
+                "请完全重启 Codex；该项可用「恢复初始设置」还原",
+            ),
+            self._config_write_failed,
         )
 
     # ---------- 获取模型列表(后台线程,不阻塞 UI) ----------

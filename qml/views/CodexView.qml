@@ -219,6 +219,24 @@ Item {
         }
     }
 
+    Fluent.ConfirmDialog {
+        id: sandboxStopgapDialog
+        objectName: "sandboxStopgapDialog"
+        level: Fluent.Enums.statusLevel.warning
+        title: "沙盒止血（临时）"
+        message: "Codex 在 Windows 上会为沙盒执行配置本地沙盒账号，"
+                 + "账号首次登录未完成时 Windows 会弹出「无法检查 Windows 设置」。"
+                 + "\n\n本操作只写一项：sandbox_mode = \"danger-full-access\"，"
+                 + "其余配置与 [windows]、[projects.*] 等段落原样保留。"
+                 + "\n\n代价是 Codex 不再使用沙盒隔离；该写入可用「恢复初始设置」还原。"
+        messageAlignment: Text.AlignLeft
+        confirmText: "确认写入"
+        cancelText: "取消"
+        onConfirmed: {
+            if (CodexConfig) CodexConfig.applySandboxStopgap()
+        }
+    }
+
     Fluent.ScrollArea {
         id: scrollArea
         objectName: "mainScrollArea"
@@ -328,6 +346,7 @@ Item {
                 onRepairRelayAuthRequested: function(value) {
                     if (CodexConfig) CodexConfig.repairRelayAuth(value)
                 }
+                onSandboxStopgapRequested: sandboxStopgapDialog.open()
             }
 
             ModelSection {

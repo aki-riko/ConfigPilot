@@ -34,6 +34,12 @@ KEEP = object()
 _PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_CODEX_API_KEY_ENV = "OPENAI_API_KEY"
+# Codex 在 Windows 上会为沙盒执行 provisioning 本地沙盒账号（CodexSandboxOffline/
+# Online）。账号 profile 未初始化时，Windows 会走首次登录的「Windows 设置」流程，
+# 联网校验失败就成为「无法检查 Windows 设置」循环。把 sandbox_mode 写为非沙盒档，
+# Codex 就不需要沙盒执行，也不再触发该 provisioning（CC Switch 的通用配置同样如此写）。
+SANDBOX_STOPGAP_MODE = "danger-full-access"
+SANDBOX_STOPGAP_FIELD = "top.sandbox_mode"
 
 
 def persist_user_environment(name: str, value: str) -> None:
@@ -107,6 +113,7 @@ class CodexConfigStore:
             "modelAutoCompactTokenLimit": "",
             "toolOutputTokenLimit": "",
             "modelCatalogJson": "",
+            "sandboxMode": "",
             "hasRestorableChanges": False,
             "restoreError": "",
         }
@@ -149,6 +156,7 @@ class CodexConfigStore:
                         data.get("tool_output_token_limit")
                     ),
                     "modelCatalogJson": str(data.get("model_catalog_json", "")),
+                    "sandboxMode": str(data.get("sandbox_mode", "")),
                 }
             )
         try:
@@ -572,6 +580,26 @@ class CodexConfigStore:
     def set_key(self, key: str) -> dict:
         snapshot = self._replace_auth({"OPENAI_API_KEY": key, "auth_mode": "apikey"})
         return self._set_provider_auth_source("auth_json", snapshot)
+
+    def apply_sandbox_stopgap(self) -> dict:
+        """把顶层 sandbox_mode 写为非沙盒档，止血 Codex 的 Windows 沙盒 provisioning 循环。
+
+        只动 ``sandbox_mode`` 一个键（其余键、其它段落原样保留），并记入恢复记录，
+        因此可以用「恢复初始设置」还原；用户在外部改过该键时不会被覆盖。
+        """
+        text = ""
+        if os.path.isfile(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        current_data = parse_config_text(text)
+        new_text = self._set_top_scalar(text, "sandbox_mode", SANDBOX_STOPGAP_MODE)
+        new_data = parse_config_text(new_text)
+        current_fields = capture_fields(current_data, [SANDBOX_STOPGAP_FIELD])
+        applied_fields = capture_fields(new_data, [SANDBOX_STOPGAP_FIELD])
+        if current_fields != applied_fields:
+            self._journal.record_config(current_fields, applied_fields)
+        self._atomic_write_text(self.config_path, new_text)
+        return self.read_snapshot()
 
     def repair_relay_auth(self, key: str) -> dict:
         """修复中转 provider 的认证来源，同时保留现有 OAuth 凭据。"""

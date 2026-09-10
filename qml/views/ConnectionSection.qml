@@ -23,6 +23,7 @@ Fluent.Card {
     signal saveKeyRequested(string value)
     signal importAuthJsonRequested(string value)
     signal repairRelayAuthRequested(string value)
+    signal sandboxStopgapRequested()
 
     function commitKey() {
         var value = keyInput.text.trim()
@@ -302,6 +303,34 @@ Fluent.Card {
                           : "修复中转站 401"
                     enabled: !root.configBusy
                     onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
+                }
+            }
+
+            RowLayout {
+                width: cardColumn.innerWidth
+                spacing: Fluent.Enums.spacing.m
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignVCenter
+                    text: "Codex 反复弹出「无法检查 Windows 设置」时写入非沙盒档止血"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+
+                Fluent.Button {
+                    objectName: "sandboxStopgapButton"
+                    Layout.minimumWidth: 156
+                    Layout.preferredWidth: 156
+                    Layout.maximumWidth: 156
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.wrench
+                    text: root.configBusy ? "处理中..." : "沙盒止血（临时）"
+                    enabled: !root.configBusy
+                    onClicked: root.sandboxStopgapRequested()
                 }
             }
         }

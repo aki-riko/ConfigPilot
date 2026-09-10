@@ -27,6 +27,7 @@ TOP_FIELD_TYPES = {
     "model_auto_compact_token_limit": "integer",
     "tool_output_token_limit": "integer",
     "model_catalog_json": "string",
+    "sandbox_mode": "string",
 }
 PROVIDER_FIELD_TYPES = {
     "name": "string",

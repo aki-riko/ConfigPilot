@@ -63,4 +63,34 @@ Get-Content "$env:USERPROFILE\.codex\.sandbox-secrets\setup_error.json" -ErrorAc
 ## 与 ConfigPilot 的关系
 
 ConfigPilot 只做两件事：写 `~/.codex/config.toml` + `auth.json`（保留其它键），随后由用户启动 Codex。
-因此**不需要为此在 ConfigPilot 侧做规避**；把 `setup_error.json` 与 setup helper 静默崩溃信息补到上游 issue 才是正解。
+**写入本身不会破坏沙盒配置**，根治仍要靠上游 issue。
+
+### 应用内临时止血（「沙盒止血（临时）」）
+
+CC Switch 之所以能"治好"，是因为它每次切换都整体重写 Codex 配置，而它的通用配置模板
+（`~/.cc-switch/cc-switch.db` 的 `settings.common_config_codex`）里硬编码了：
+
+```toml
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[windows]
+sandbox = "elevated"
+```
+
+`sandbox_mode = "danger-full-access"` 让 Codex 不再需要沙盒执行，也就不会再去 provisioning
+沙盒账号，图 1 消失。ConfigPilot 原本是**保留**现有 `sandbox_mode`，所以那台机器（仍是
+`workspace-write` 或没有该键）照旧触发。
+
+因此 Codex 页「连接与认证」卡片新增 **沙盒止血（临时）** 按钮（与「修复中转站 401」同一行样式）：
+
+- 只写一个键：`sandbox_mode = "danger-full-access"`，其余键与 `[windows]`、`[projects.*]`、
+  `notify` 等段落原样保留；
+- 写入前弹确认框，明确说明代价（Codex 失去沙盒隔离）；
+- 写入记入 ConfigPilot 恢复记录，「恢复初始设置」可还原；
+- 用户在外部改过该键时不会被覆盖。
+
+对应实现：`CodexConfigStore.apply_sandbox_stopgap()`（`backend/codex_config_store.py`）、
+`CodexConfig.applySandboxStopgap()`（`backend/codex_config.py`）、
+`qml/views/ConnectionSection.qml` 的 `sandboxStopgapButton` 与 `qml/views/CodexView.qml`
+的 `sandboxStopgapDialog`；测试见 `tests/test_codex_sandbox_stopgap.py`。

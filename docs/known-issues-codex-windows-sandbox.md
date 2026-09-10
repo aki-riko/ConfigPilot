@@ -94,3 +94,12 @@ sandbox = "elevated"
 `CodexConfig.applySandboxStopgap()`（`backend/codex_config.py`）、
 `qml/views/ConnectionSection.qml` 的 `sandboxStopgapButton` 与 `qml/views/CodexView.qml`
 的 `sandboxStopgapDialog`；测试见 `tests/test_codex_sandbox_stopgap.py`。
+
+取值依据（非猜测）：`codex.exe`（0.148.0-alpha.9）里 `sandbox_mode` 的合法字面量为
+`read-only` / `workspace-write` / `danger-full-access`（二进制字符串命中），
+`[windows] sandbox` 只有 `elevated` / `unelevated`。
+
+**已知局限（本机对照）**：本机 `~/.codex` 自 7/10 起所有 config 备份都是
+`sandbox_mode = "danger-full-access"`，但 `CodexSandboxOffline` 仍有 `LastLogon`（8/16）——
+说明 Codex Desktop 的某些功能仍可能用到沙盒账号。因此该止血针对的是**触发此循环的 CLI/会话执行路径**，
+不保证覆盖桌面端全部沙盒用法；若仍在桌面端复现，按上文 A/B 步骤把 provisioning 补完。

@@ -125,6 +125,14 @@ Item {
         fToolOutputLimit = ""
     }
 
+    function sandboxModeSummary() {
+        if (!CodexConfig) return "当前未设置 sandbox_mode"
+        var value = CodexConfig.sandboxMode || ""
+        return value.length > 0
+                ? "当前 sandbox_mode = \"" + value + "\""
+                : "当前未设置 sandbox_mode（Codex 默认走沙盒执行）"
+    }
+
     function syncFromConfig() {
         fProvider = (CodexConfig && CodexConfig.provider) || "relay"
         fBaseUrl = (CodexConfig && CodexConfig.baseUrl) || ""
@@ -226,9 +234,10 @@ Item {
         title: "沙盒止血（临时）"
         message: "Codex 在 Windows 上会为沙盒执行配置本地沙盒账号，"
                  + "账号首次登录未完成时 Windows 会弹出「无法检查 Windows 设置」。"
-                 + "\n\n本操作只写一项：sandbox_mode = \"danger-full-access\"，"
-                 + "其余配置与 [windows]、[projects.*] 等段落原样保留。"
-                 + "\n\n代价是 Codex 不再使用沙盒隔离；该写入可用「恢复初始设置」还原。"
+                 + "\n\n" + root.sandboxModeSummary() + "，写入后为 "
+                 + "\"danger-full-access\"。"
+                 + "\n\n只写这一项：其余配置与 [windows]、[projects.*] 等段落原样保留。"
+                 + "\n代价是 Codex 不再使用沙盒隔离；该写入可用「恢复初始设置」还原。"
         messageAlignment: Text.AlignLeft
         confirmText: "确认写入"
         cancelText: "取消"

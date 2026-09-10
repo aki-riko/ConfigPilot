@@ -596,8 +596,16 @@ class CodexConfigStore:
         new_data = parse_config_text(new_text)
         current_fields = capture_fields(current_data, [SANDBOX_STOPGAP_FIELD])
         applied_fields = capture_fields(new_data, [SANDBOX_STOPGAP_FIELD])
-        if current_fields != applied_fields:
-            self._journal.record_config(current_fields, applied_fields)
+        # _set_top_scalar 按行匹配，若同名键落在某个表内就会改错地方；这里确认顶层值
+        # 确实写成目标值，避免"提示成功但没生效"。
+        if applied_fields[SANDBOX_STOPGAP_FIELD].get("value") != SANDBOX_STOPGAP_MODE:
+            raise ValueError(
+                "config.toml 中存在表内的 sandbox_mode，无法写入顶层 sandbox_mode"
+            )
+        # 已经是目标值时不重写文件，避免无意义地刷新 mtime 与 .bak。
+        if current_fields == applied_fields:
+            return self.read_snapshot()
+        self._journal.record_config(current_fields, applied_fields)
         self._atomic_write_text(self.config_path, new_text)
         return self.read_snapshot()
 

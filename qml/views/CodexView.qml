@@ -33,6 +33,8 @@ Item {
     readonly property real contentInset: Math.max(
         pagePadding, (width - contentMaxWidth) / 2
     )
+    // 底部操作栏高度依赖此值；缺失会让 actionBar 高度变成 NaN 而整条页脚不可见。
+    readonly property int controlHeight: Fluent.Enums.controlSize.buttonHeight
     readonly property int profilesRevision: CodexConfig
                                             ? CodexConfig.profilesRevision
                                             : 0

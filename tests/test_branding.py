@@ -230,6 +230,25 @@ class BrandingTests(unittest.TestCase):
         ):
             self.assertIn(width, content)
 
+        # 页脚高度绑定在 root.controlHeight 上：页面若未声明该属性，QML 得到
+        # undefined + 数值 = NaN，actionBar 高度归零，整条页脚会静默消失。
+        for page_name, page in (
+            ("CodexView.qml", codex),
+            ("ClaudeDesktopView.qml", claude),
+        ):
+            if "root.controlHeight" in page:
+                self.assertIn(
+                    "readonly property int controlHeight: "
+                    "Fluent.Enums.controlSize.buttonHeight",
+                    page,
+                    f"{page_name} 使用了 root.controlHeight 但未声明该属性",
+                )
+                self.assertIn(
+                    "height: root.controlHeight + 2 * Fluent.Enums.spacing.",
+                    page,
+                    f"{page_name} 的操作栏高度未使用 controlHeight",
+                )
+
         self.assertIn('icon: Fluent.Enums.icon.save', codex)
         self.assertIn('icon: Fluent.Enums.icon.arrow_import', connection)
         self.assertIn('icon: Fluent.Enums.icon.copy', status)

@@ -71,6 +71,10 @@ class NewApiPet(QObject):
         self._resolved_base = ""
         self._resolved_key = ""
         self._resolved_source = self._config.source
+        # auto 模式:逐个候选试到能用为止;成功后锁定,避免每轮抖动。
+        self._auto_pos = 0
+        self._auto_locked = ""
+        self._auto_attempt = 0
 
         self._nam = QNetworkAccessManager(self)
         try:
@@ -121,14 +125,29 @@ class NewApiPet(QObject):
 
     def _resolve_credentials(self) -> tuple[str, str, str]:
         source = self._config.source
-        if source != SOURCE_MANUAL and self._resolver is not None:
-            site, key, used = self._resolver.resolve(source)
-            return site, key, used
-        # 手动模式,或独立入口没有解析器:回退到配置文件 / 环境变量。
-        env = resolve_effective_config(self._config)
-        return env.base_url, env.api_key, SOURCE_MANUAL
+        if source == SOURCE_MANUAL or self._resolver is None:
+            env = resolve_effective_config(self._config)
+            return env.base_url, env.api_key, SOURCE_MANUAL
+        if source == SOURCE_AUTO:
+            candidates = self._resolver.candidate_sources()
+            if not candidates:
+                return "", "", SOURCE_AUTO
+            if self._auto_locked in candidates:
+                chosen = self._auto_locked
+            else:
+                chosen = candidates[min(self._auto_pos, len(candidates) - 1)]
+            site, key, _ = self._resolver.resolve(chosen)
+            return site, key, chosen
+        site, key, used = self._resolver.resolve(source)
+        return site, key, used
+
+    def _reset_auto_selection(self) -> None:
+        self._auto_pos = 0
+        self._auto_locked = ""
+        self._auto_attempt = 0
 
     def _on_creds_changed(self) -> None:
+        self._reset_auto_selection()
         self._update_credentials()
         self.statusChanged.emit()
         self.sourcesChanged.emit()
@@ -263,6 +282,7 @@ class NewApiPet(QObject):
         self._config = merged
         self._save_error = ""
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
+        self._reset_auto_selection()
         if self._resolver is not None:
             self._resolver.refresh()
         self._update_credentials()
@@ -286,6 +306,7 @@ class NewApiPet(QObject):
         except OSError as exc:
             LOGGER.warning("桌宠来源写入失败: %s", exc)
             return False
+        self._reset_auto_selection()
         if self._resolver is not None:
             self._resolver.refresh()
         self._update_credentials()
@@ -296,7 +317,11 @@ class NewApiPet(QObject):
 
     @Slot()
     def refresh(self) -> None:
-        """立即轮询一次余额与日志。"""
+        """立即轮询一次余额与日志(auto 模式重置候选游标)。"""
+        self._auto_attempt = 0
+        self._do_refresh()
+
+    def _do_refresh(self) -> None:
         self._update_credentials()
         base = self._resolved_base
         key = self._resolved_key
@@ -477,6 +502,26 @@ class NewApiPet(QObject):
         self._pending.clear()  # 一次失败即中止本轮合并
         LOGGER.info("桌宠请求失败(%s): %s", key, message)
         self.statusChanged.emit()
+        self._maybe_advance_auto()
+
+    def _maybe_advance_auto(self) -> None:
+        """auto 模式:当前来源请求失败就换下一个候选重试,直到用尽。"""
+        if self._config.source != SOURCE_AUTO or self._resolver is None:
+            return
+        candidates = self._resolver.candidate_sources()
+        if len(candidates) <= 1:
+            return
+        try:
+            current = candidates.index(self._resolved_source)
+        except ValueError:
+            current = -1
+        nxt = current + 1
+        if nxt >= len(candidates) or self._auto_attempt >= len(candidates):
+            self._auto_locked = ""  # 全部失败,清除锁定,下轮从头再试
+            return
+        self._auto_attempt += 1
+        self._auto_pos = nxt
+        self._do_refresh()
 
     def _handle_usage(self, data: Any) -> None:
         if not isinstance(data, dict) or not (data.get("code") is True or data.get("success") is True):
@@ -529,6 +574,8 @@ class NewApiPet(QObject):
                 logs, config.currency, config.quota_per_unit, config.cny_rate, _MAX_LOG_ROWS
             )
         self._last_updated = time.time()
+        if self._config.source == SOURCE_AUTO and not self._last_error:
+            self._auto_locked = self._resolved_source  # 锁定可用来源,避免每轮抖动
         self.usageChanged.emit()
         self.logsChanged.emit()
         self.statusChanged.emit()

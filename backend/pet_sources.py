@@ -45,10 +45,11 @@ class PetSourceResolver(QObject):
     sourcesChanged = Signal()   # 可用来源列表变化(供设置窗口下拉)
     credsChanged = Signal()     # 当前来源凭证变化(供控制器刷新)
 
-    def __init__(self, codex_store, claude_config, parent: QObject | None = None):
+    def __init__(self, codex_store, claude_reader=None, parent: QObject | None = None):
         super().__init__(parent)
         self._codex_store = codex_store
-        self._claude_config = claude_config
+        # claude_reader: 零参可调用,返回 (endpoint, api_key);独立入口与主程序共用同一函数。
+        self._claude_reader = claude_reader
         self._tasks = SerialTaskRunner(
             self, thread_name="ConfigPilotPetSources", drain_on_close=True
         )
@@ -98,6 +99,15 @@ class PetSourceResolver(QObject):
                 return True
         return False
 
+    def candidate_sources(self) -> list[str]:
+        """auto 模式按此顺序尝试:codex、claude 中真正有站点+key 的来源。"""
+        result = []
+        for source_id in (SOURCE_CODEX, SOURCE_CLAUDE):
+            entry = self._cache.get(source_id)
+            if entry and entry.get("has_key") and entry.get("site"):
+                result.append(source_id)
+        return result
+
     # ------------------------------------------------------------------ 刷新
 
     def refresh(self) -> None:
@@ -131,9 +141,9 @@ class PetSourceResolver(QObject):
                 LOGGER.info("读取 Codex 凭证失败: %s", exc)
                 cache[SOURCE_CODEX] = {"site": "", "key": "", "label": "Codex 当前配置", "has_key": False}
         # Claude
-        if self._claude_config is not None:
+        if self._claude_reader is not None:
             try:
-                endpoint, key = self._claude_config.read_gateway_credentials()
+                endpoint, key = self._claude_reader()
                 site = site_root_from_base(endpoint)
                 cache[SOURCE_CLAUDE] = {
                     "site": site,

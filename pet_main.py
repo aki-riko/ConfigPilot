@@ -31,9 +31,12 @@ def main() -> int:
     engine.rootContext().setContextProperty("PetStandalone", True)
     try:
         from backend.codex_config_store import CodexConfigStore
+        from backend.claude_desktop_config import read_gateway_credentials
 
         codex_home = os.path.join(os.path.expanduser("~"), ".codex")
-        resolver = PetSourceResolver(CodexConfigStore(codex_home), None)
+        resolver = PetSourceResolver(
+            CodexConfigStore(codex_home), read_gateway_credentials
+        )
         pet = NewApiPet(str(resolve_pet_config_path()), source_resolver=resolver)
     except RuntimeError as exc:
         print(f"[ERROR] 桌宠初始化失败: {exc}", file=sys.stderr)

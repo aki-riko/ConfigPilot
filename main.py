@@ -161,7 +161,7 @@ def main() -> int:
         if pet_error:
             print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
         pet_effective = resolve_effective_config(pet_loaded)
-        pet_resolver = PetSourceResolver(codex.store, claude_desktop)
+        pet_resolver = PetSourceResolver(codex.store, claude_desktop.read_gateway_credentials)
         pet_controller = NewApiPet(
             str(pet_config_path), pet_effective, source_resolver=pet_resolver
         )

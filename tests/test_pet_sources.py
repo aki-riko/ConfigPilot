@@ -38,20 +38,11 @@ class FakeCodexStore:
         return {"key": self._key}
 
 
-class FakeClaude:
-    def __init__(self, endpoint, key):
-        self._endpoint = endpoint
-        self._key = key
-
-    def read_gateway_credentials(self):
-        return self._endpoint, self._key
-
-
 class ResolverTests(unittest.TestCase):
     def _resolver(self, codex=("https://c.example/v1", "sk-c"), claude=("https://d.example/v1", "sk-d")):
         store = FakeCodexStore(*codex) if codex else None
-        claude_cfg = FakeClaude(*claude) if claude else None
-        resolver = PetSourceResolver(store, claude_cfg)
+        claude_reader = (lambda: claude) if claude else None
+        resolver = PetSourceResolver(store, claude_reader)
         resolver._cache = resolver._read_all_sync()  # 直接跑同步 worker,绕开线程
         return resolver
 
@@ -102,6 +93,17 @@ class ResolverTests(unittest.TestCase):
         ids = [entry["id"] for entry in ui]
         self.assertEqual(ids, [SOURCE_CODEX, SOURCE_CLAUDE])
         self.assertTrue(all(entry["hasKey"] for entry in ui))
+
+    def test_candidate_sources_order_and_filter(self):
+        # 两个都有 key → [codex, claude]
+        self.assertEqual(self._resolver().candidate_sources(), [SOURCE_CODEX, SOURCE_CLAUDE])
+        # 只有 claude 有 key → [claude]
+        self.assertEqual(
+            self._resolver(codex=("https://c.example/v1", ""), claude=("https://d.example/v1", "sk-d")).candidate_sources(),
+            [SOURCE_CLAUDE],
+        )
+        # 都没有 → []
+        self.assertEqual(self._resolver(codex=None, claude=None).candidate_sources(), [])
 
 
 if __name__ == "__main__":

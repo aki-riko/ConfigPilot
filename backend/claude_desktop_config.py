@@ -65,6 +65,41 @@ def _third_party_data_dir() -> Path:
     return Path.home() / "Library" / "Application Support" / CLAUDE_THIRD_PARTY_DIR_NAME
 
 
+def read_gateway_credentials() -> tuple[str, str]:
+    """同步读取当前 Gateway 档案的 (endpoint, api_key)。
+
+    纯文件读取,可被余额桌宠的后台线程直接调用,无需构造完整的
+    ClaudeDesktopConfig(那会拉起安装器等子系统)。优先取 ConfigPilot 自己的
+    档案,否则取已激活的 gateway 档案;非 gateway 类型返回空。
+    """
+    lib = _third_party_data_dir() / CONFIG_LIBRARY_DIR_NAME
+    meta = read_json_object(lib / CONFIG_LIBRARY_META_FILE_NAME)
+    entries = meta.get("entries")
+    if not isinstance(entries, list):
+        entries = []
+    profile_id = ""
+    for entry in entries:
+        if (
+            isinstance(entry, dict)
+            and entry.get("name") == DEFAULT_PROFILE_NAME
+            and valid_profile_id(entry.get("id"))
+        ):
+            profile_id = str(entry["id"])
+            break
+    if not profile_id:
+        applied = meta.get("appliedId", "")
+        if valid_profile_id(applied):
+            profile_id = str(applied)
+    if not profile_id:
+        return "", ""
+    profile = read_json_object(lib / f"{profile_id}.json")
+    if profile.get("inferenceProvider") != "gateway":
+        return "", ""
+    endpoint = str(profile.get("inferenceGatewayBaseUrl", "") or "")
+    api_key = str(profile.get("inferenceGatewayApiKey", "") or "")
+    return endpoint, api_key
+
+
 class ClaudeDesktopConfig(QObject):
     """读取并安全写入 Claude Desktop 的第三方推理配置库。"""
 
@@ -392,25 +427,9 @@ class ClaudeDesktopConfig(QObject):
     def read_gateway_credentials(self) -> tuple[str, str]:
         """同步读取当前 Gateway 档案的 (endpoint, api_key),供桌宠后台线程复用。
 
-        与 _read_snapshot 使用同一档案定位逻辑,但额外返回明文 key;
-        仅在后台工作线程调用,不在 GUI 线程执行磁盘读取。
+        与模块级 read_gateway_credentials 共用同一实现,避免逻辑分叉。
         """
-        meta = read_json_object(self._meta_path)
-        profile_id, _ = self._active_profile(meta)
-        if not profile_id:
-            active_id, _ = self._active_profile_entry(meta)
-            if active_id:
-                source = read_json_object(self._config_library_dir / f"{active_id}.json")
-                if source.get("inferenceProvider") == "gateway":
-                    profile_id = active_id
-        if not profile_id:
-            return "", ""
-        profile = read_json_object(self._config_library_dir / f"{profile_id}.json")
-        if profile.get("inferenceProvider") != "gateway":
-            return "", ""
-        endpoint = str(profile.get("inferenceGatewayBaseUrl", "") or "")
-        api_key = str(profile.get("inferenceGatewayApiKey", "") or "")
-        return endpoint, api_key
+        return read_gateway_credentials()
 
     def _prepare_profile(
         self,

@@ -9,6 +9,8 @@ import os
 import re
 import tempfile
 
+from backend.fs_repair import ensure_directory
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover
@@ -191,7 +193,7 @@ class ManagedChangeJournal:
 
     def _write_payload(self, state: dict) -> None:
         parent = os.path.dirname(self.path) or os.curdir
-        os.makedirs(parent, exist_ok=True)
+        ensure_directory(parent)
         fd, temporary_path = tempfile.mkstemp(
             prefix=f".{os.path.basename(self.path)}.", suffix=".tmp", dir=parent
         )

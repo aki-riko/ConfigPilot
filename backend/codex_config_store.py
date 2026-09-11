@@ -17,6 +17,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     tomllib = None
 
+from backend.fs_repair import ensure_directory
 from backend.codex_restore_state import (
     ManagedChangeJournal,
     PROVIDER_FIELD_TYPES,
@@ -519,7 +520,7 @@ class CodexConfigStore:
     @staticmethod
     def _atomic_write_text(path: str, text: str) -> None:
         parent = os.path.dirname(path) or os.curdir
-        os.makedirs(parent, exist_ok=True)
+        ensure_directory(parent)
         fd, temporary_path = tempfile.mkstemp(
             prefix=f".{os.path.basename(path)}.",
             suffix=".tmp",

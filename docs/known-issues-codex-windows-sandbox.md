@@ -1,6 +1,6 @@
 # 已知问题记录：Codex Windows 沙盒 provisioning 弹出「无法检查 Windows 设置」
 
-> 记录时间：2026-09-11 · 相关版本：ConfigPilot v1.0.29 / Codex CLI 0.14x（Windows）
+> 记录时间：2026-09-11 · 相关版本：ConfigPilot v1.0.29（定位）/ v1.0.30（内置止血按钮）· Codex CLI 0.14x（Windows）
 
 ## 现象
 

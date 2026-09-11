@@ -29,6 +29,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **安全**：每次写入前自动备份 `config.toml.bak` / `auth.json.bak`，保留 `notify` 等其它原有配置不动
 - **恢复初始设置**：只恢复 ConfigPilot 实际改过且此后未被外部修改的字段；保留 `[projects.*]` 工作区信任项和其它 Codex 配置
 - **常驻操作栏**：随时查看未应用状态，并可重新读取或应用配置
+- **沙盒止血（临时）**：把 Codex 顶层 `sandbox_mode` 写为 `danger-full-access`，绕过 Windows 上「无法检查 Windows 设置」的沙盒初始化循环；只改这一个字段，`[windows]`／`[projects.*]`／`notify` 全部保留，可用「恢复初始设置」还原
 - **Claude Desktop Subpage**：直接写入 Claude 自己的本地配置库，一键启用 Developer Mode 与 `deploymentMode=3p`
 - **第三方推理 Gateway**：配置 endpoint、`bearer` / `x-api-key`、API key、模型发现、模型 ID、显示名、1M 上下文、Tier alias 和额外 Header；endpoint 原样写入，Claude Desktop 自行请求 `/v1/messages`
 - **Claude 配置安全**：编辑当前已应用配置，敏感字段留空默认保留；写入前创建 `.bak`，损坏的现有 JSON 会拒绝覆盖

@@ -102,6 +102,12 @@ class NewApiPet(QObject):
         self._generation = 0
         self._pending: dict[str, bool] = {}
         self._staged: dict[str, Any] = {}
+        # 限流退避与单飞:new-api 的 CriticalRateLimit 是每 IP 每路由 20 次/20 分钟,
+        # 收到 429/503 必须按 Retry-After 退避,且一轮请求未回来前不再叠加。
+        self._inflight = False
+        self._queued_refresh = False
+        self._blocked_until = 0.0
+        self._retry_after = 0
 
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
@@ -322,6 +328,14 @@ class NewApiPet(QObject):
         self._do_refresh()
 
     def _do_refresh(self) -> None:
+        # 单飞:一轮请求未回来时不叠加,只记一次待补,避免自己把自己打到限流。
+        if self._inflight:
+            self._queued_refresh = True
+            return
+        now = time.time()
+        if now < self._blocked_until:
+            self.statusChanged.emit()  # 展示"限流退避中"
+            return
         self._update_credentials()
         base = self._resolved_base
         key = self._resolved_key
@@ -335,8 +349,18 @@ class NewApiPet(QObject):
         generation = self._generation
         self._pending = {"usage": True, "logs": True}
         self._staged = {}
+        self._inflight = True
         self._get(base, key, "/api/usage/token/", generation, "usage", self._handle_usage)
         self._get(base, key, "/api/log/token", generation, "logs", self._handle_logs)
+
+    def _finish_cycle(self) -> None:
+        """一轮(成功或失败)结束后清标志,并补发被合并的刷新请求。"""
+        self._inflight = False
+        if self._queued_refresh:
+            self._queued_refresh = False
+            # 冷却未到就等定时器,不立刻再打。
+            if time.time() >= self._blocked_until:
+                QTimer.singleShot(0, self._do_refresh)
 
     @Slot(int, int)
     def savePosition(self, x: int, bottom_y: int) -> None:
@@ -432,6 +456,9 @@ class NewApiPet(QObject):
             if self._config.source != SOURCE_MANUAL and self._resolver is not None:
                 return "正在读取已配置的接口凭证…"
             return "未配置：右键桌宠 → 设置"
+        now = time.time()
+        if now < self._blocked_until:
+            return f"已限流，{int(self._blocked_until - now) + 1}s 后自动重试"
         if self._last_error:
             return f"请求失败：{self._last_error}"
         if self._last_updated <= 0:
@@ -441,6 +468,9 @@ class NewApiPet(QObject):
 
     @Property(bool, notify=statusChanged)
     def hasError(self) -> bool:
+        # 限流退避期间不算硬错误(气泡不闪红),只是暂停。
+        if self._resolved_base and self._resolved_key and time.time() < self._blocked_until:
+            return False
         return bool(self._resolved_base and self._resolved_key and self._last_error)
 
     @Property(bool, notify=statusChanged)
@@ -466,21 +496,32 @@ class NewApiPet(QObject):
             if generation != self._generation:
                 return  # 过期响应(用户改配置/手动刷新后),直接丢弃
             body = bytes(reply.readAll())
-            if reply.error() != QNetworkReply.NetworkError.NoError:
-                self._fail(self._describe_failure(reply, body), key)
-                return
             status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
-            if status is None or int(status) != 200:
-                self._fail(self._describe_failure(reply, body), key)
+            status_int = int(status) if status is not None else None
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                self._handle_failure(status_int, self._retry_after_seconds(reply),
+                                      self._describe_failure(reply, body), key)
+                return
+            if status_int is None or status_int != 200:
+                self._handle_failure(status_int, self._retry_after_seconds(reply),
+                                      self._describe_failure(reply, body), key)
                 return
             try:
                 data = json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as exc:
-                self._fail(f"响应解析失败: {exc}", key)
+                self._handle_failure(status_int, 0, f"响应解析失败: {exc}", key)
                 return
             handler(data)
         except RuntimeError as exc:  # reply 已被销毁等运行期异常
             LOGGER.debug("桌宠响应处理异常: %s", exc)
+
+    @staticmethod
+    def _retry_after_seconds(reply: QNetworkReply) -> int:
+        raw = bytes(reply.rawHeader("Retry-After")).decode("utf-8", "ignore").strip()
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            return 0
 
     @staticmethod
     def _describe_failure(reply: QNetworkReply, body: bytes) -> str:
@@ -496,21 +537,42 @@ class NewApiPet(QObject):
         status_text = f"HTTP {status}" if status is not None else reply.errorString()
         return f"{status_text}：{server_message}" if server_message else status_text
 
-    def _fail(self, message: str, key: str) -> None:
-        self._pending.pop(key, None)
-        self._last_error = message
-        self._pending.clear()  # 一次失败即中止本轮合并
-        LOGGER.info("桌宠请求失败(%s): %s", key, message)
-        self.statusChanged.emit()
-        self._maybe_advance_auto()
+    # 明确"来源不对"的状态码:换下一个候选才有意义。
+    _WRONG_SOURCE_STATUS = {400, 401, 403, 404, 405}
 
-    def _maybe_advance_auto(self) -> None:
-        """auto 模式:当前来源请求失败就换下一个候选重试,直到用尽。"""
-        if self._config.source != SOURCE_AUTO or self._resolver is None:
+    def _handle_failure(self, status, retry_after: int, message: str, key: str) -> None:
+        self._pending.clear()  # 一次失败即中止本轮合并
+        self._last_error = message
+        self._inflight = False
+        LOGGER.info("桌宠请求失败(%s): %s", key, message)
+        if status in (429, 503):
+            # 限流:按 Retry-After 退避,绝不回退/重试(那只会更快再次 429)。
+            wait = retry_after if retry_after > 0 else max(self._config.poll_interval_seconds, 60)
+            self._retry_after = wait
+            self._blocked_until = time.time() + wait
+            self.statusChanged.emit()
+            self._drain_queued()
             return
+        self.statusChanged.emit()
+        # 404/405/401 等 = 该来源不是可用 new-api;auto 才换下一个候选。
+        if status in self._WRONG_SOURCE_STATUS or status is None:
+            if self._maybe_advance_auto():
+                return
+        self._drain_queued()
+
+    def _drain_queued(self) -> None:
+        if self._queued_refresh:
+            self._queued_refresh = False
+            if time.time() >= self._blocked_until:
+                QTimer.singleShot(0, self._do_refresh)
+
+    def _maybe_advance_auto(self) -> bool:
+        """auto 模式:当前来源请求失败就换下一个候选重试,直到用尽。返回是否已发起。"""
+        if self._config.source != SOURCE_AUTO or self._resolver is None:
+            return False
         candidates = self._resolver.candidate_sources()
         if len(candidates) <= 1:
-            return
+            return False
         try:
             current = candidates.index(self._resolved_source)
         except ValueError:
@@ -518,19 +580,20 @@ class NewApiPet(QObject):
         nxt = current + 1
         if nxt >= len(candidates) or self._auto_attempt >= len(candidates):
             self._auto_locked = ""  # 全部失败,清除锁定,下轮从头再试
-            return
+            return False
         self._auto_attempt += 1
         self._auto_pos = nxt
         self._do_refresh()
+        return True
 
     def _handle_usage(self, data: Any) -> None:
         if not isinstance(data, dict) or not (data.get("code") is True or data.get("success") is True):
             message = data.get("message", "接口返回异常") if isinstance(data, dict) else "接口返回异常"
-            self._fail(str(message), "usage")
+            self._handle_failure(None, 0, str(message), "usage")
             return
         payload = data.get("data")
         if not isinstance(payload, dict):
-            self._fail("usage 数据缺少 data 字段", "usage")
+            self._handle_failure(None, 0, "usage 数据缺少 data 字段", "usage")
             return
         self._staged["usage"] = payload
         self._pending.pop("usage", None)
@@ -539,11 +602,11 @@ class NewApiPet(QObject):
     def _handle_logs(self, data: Any) -> None:
         if not isinstance(data, dict) or data.get("success") is not True:
             message = data.get("message", "接口返回异常") if isinstance(data, dict) else "接口返回异常"
-            self._fail(str(message), "logs")
+            self._handle_failure(None, 0, str(message), "logs")
             return
         rows = data.get("data")
         if not isinstance(rows, list):
-            self._fail("log 数据缺少 data 字段", "logs")
+            self._handle_failure(None, 0, "log 数据缺少 data 字段", "logs")
             return
         self._staged["logs"] = rows
         self._pending.pop("logs", None)
@@ -576,6 +639,10 @@ class NewApiPet(QObject):
         self._last_updated = time.time()
         if self._config.source == SOURCE_AUTO and not self._last_error:
             self._auto_locked = self._resolved_source  # 锁定可用来源,避免每轮抖动
+        self._inflight = False
+        self._blocked_until = 0.0
+        self._retry_after = 0
         self.usageChanged.emit()
         self.logsChanged.emit()
         self.statusChanged.emit()
+        self._drain_queued()

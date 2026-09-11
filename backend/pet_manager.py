@@ -108,7 +108,8 @@ class PetManager(QObject):
                 LOGGER.warning("桌宠悬浮窗创建失败")
                 return
         self._window.setVisible(True)
-        self._controller.refresh()
+        # 不在此处强制刷新:控制器自带轮询计时器,数据本就保持新鲜;
+        # 每次显示都打一发会白白消耗 new-api 的限流配额。
 
     def _hide_window(self) -> None:
         if self._window is not None:

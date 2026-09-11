@@ -92,7 +92,7 @@ class QuotaMathTests(unittest.TestCase):
 class PetConfigTests(unittest.TestCase):
     def test_parse_defaults_from_empty_dict(self):
         config = parse_pet_config({})
-        self.assertEqual(config.poll_interval_seconds, 60)
+        self.assertEqual(config.poll_interval_seconds, 120)
         self.assertEqual(config.currency, "CNY")
         self.assertEqual(config.quota_per_unit, 500_000.0)
         self.assertEqual(config.cny_rate, 7.3)

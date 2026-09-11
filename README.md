@@ -107,14 +107,16 @@ ISCC ConfigPilot.iss
 ```json
 {
   "source": "auto",
-  "poll_interval_seconds": 60,
+  "poll_interval_seconds": 120,
   "currency": "CNY",
   "quota_per_unit": 500000,
   "cny_rate": 7.3
 }
 ```
 
-手动模式才需要 `base_url` / `api_key`；也可用环境变量 `CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖。只想单独跑桌宠、不打开主窗口：`python pet_main.py`（同样自动复用 Codex 配置）。
+手动模式才需要 `base_url` / `api_key`；也可用环境变量 `CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖。只想单独跑桌宠、不打开主窗口：`python pet_main.py`（同样自动复用 Codex/Claude 配置）。
+
+> **限流友好**：new-api 的 `CriticalRateLimit` 是每 IP 每路由 20 次 / 20 分钟（约 1 次/分钟）。桌宠默认 120s 轮询、单飞不叠加请求；一旦收到 429/503 会按 `Retry-After` 自动退避（气泡显示「已限流，Ns 后自动重试」，期间不再发请求），退避不算错误。若你的站点限流更严，把 `poll_interval_seconds` 调大即可。
 
 > 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。若站点系统设置改过额度展示或汇率，把 `quota_per_unit` / `cny_rate` 改成与站点一致即可；`currency` 可选 `CNY` / `USD` / `TOKENS`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
 

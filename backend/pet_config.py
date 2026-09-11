@@ -46,7 +46,7 @@ class PetConfig:
     base_url: str = ""
     api_key: str = ""
     source: str = SOURCE_AUTO
-    poll_interval_seconds: int = 60
+    poll_interval_seconds: int = 120
     currency: str = "CNY"
     quota_per_unit: float = _DEFAULT_QUOTA_PER_UNIT
     cny_rate: float = _DEFAULT_CNY_RATE
@@ -161,7 +161,7 @@ def parse_pet_config(data: object) -> PetConfig:
             "poll_interval_seconds",
             _MIN_POLL_INTERVAL_SECONDS,
             _MAX_POLL_INTERVAL_SECONDS,
-            60,
+            120,
         ),
         currency=currency,
         quota_per_unit=_positive_number(data.get("quota_per_unit", _DEFAULT_QUOTA_PER_UNIT), "quota_per_unit"),

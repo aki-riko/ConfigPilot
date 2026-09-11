@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 import json
 import logging
@@ -89,6 +90,11 @@ class NewApiPet(QObject):
         QTimer.singleShot(0, self.refresh)
 
     # ------------------------------------------------------------------ 配置
+
+    @property
+    def config(self) -> PetConfig:
+        """当前生效配置(供 PetManager 等 Python 侧读取)。"""
+        return self._config
 
     def _effective_config(self) -> PetConfig:
         return resolve_effective_config(self._config)
@@ -206,23 +212,25 @@ class NewApiPet(QObject):
         """QML 拖动结束后保存窗口位置。"""
         if self._config.window_x == x and self._config.window_bottom_y == bottom_y:
             return
-        self._config = PetConfig(
-            base_url=self._config.base_url,
-            api_key=self._config.api_key,
-            poll_interval_seconds=self._config.poll_interval_seconds,
-            currency=self._config.currency,
-            quota_per_unit=self._config.quota_per_unit,
-            cny_rate=self._config.cny_rate,
-            auto_show=self._config.auto_show,
-            bubble_timeout_seconds=self._config.bubble_timeout_seconds,
-            window_x=x,
-            window_bottom_y=bottom_y,
-            pet_image=self._config.pet_image,
-        )
+        self._config = replace(self._config, window_x=x, window_bottom_y=bottom_y)
         try:
             save_pet_config(self._config_path, self._config)
         except OSError as exc:
             LOGGER.warning("桌宠位置写入失败: %s", exc)
+            return
+        self.configSaved.emit()
+
+    @Slot(bool)
+    def setAutoShow(self, enabled: bool) -> None:
+        """主界面开关持久化 auto_show(不触发窗口显隐,由 PetManager 负责)。"""
+        enabled = bool(enabled)
+        if self._config.auto_show == enabled:
+            return
+        self._config = replace(self._config, auto_show=enabled)
+        try:
+            save_pet_config(self._config_path, self._config)
+        except OSError as exc:
+            LOGGER.warning("桌宠开关写入失败: %s", exc)
             return
         self.configSaved.emit()
 

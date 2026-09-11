@@ -12,6 +12,8 @@ Item {
     readonly property int contentMaxWidth: 920
     readonly property var configManager:
         typeof ConfigManager !== "undefined" ? ConfigManager : null
+    readonly property var petManager:
+        typeof PetManager !== "undefined" ? PetManager : null
     readonly property string appVersion:
         typeof AppVersion !== "undefined" ? AppVersion : ""
     readonly property string appAuthor:
@@ -204,6 +206,62 @@ Item {
                             if (index >= 0 && index < languageValues.length) {
                                 Fluent.Translator.setLanguage(languageValues[index])
                             }
+                        }
+                    }
+                }
+
+                Fluent.SettingsCardGroup {
+                    objectName: "petSettingsGroup"
+                    width: pageColumn.innerWidth
+                    title: "余额监控桌宠"
+                    spacing: Fluent.Enums.spacing.xs
+
+                    Fluent.SettingsCard {
+                        objectName: "petEnabledCard"
+                        width: parent ? parent.width : 0
+                        title: "显示余额桌宠"
+                        content: root.petManager && root.petManager.petHasApiKey
+                                 ? "在桌面右下角显示小飞宠，气泡监控 NewAPI 令牌余额与今日用量"
+                                 : "已开启但尚未配置接口地址与 API Key，请在下方设置中填写"
+                        icon: Fluent.Enums.icon.animal_cat
+                        type: Fluent.Enums.settingCard.type_switch
+                        checked: root.petManager ? root.petManager.petEnabled : false
+                        onSwitchToggled: function (isChecked) {
+                            if (root.petManager) {
+                                root.petManager.setEnabled(isChecked)
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: petSettingsCardHost
+                        objectName: "petSettingsCard"
+                        width: parent ? parent.width : 0
+                        implicitHeight: Fluent.Enums.settingCard.height_with_content
+                        height: implicitHeight
+
+                        Fluent.SettingsCardCore {
+                            id: petSettingsCardCore
+                            anchors.fill: parent
+                            title: "桌宠设置"
+                            icon: Fluent.Enums.icon.settings
+                            content: "配置 NewAPI 接口地址、API Key、轮询间隔与金额换算"
+                        }
+
+                        Fluent.Button {
+                            id: petSettingsButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: Fluent.Enums.spacing.xl
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "打开设置"
+                            style: Fluent.Enums.button.style_default
+                            enabled: root.petManager !== null
+                            onClicked: {
+                                if (root.petManager) {
+                                    root.petManager.openSettings()
+                                }
+                            }
+                            z: 1
                         }
                     }
                 }

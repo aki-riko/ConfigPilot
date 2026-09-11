@@ -13,7 +13,14 @@ Window {
     title: "余额监控设置"
 
     readonly property bool petReady: typeof NewApiPet !== "undefined" && NewApiPet !== null
+    readonly property bool managerReady: typeof PetManager !== "undefined" && PetManager !== null
     property string currency: "CNY"
+
+    // 由 PetManager.openSettings() 唤起:主界面设置页按钮与桌宠右键菜单都走这里。
+    Connections {
+        target: managerReady ? PetManager : null
+        function onOpenSettingsRequested() { dialog.openForEdit() }
+    }
 
     function openForEdit() {
         if (petReady) {

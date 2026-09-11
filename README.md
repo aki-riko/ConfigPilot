@@ -33,7 +33,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **Claude Desktop Subpage**：直接写入 Claude 自己的本地配置库，一键启用 Developer Mode 与 `deploymentMode=3p`
 - **第三方推理 Gateway**：配置 endpoint、`bearer` / `x-api-key`、API key、模型发现、模型 ID、显示名、1M 上下文、Tier alias 和额外 Header；endpoint 原样写入，Claude Desktop 自行请求 `/v1/messages`
 - **Claude 配置安全**：编辑当前已应用配置，敏感字段留空默认保留；写入前创建 `.bak`，损坏的现有 JSON 会拒绝覆盖
-- **余额监控桌宠**：NEWAPI 站点的悬浮小飞宠，气泡实时显示令牌余额与今日用量，点击展开调用明细（模型 / Tokens / 消耗金额）；仅凭 API Key 轮询 new-api 只读接口，令牌耗尽或过期也能查余额
+- **余额监控桌宠**：NEWAPI 站点的悬浮小飞宠，气泡实时显示令牌余额与今日用量，点击展开调用明细（模型 / Tokens / 消耗金额）；主界面「设置」页有开关与设置入口，仅凭 API Key 轮询 new-api 只读接口，令牌耗尽或过期也能查余额
 
 > Claude Desktop 配置写入后必须完全退出并重新打开。ConfigPilot 不会强制结束正在运行的 Cowork / Code 会话。
 
@@ -97,7 +97,10 @@ ISCC ConfigPilot.iss
 - `GET {base}/api/usage/token/` —— 令牌的总额度 / 已用 / 剩余
 - `GET {base}/api/log/token` —— 该令牌最近 1000 条日志，用于计算「今日已用」与明细列表
 
-**启用方式**：配置文件 `%LOCALAPPDATA%\ConfigPilot\pet_config.json`（不存在则桌宠不出现，不影响原有行为）：
+**启用方式**：
+
+1. **应用内开关（推荐）**：打开 ConfigPilot → 左侧「设置」页 → 「余额监控桌宠」分组 → 打开「显示余额桌宠」开关，再点「打开设置」填写接口地址与 API Key 即可。开关状态会持久化，下次启动自动恢复；在桌宠右键菜单选「退出桌宠」也会同步关掉这个开关。
+2. **配置文件**：`%LOCALAPPDATA%\ConfigPilot\pet_config.json`（不存在则按默认值，开关默认开）：
 
 ```json
 {
@@ -110,7 +113,9 @@ ISCC ConfigPilot.iss
 }
 ```
 
-也可以不落盘，用环境变量 `CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖。只想单独跑桌宠不打开主窗口：`python pet_main.py`（未配置时桌宠会提示右键打开设置窗口）。
+3. **环境变量**（不落盘）：`CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖地址与 Key。
+
+只想单独跑桌宠、不打开主窗口：`python pet_main.py`（未配置时桌宠会提示右键 → 设置）。
 
 > 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。若站点系统设置改过额度展示或汇率，把 `quota_per_unit` / `cny_rate` 改成与站点一致即可；`currency` 可选 `CNY` / `USD` / `TOKENS`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
 
@@ -144,6 +149,7 @@ configpilot/
 │   ├── model_profiles.py    模型规则加载与校验
 │   ├── newapi_pet.py        余额桌宠控制器(轮询 new-api 只读接口)
 │   ├── pet_config.py        桌宠配置加载/保存/校验
+│   ├── pet_manager.py       桌宠开关与悬浮窗生命周期
 │   └── quota_math.py        额度换算与今日用量统计
 ├── qml/
 │   ├── main.qml             窗口 + 导航 + 启动屏 + 图标

@@ -142,34 +142,55 @@ def main() -> int:
         if not window_instance.isVisible():
             window_instance.show()
 
-    # 余额监控桌宠:仅当用户已配置 API Key 且 auto_show 时才创建,
-    # 未配置用户的行为与之前完全一致。
-    if not os.environ.get("SELFTEST"):
-        try:
-            from backend.newapi_pet import NewApiPet
-            from backend.pet_config import (
-                load_pet_config_safe,
-                resolve_effective_config,
-                resolve_pet_config_path,
-            )
+    # 余额监控桌宠:始终注册控制器与开关管理器(主界面设置页需要),
+    # 悬浮窗与设置窗口按需懒创建;未配置 Key 时开关默认关,不影响原有行为。
+    try:
+        from PySide6.QtQml import QQmlComponent
 
-            pet_config_path = resolve_pet_config_path()
-            pet_loaded, pet_error = load_pet_config_safe(pet_config_path)
-            if pet_error:
-                print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
-            pet_effective = resolve_effective_config(pet_loaded)
-            if pet_effective.api_key and pet_effective.auto_show:
-                engine.rootContext().setContextProperty("PetStandalone", False)
-                pet_controller = NewApiPet(str(pet_config_path), pet_effective)
-                engine.rootContext().setContextProperty("NewApiPet", pet_controller)
-                roots_before = len(engine.rootObjects())
-                engine.load(
-                    QUrl.fromLocalFile(os.path.join(app_dir, "qml", "pet", "PetWindow.qml"))
-                )
-                if len(engine.rootObjects()) <= roots_before:
-                    print("[WARN] 加载 PetWindow.qml 失败,桌宠未启用", file=sys.stderr)
-        except Exception as exc:
-            print(f"[WARN] 余额桌宠初始化失败: {exc}", file=sys.stderr)
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import (
+            load_pet_config_safe,
+            resolve_effective_config,
+            resolve_pet_config_path,
+        )
+        from backend.pet_manager import PetManager
+
+        pet_config_path = resolve_pet_config_path()
+        pet_loaded, pet_error = load_pet_config_safe(pet_config_path)
+        if pet_error:
+            print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
+        pet_effective = resolve_effective_config(pet_loaded)
+        pet_controller = NewApiPet(str(pet_config_path), pet_effective)
+        engine.rootContext().setContextProperty("PetStandalone", False)
+        engine.rootContext().setContextProperty("NewApiPet", pet_controller)
+
+        def _make_qml_window(qml_name):
+            component = QQmlComponent(engine)
+            component.loadUrl(QUrl.fromLocalFile(os.path.join(app_dir, "qml", "pet", qml_name)))
+            if component.isError():
+                for err in component.errors():
+                    print(f"[WARN] {qml_name}: {err.toString()}", file=sys.stderr)
+                return None
+            window = component.create()
+            if window is None:
+                for err in component.errors():
+                    print(f"[WARN] {qml_name} 创建失败: {err.toString()}", file=sys.stderr)
+                return None
+            # 保活 component:否则其被回收时会连带销毁 create() 出的窗口。
+            window._pet_component = component
+            return window
+
+        pet_manager = PetManager(
+            pet_controller,
+            lambda: _make_qml_window("PetWindow.qml"),
+            lambda: _make_qml_window("PetSettingsDialog.qml"),
+            standalone=False,
+        )
+        engine.rootContext().setContextProperty("PetManager", pet_manager)
+        if not os.environ.get("SELFTEST"):
+            pet_manager.show_at_startup()
+    except Exception as exc:
+        print(f"[WARN] 余额桌宠初始化失败: {exc}", file=sys.stderr)
 
     # headless 自检:设了 SELFTEST 则加载成功后定时退出
     if os.environ.get("SELFTEST"):

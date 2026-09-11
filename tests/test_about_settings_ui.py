@@ -108,6 +108,26 @@ class AboutSettingsUiTests(unittest.TestCase):
         self.assertIn('"AppYear", app_settings.year', main)
         self.assertIn("PrismQMLHomepage", page)
 
+    def test_balance_pet_toggle_group_present(self):
+        page = self.read()
+
+        # 主界面设置页必须有桌宠开关与设置入口,且都经 PetManager。
+        self.assertIn('objectName: "petSettingsGroup"', page)
+        self.assertIn('objectName: "petEnabledCard"', page)
+        self.assertIn('objectName: "petSettingsCard"', page)
+        self.assertIn("root.petManager ? root.petManager.petEnabled : false", page)
+        self.assertIn("root.petManager.setEnabled(isChecked)", page)
+        self.assertIn("root.petManager.openSettings()", page)
+        self.assertIn("typeof PetManager !== \"undefined\" ? PetManager : null", page)
+
+    def test_main_registers_pet_manager_and_window_factories(self):
+        main = (ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn('"PetManager", pet_manager', main)
+        self.assertIn('"NewApiPet", pet_controller', main)
+        self.assertIn("PetManager(", main)
+        self.assertIn("show_at_startup()", main)
+
 
 if __name__ == "__main__":
     unittest.main()

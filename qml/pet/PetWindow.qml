@@ -11,10 +11,11 @@ Window {
     width: 340
     height: petWindow.panelHeight
     title: "ConfigPilot 余额桌宠"
-    visible: true
+    visible: false
 
     readonly property bool standalone: typeof PetStandalone !== "undefined" ? PetStandalone : false
     readonly property bool petReady: typeof NewApiPet !== "undefined" && NewApiPet !== null
+    readonly property bool managerReady: typeof PetManager !== "undefined" && PetManager !== null
 
     // 面板高度随模式变化,底边保持不动(气泡向上展开)。
     //  pet:    只显示桌宠
@@ -34,7 +35,13 @@ Window {
     property string lastBalance: ""
     property string lastToday: ""
 
-    onClosing: if (standalone) Qt.quit()
+    onClosing: {
+        if (standalone) {
+            Qt.quit()
+        } else if (managerReady) {
+            PetManager.petWindowClosed()
+        }
+    }
 
     onPanelHeightChanged: applyGeometry()
 
@@ -726,7 +733,7 @@ Window {
                                 } else if (modelData.action === "detail") {
                                     petWindow.toggleDetail()
                                 } else if (modelData.action === "settings") {
-                                    settingsDialog.openForEdit()
+                                    if (managerReady) PetManager.openSettings()
                                 } else if (modelData.action === "quit") {
                                     petWindow.close()
                                 }
@@ -736,9 +743,5 @@ Window {
                 }
             }
         }
-    }
-
-    PetSettingsDialog {
-        id: settingsDialog
     }
 }

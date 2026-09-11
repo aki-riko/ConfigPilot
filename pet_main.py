@@ -16,7 +16,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 def main() -> int:
     from PySide6.QtCore import QTimer, QUrl
     from PySide6.QtGui import QGuiApplication
-    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ConfigPilotPet")
@@ -24,6 +24,7 @@ def main() -> int:
 
     from backend.newapi_pet import NewApiPet
     from backend.pet_config import resolve_pet_config_path
+    from backend.pet_manager import PetManager
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("PetStandalone", True)
@@ -34,16 +35,33 @@ def main() -> int:
         return -1
     engine.rootContext().setContextProperty("NewApiPet", pet)
 
-    qml_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "qml", "pet", "PetWindow.qml"
+    pet_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "pet")
+
+    def _make_qml_window(qml_name):
+        component = QQmlComponent(engine)
+        component.loadUrl(QUrl.fromLocalFile(os.path.join(pet_dir, qml_name)))
+        if component.isError():
+            for err in component.errors():
+                print(f"[ERROR] {qml_name}: {err.toString()}", file=sys.stderr)
+            return None
+        window = component.create()
+        if window is None:
+            return None
+        # 保活 component,避免其回收时销毁窗口。
+        window._pet_component = component
+        return window
+
+    manager = PetManager(
+        pet,
+        lambda: _make_qml_window("PetWindow.qml"),
+        lambda: _make_qml_window("PetSettingsDialog.qml"),
+        standalone=True,
     )
-    engine.load(QUrl.fromLocalFile(qml_path))
-    if not engine.rootObjects():
-        print("[ERROR] 加载 PetWindow.qml 失败,检查组件路径或语法", file=sys.stderr)
-        return -1
+    engine.rootContext().setContextProperty("PetManager", manager)
+    manager.show_at_startup()
 
     if os.environ.get("SELFTEST"):
-        print("[SELFTEST] PetWindow.qml 加载成功, rootObjects =", len(engine.rootObjects()))
+        print("[SELFTEST] 桌宠独立入口初始化完成")
         QTimer.singleShot(3000, app.quit)
 
     return app.exec()

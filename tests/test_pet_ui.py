@@ -69,20 +69,22 @@ def _capture_qml_warnings():
     return _QmlWarningCapture()
 
 
-# 与 PetWindow.qml 里的布局常量保持一致
+# 与 PetWindow.qml / PetPanel.qml 里的布局常量保持一致
 PANEL_PADDING = 8
 SPRITE_SIZE = 120
+SPRITE_BOTTOM_MARGIN = PANEL_PADDING
+SPRITE_GAP = PANEL_PADDING * 2
 CARD_TOP = PANEL_PADDING
 DETAIL_CONTENT_HEIGHT = 322
 BUBBLE_HEIGHT = 76
-SPRITE_GAP = PANEL_PADDING * 2
-SPRITE_TOP = CARD_TOP + DETAIL_CONTENT_HEIGHT + SPRITE_GAP
-BUBBLE_SPRITE_TOP = CARD_TOP + BUBBLE_HEIGHT + PANEL_PADDING
+BUBBLE_TOP = PANEL_PADDING
 EXPECTED_HEIGHTS = {
-    "detail": SPRITE_TOP + PANEL_PADDING + SPRITE_SIZE + PANEL_PADDING,
-    "bubble": BUBBLE_SPRITE_TOP + PANEL_PADDING + SPRITE_SIZE + PANEL_PADDING,
-    "pet": PANEL_PADDING + SPRITE_SIZE + SPRITE_GAP,
+    "detail": CARD_TOP + DETAIL_CONTENT_HEIGHT + SPRITE_GAP + SPRITE_SIZE + SPRITE_BOTTOM_MARGIN,
+    "bubble": BUBBLE_TOP + BUBBLE_HEIGHT + SPRITE_GAP + SPRITE_SIZE + SPRITE_BOTTOM_MARGIN,
+    "pet": SPRITE_BOTTOM_MARGIN + SPRITE_SIZE + SPRITE_GAP,
 }
+# pet 形态的高度,需要能完整放下桌宠(否则桌宠会被裁到窗口外)
+PET_MODE_MIN_HEIGHT = SPRITE_BOTTOM_MARGIN + SPRITE_SIZE
 
 
 class StubPet(QObject):
@@ -194,6 +196,34 @@ class PetQmlLoadTests(unittest.TestCase):
                 APP.processEvents()
                 self.assertEqual(window.property("height"), expected)
 
+    def test_pet_sprite_stays_inside_window_in_every_mode(self):
+        """桌宠本体必须完整落在窗口内。
+
+        曾经 pet 形态的桌宠 topMargin 用的是气泡模式的坐标,窗口又只有桌宠区那么高,
+        结果桌宠被挤到窗口外:看不见、也点不到(鼠标事件全落到窗口外)。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+        for mode in EXPECTED_HEIGHTS:
+            with self.subTest(mode=mode):
+                window.setProperty("mode", mode)
+                APP.processEvents()
+                panel = window.findChild(QQuickItem, "petPanel")
+                sprite = panel.findChild(QQuickItem, "petSprite")
+                self.assertIsNotNone(sprite, "桌宠没有 objectName")
+                height = window.property("height")
+                self.assertGreaterEqual(sprite.y(), 0, "桌宠顶边跑到窗口上方了")
+                self.assertLessEqual(
+                    sprite.y() + sprite.height(), height,
+                    f"{mode} 形态下桌宠底边超出窗口({sprite.y() + sprite.height()} > {height})",
+                )
+                self.assertGreaterEqual(
+                    height, PET_MODE_MIN_HEIGHT,
+                    f"{mode} 形态窗口太矮,放不下桌宠",
+                )
+
     # ---------------------------------------------------------------- 交互链路
 
     def _mouse_area_in(self, parent):
@@ -202,17 +232,63 @@ class PetQmlLoadTests(unittest.TestCase):
         return hits
 
     def _click(self, window, item, button=Qt.LeftButton):
-        point = item.mapToScene(
+        QTest.mouseClick(window, button, Qt.NoModifier, self._center_of(window, item))
+        APP.processEvents()
+
+    @staticmethod
+    def _center_of(window, item):
+        """按当前布局重新取 item 中心对应的窗口坐标(形态切换后必须重取)。"""
+        return item.mapToScene(
             QPoint(int(item.width() / 2), int(item.height() / 2))
         ).toPoint()
-        QTest.mouseClick(window, button, Qt.NoModifier, point)
+
+    def test_bubble_timer_pauses_on_hover_and_resumes_on_leave(self):
+        """鼠标停进气泡时不能自动收起,离开后重新计时。
+
+        这条路径历史上是 `petWindow.hideTimer.stop()` —— QML 取不到"根对象 id.子元素 id",
+        于是每次进出气泡都抛 "Cannot call method 'stop' of undefined"。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
         APP.processEvents()
+
+        timer = window.findChild(QObject, "petHideTimer")
+        self.assertIsNotNone(timer, "气泡计时器没有 objectName,无法定位")
+
+        panel = window.findChild(QQuickItem, "petPanel")
+        bubble_areas = self._mouse_area_in(panel.childItems()[1])
+        self.assertTrue(bubble_areas, "气泡里没有 MouseArea")
+        area = bubble_areas[0]
+        inside = area.mapToScene(
+            QPoint(int(area.width() / 2), int(area.height() / 2))
+        ).toPoint()
+        outside = QPoint(4, max(1, int(window.property("height")) - 6))
+
+        captured = _capture_qml_warnings()
+        try:
+            self.assertTrue(timer.property("running"), "气泡出现后计时器应该是运行的")
+            QTest.mouseMove(window, inside)
+            APP.processEvents()
+            self.assertFalse(timer.property("running"), "鼠标在气泡上时不应继续计时")
+
+            QTest.mouseMove(window, outside)
+            APP.processEvents()
+            self.assertTrue(timer.property("running"), "鼠标离开气泡后应该重新计时")
+            self.assertEqual(window.property("mode"), "bubble")
+        finally:
+            warnings = captured.stop()
+        self.assertEqual(warnings, [], "气泡进出过程中出现 QML 运行期警告: " + " | ".join(warnings))
 
     def test_pet_interactions_switch_modes_without_qml_errors(self):
         """点击气泡 / 收起 / 右键菜单都要真的切形态,且不能有 QML 运行期报错。
 
         形态与气泡计时器属于 PetWindow,面板只是画面;历史上把窗口级函数
         误挂到面板上,结果是点击时才抛 "is not a function" 的 QML 警告。
+
+        注意:桌宠自身有 onEntered → 弹气泡,off-screen 平台下 hover 状态不一定会
+        因为窗口变矮而清掉,所以"收起之后到底停在 pet 还是 bubble"取决于鼠标位置;
+        这里只断言"含有气泡的展示形态",不把 hover 的时序当成契约。
         """
         engine = self._engine()
         window = self._create(engine, "PetWindow.qml")
@@ -230,33 +306,33 @@ class PetQmlLoadTests(unittest.TestCase):
             self._click(window, bubble_areas[0])
             self.assertEqual(window.property("mode"), "detail")
 
-            # 收起 → 回到桌宠
+            # 收起 → 离开明细形态(桌宠 hover 会顺带把气泡弹出来)
             buttons = []
             _collect(panel, lambda i: i.metaObject().className().startswith("PetChipButton"), buttons)
             self.assertEqual(len(buttons), 2, "明细卡应该有刷新/收起两个按钮")
             self._click(window, buttons[1])
-            self.assertEqual(window.property("mode"), "pet")
+            self.assertNotEqual(window.property("mode"), "detail")
+            self.assertIn(window.property("mode"), ("pet", "bubble"))
 
-            # 悬停桌宠 → 弹气泡
+            # 悬停桌宠 → 弹气泡(桌宠在各形态都贴在窗口底部,所以一定点得到)
             pet_area = next(
                 (item for item in panel.childItems()
                  if item.metaObject().className().startswith("QQuickMouseArea") and item.z() == 10),
                 None,
             )
             self.assertIsNotNone(pet_area, "没找到桌宠交互层")
-            pet_point = pet_area.mapToScene(
-                QPoint(int(pet_area.width() / 2), int(pet_area.height() / 2))
-            ).toPoint()
-            QTest.mouseMove(window, pet_point)
+            self.assertGreaterEqual(
+                window.property("height"), PET_MODE_MIN_HEIGHT,
+                "pet 形态窗口太矮,桌宠会被裁到窗口外",
+            )
+            QTest.mouseMove(window, self._center_of(window, pet_area))
             APP.processEvents()
             self.assertEqual(window.property("mode"), "bubble")
 
-            # 窗口刚变高,桌宠 hit 区会跟着上移:重新取一次坐标再右键,
+            # 窗口变高后桌宠贴底,hit 区会跟着上移:重新取一次坐标再右键,
             # 否则右键落在旧坐标(窗口外)上会被直接丢掉。
-            pet_point = pet_area.mapToScene(
-                QPoint(int(pet_area.width() / 2), int(pet_area.height() / 2))
-            ).toPoint()
-            QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, pet_point)
+            QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier,
+                             self._center_of(window, pet_area))
             APP.processEvents()
             menu = panel.findChild(QQuickItem, "petContextMenu")
             self.assertIsNotNone(menu, "右键菜单没有 objectName")

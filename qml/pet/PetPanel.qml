@@ -18,10 +18,10 @@ Item {
     property var petAreaHeight
     property var detailContentHeight
     property var bubbleAreaHeight
+    property var bubbleTop
     property var cardTop
-    property var spriteTop
-    property var bubbleSpriteTop
-    property var bubblePanelHeight
+    property var spriteBottomMargin
+    property var spriteGap
     property var spriteSize
     property var spriteRightMargin
 
@@ -60,14 +60,17 @@ Item {
     readonly property int cardHeight: detailContentHeight
 
     readonly property int panelHeight: {
-        // 卡片底边 / 气泡底边到桌宠顶部的空档各自固定,面板再按下边距收尾
-        if (mode === "detail") return spriteTop + panelPadding + spriteSize + panelPadding
-        if (mode === "bubble") return bubblePanelHeight
+        // detail:上边距 + 卡片 + 空档 + 桌宠 + 下边距
+        if (mode === "detail") return cardTop + cardHeight + spriteGap + spriteSize + spriteBottomMargin
+        // bubble:气泡顶边 + 气泡 + 空档 + 桌宠 + 下边距
+        if (mode === "bubble") return bubbleTop + bubbleAreaHeight + spriteGap + spriteSize + spriteBottomMargin
+        // pet:只放下桌宠
         return petAreaHeight
     }
 
-    // 桌宠纵向位置随形态切换:明细模式贴在卡片下方,气泡模式上移贴近气泡
-    readonly property int spriteTopCurrent: mode === "bubble" ? bubbleSpriteTop : spriteTop
+    // 桌宠永远贴着窗口底边 —— 这样三种形态下桌宠的屏幕位置恒定(窗口只向上长高),
+    // 也保证桌宠一定落在窗口内(否则会被裁掉、看不见也点不到)。
+    readonly property int spriteTop: panelHeight - spriteBottomMargin - spriteSize
 
     // 供窗口的信号回调转发:桌宠跳动一下
     function bounce() {
@@ -357,7 +360,7 @@ Item {
         visible: panel.mode === "bubble"
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: panel.panelPadding
+        anchors.topMargin: panel.bubbleTop
         width: panel.panelWidth
         height: panel.bubbleAreaHeight
 
@@ -446,8 +449,11 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: petWindow.toggleDetail()
-                onEntered: petWindow.hideTimer.stop()
-                onExited: if (panel.mode === "bubble") petWindow.hideTimer.restart()
+                // 鼠标停在气泡上时不要自动收起;离开后重新计时。
+                // 这里必须调窗口函数:QML 取不到"根对象 id.子元素 id"(petWindow.hideTimer
+                // 恒为 undefined),直接写会抛 "Cannot call method 'stop' of undefined"。
+                onEntered: petWindow.pauseBubbleTimer()
+                onExited: petWindow.resumeBubbleTimer()
             }
         }
     }
@@ -460,8 +466,8 @@ Item {
         height: 128
         anchors.right: parent.right
         anchors.rightMargin: panel.spriteRightMargin
-        anchors.top: parent.top
-        anchors.topMargin: panel.spriteTopCurrent
+        // 贴底定位:三种形态下桌宠屏幕位置恒定,且一定在窗口内
+        y: panel.spriteTop
         imagePath: panel.ready && NewApiPet.configPetImage !== ""
                    ? NewApiPet.configPetImage : ""
         alert: panel.alertState

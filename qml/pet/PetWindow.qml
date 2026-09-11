@@ -39,15 +39,15 @@ Window {
     readonly property int bubbleAreaHeight: 76
 
     readonly property int cardTop: panelPadding
-    // 桌宠区 = 下边距 + 桌宠高度 + 与上方卡片/气泡之间的空档
+    // 桌宠区:必须放下 下边距 + 桌宠 + 与上方内容之间的空档
+    readonly property int spriteBottomMargin: panelPadding
     readonly property int spriteGap: panelPadding * 2
-    readonly property int petAreaHeight: panelPadding + spriteSize + spriteGap
-    // 明细模式下卡片底边到桌宠顶部的固定空档
-    readonly property int spriteTop: cardTop + detailContentHeight + spriteGap
-    // 气泡模式下气泡底边到桌宠顶部的空档(比 detail 收紧一档,避免气泡离桌宠太远)
-    readonly property int bubbleSpriteTop: cardTop + bubbleAreaHeight + panelPadding
-    // 气泡模式的面板高度
-    readonly property int bubblePanelHeight: bubbleSpriteTop + panelPadding + spriteSize + panelPadding
+    readonly property int petAreaHeight: spriteBottomMargin + spriteSize + spriteGap
+    // 气泡顶边(面板内部用它给气泡定位)
+    readonly property int bubbleTop: panelPadding
+    // 气泡模式的面板高度 = 气泡顶边 + 气泡 + 空档 + 桌宠 + 下边距
+    readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
+                                             + spriteSize + spriteBottomMargin
 
     property string mode: "bubble"
     // 面板是唯一布局来源:窗口高度跟随面板高度,底边保持不动。
@@ -128,7 +128,9 @@ Window {
         showBubble()
     }
 
-    // ---------------------------------------------------------------- 形态切换
+    // 形态与气泡计时器都属于窗口,面板只能通过下面这些函数/属性使用它们。
+    // 注意:QML 里"根对象 id.子元素 id"取不到子元素(实测 typeof petWindow.hideTimer
+    // 恒为 undefined),所以面板绝不能写 petWindow.hideTimer —— 只能走函数。
     function showBubble() {
         if (mode === "detail") return
         mode = "bubble"
@@ -148,9 +150,22 @@ Window {
         }
     }
 
+    // 给面板用的气泡计时器开关(面板读不到 hideTimer,只能调函数)
+    function pauseBubbleTimer() {
+        hideTimer.stop()
+    }
+
+    function resumeBubbleTimer() {
+        if (mode === "bubble") hideTimer.restart()
+    }
+
+    // 气泡自动收起时长(由配置决定),面板用它做展示/调试
+    readonly property int bubbleTimeoutMs: petReady ? NewApiPet.bubbleTimeoutSeconds * 1000 : 8000
+
     Timer {
         id: hideTimer
-        interval: petWindow.petReady ? NewApiPet.bubbleTimeoutSeconds * 1000 : 8000
+        objectName: "petHideTimer"
+        interval: petWindow.bubbleTimeoutMs
         repeat: false
         onTriggered: petWindow.hideBubble()
     }
@@ -182,10 +197,10 @@ Window {
         petAreaHeight: petWindow.petAreaHeight
         detailContentHeight: petWindow.detailContentHeight
         bubbleAreaHeight: petWindow.bubbleAreaHeight
+        bubbleTop: petWindow.bubbleTop
         cardTop: petWindow.cardTop
-        spriteTop: petWindow.spriteTop
-        bubbleSpriteTop: petWindow.bubbleSpriteTop
-        bubblePanelHeight: petWindow.bubblePanelHeight
+        spriteBottomMargin: petWindow.spriteBottomMargin
+        spriteGap: petWindow.spriteGap
         spriteSize: petWindow.spriteSize
         spriteRightMargin: petWindow.spriteRightMargin
         surfaceColor: petWindow.surfaceColor

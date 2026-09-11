@@ -14,13 +14,59 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PET_DIR = ROOT / "qml" / "pet"
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot  # noqa: E402
+from PySide6.QtCore import Property, QObject, QPoint, Qt, QUrl, Signal, Slot  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent, QQmlEngine  # noqa: E402
+from PySide6.QtQuick import QQuickItem  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 
 
 # 实例化 Window 需要 QGuiApplication(conftest.py 已保证平台与实例)
 APP = QGuiApplication.instance()
+
+
+def _collect(root, predicate, out):
+    """递归收集 QQuickItem 子树中满足条件的节点。"""
+    if predicate(root):
+        out.append(root)
+    for child in root.childItems():
+        _collect(child, predicate, out)
+
+
+class _QmlWarningCapture:
+    """捕获 Qt 侧消息,用来断言交互过程中没有 QML 运行期警告。"""
+
+    def __init__(self):
+        self._messages = []
+        self._previous = None
+
+    def _handler(self, mode, context, message):
+        self._messages.append(str(message))
+
+    def __enter__(self):
+        from PySide6.QtCore import qInstallMessageHandler
+
+        self._previous = qInstallMessageHandler(self._handler)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        from PySide6.QtCore import qInstallMessageHandler
+
+        qInstallMessageHandler(self._previous)
+        return False
+
+    def stop(self):
+        if self._previous is not None:
+            from PySide6.QtCore import qInstallMessageHandler
+
+            qInstallMessageHandler(self._previous)
+            self._previous = None
+        # 有些 Qt 消息会带换行,拆开便于阅读
+        return [line for message in self._messages for line in message.splitlines() if line.strip()]
+
+
+def _capture_qml_warnings():
+    return _QmlWarningCapture()
 
 
 # 与 PetWindow.qml 里的布局常量保持一致
@@ -147,6 +193,80 @@ class PetQmlLoadTests(unittest.TestCase):
                 window.setProperty("mode", mode)
                 APP.processEvents()
                 self.assertEqual(window.property("height"), expected)
+
+    # ---------------------------------------------------------------- 交互链路
+
+    def _mouse_area_in(self, parent):
+        hits = []
+        _collect(parent, lambda i: i.metaObject().className().startswith("QQuickMouseArea"), hits)
+        return hits
+
+    def _click(self, window, item, button=Qt.LeftButton):
+        point = item.mapToScene(
+            QPoint(int(item.width() / 2), int(item.height() / 2))
+        ).toPoint()
+        QTest.mouseClick(window, button, Qt.NoModifier, point)
+        APP.processEvents()
+
+    def test_pet_interactions_switch_modes_without_qml_errors(self):
+        """点击气泡 / 收起 / 右键菜单都要真的切形态,且不能有 QML 运行期报错。
+
+        形态与气泡计时器属于 PetWindow,面板只是画面;历史上把窗口级函数
+        误挂到面板上,结果是点击时才抛 "is not a function" 的 QML 警告。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+
+        captured = _capture_qml_warnings()
+        try:
+            panel = window.findChild(QQuickItem, "petPanel")
+            self.assertIsNotNone(panel, "PetPanel 没有 objectName,无法定位")
+
+            # 点击气泡 → 明细
+            bubble_areas = self._mouse_area_in(panel.childItems()[1])
+            self.assertTrue(bubble_areas, "气泡里没有 MouseArea")
+            self._click(window, bubble_areas[0])
+            self.assertEqual(window.property("mode"), "detail")
+
+            # 收起 → 回到桌宠
+            buttons = []
+            _collect(panel, lambda i: i.metaObject().className().startswith("PetChipButton"), buttons)
+            self.assertEqual(len(buttons), 2, "明细卡应该有刷新/收起两个按钮")
+            self._click(window, buttons[1])
+            self.assertEqual(window.property("mode"), "pet")
+
+            # 悬停桌宠 → 弹气泡
+            pet_area = next(
+                (item for item in panel.childItems()
+                 if item.metaObject().className().startswith("QQuickMouseArea") and item.z() == 10),
+                None,
+            )
+            self.assertIsNotNone(pet_area, "没找到桌宠交互层")
+            pet_point = pet_area.mapToScene(
+                QPoint(int(pet_area.width() / 2), int(pet_area.height() / 2))
+            ).toPoint()
+            QTest.mouseMove(window, pet_point)
+            APP.processEvents()
+            self.assertEqual(window.property("mode"), "bubble")
+
+            # 窗口刚变高,桌宠 hit 区会跟着上移:重新取一次坐标再右键,
+            # 否则右键落在旧坐标(窗口外)上会被直接丢掉。
+            pet_point = pet_area.mapToScene(
+                QPoint(int(pet_area.width() / 2), int(pet_area.height() / 2))
+            ).toPoint()
+            QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, pet_point)
+            APP.processEvents()
+            menu = panel.findChild(QQuickItem, "petContextMenu")
+            self.assertIsNotNone(menu, "右键菜单没有 objectName")
+            self.assertTrue(menu.isVisible(), "右键菜单没打开")
+            column = menu.childItems()[0]
+            self._click(window, column.childItems()[1])
+            self.assertEqual(window.property("mode"), "detail")
+        finally:
+            warnings = captured.stop()
+        self.assertEqual(warnings, [], "交互过程中出现 QML 运行期警告: " + " | ".join(warnings))
 
 
 if __name__ == "__main__":

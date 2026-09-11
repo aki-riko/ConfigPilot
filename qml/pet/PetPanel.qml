@@ -74,6 +74,16 @@ Item {
         petSprite.bounce()
     }
 
+    // 面板内的交互(点击气泡/桌宠、右键菜单)统一回调到窗口,由窗口切换形态。
+    // 注意:形态与气泡计时器都属于 PetWindow,面板只负责画面。
+    function toggleDetail() {
+        petWindow.toggleDetail()
+    }
+
+    function showBubble() {
+        petWindow.showBubble()
+    }
+
     // ============================================================ 明细面板
     Item {
         id: detailPanel
@@ -161,7 +171,7 @@ Item {
                         PetChipButton {
                             label: "收起"
                             normalTextColor: panel.secondaryTextColor
-                            onActivated: panel.toggleDetail()
+                            onActivated: petWindow.toggleDetail()
                         }
                     }
                 }
@@ -435,9 +445,9 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: panel.toggleDetail()
-                onEntered: hideTimer.stop()
-                onExited: if (panel.mode === "bubble") hideTimer.restart()
+                onClicked: petWindow.toggleDetail()
+                onEntered: petWindow.hideTimer.stop()
+                onExited: if (panel.mode === "bubble") petWindow.hideTimer.restart()
             }
         }
     }
@@ -499,10 +509,10 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 contextMenu.openAt()
             } else {
-                panel.toggleDetail()
+                petWindow.toggleDetail()
             }
         }
-        onEntered: panel.showBubble()
+        onEntered: petWindow.showBubble()
     }
 
     // ============================================================ 右键菜单
@@ -516,6 +526,7 @@ Item {
 
     Rectangle {
         id: contextMenu
+        objectName: "petContextMenu"
         visible: false
         width: 156
         height: menuColumn.height + 12
@@ -572,7 +583,7 @@ Item {
                             if (modelData.action === "refresh" && panel.petReady) {
                                 NewApiPet.refresh()
                             } else if (modelData.action === "detail") {
-                                panel.toggleDetail()
+                                petWindow.toggleDetail()
                             } else if (modelData.action === "settings") {
                                 if (panel.managerReady) PetManager.openSettings()
                             } else if (modelData.action === "quit") {

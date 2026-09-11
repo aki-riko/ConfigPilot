@@ -14,6 +14,7 @@ from backend.pet_config import (
 )
 from backend.quota_math import (
     build_log_rows,
+    format_compact_count,
     format_quota,
     format_quota_precise,
     local_midnight_timestamp,
@@ -39,6 +40,32 @@ class QuotaMathTests(unittest.TestCase):
         self.assertEqual(format_quota_precise(1_000_000, "CNY", 500_000.0, 7.3), "¥14.6")
         self.assertEqual(format_quota_precise(0, "CNY", 500_000.0, 7.3), "¥0")
         self.assertEqual(format_quota_precise(500_000, "USD", 500_000.0, 7.3), "$1")
+
+    def test_compact_count_abbreviates_millions_and_billions(self):
+        # K=千 / M=百万 / B=十亿,小数位随量级收敛并去掉多余的 0
+        cases = {
+            0: "0",
+            999: "999",
+            1_000: "1K",
+            54_818: "54.8K",
+            282_050: "282K",
+            1_159_134: "1.16M",
+            119_134_252: "119.13M",
+            1_159_134_252: "1.16B",
+            2_500_000_000: "2.5B",
+            1_234_567_890_123: "1.23T",
+            -54_818: "-54.8K",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(format_compact_count(value), expected)
+
+    def test_compact_count_handles_bad_input(self):
+        self.assertEqual(format_compact_count(None), "0")
+        self.assertEqual(format_compact_count(True), "0")  # bool 不是数量
+        self.assertEqual(format_compact_count("12"), "12")
+        self.assertEqual(format_compact_count("not-a-number"), "0")
+        self.assertEqual(format_compact_count(float("inf")), "0")
 
     def test_summarize_today_only_counts_today_consumes(self):
         now = datetime(2026, 2, 7, 15, 0)
@@ -87,6 +114,15 @@ class QuotaMathTests(unittest.TestCase):
         self.assertEqual(rows[0]["quotaText"], "¥0.0365")
         self.assertEqual(rows[0]["tokens"], "+120 / +30")
         self.assertEqual(len(build_log_rows(logs, "CNY", 500_000.0, 7.3, limit=0)), 0)
+
+    def test_build_log_rows_abbreviates_tokens(self):
+        logs = [
+            {"created_at": _ts(2026, 2, 7, 14, 5), "type": 2, "quota": 2_500,
+             "prompt_tokens": 54_818, "completion_tokens": 1_159_134_252,
+             "model_name": "gpt-5.6-sol"},
+        ]
+        rows = build_log_rows(logs, "CNY", 500_000.0, 7.3, limit=10)
+        self.assertEqual(rows[0]["tokens"], "+54.8K / +1.16B")
 
 
 class PetConfigTests(unittest.TestCase):

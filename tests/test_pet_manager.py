@@ -47,9 +47,30 @@ class FakeWindow(QObject):
     def setVisible(self, value):
         self.visible = bool(value)
 
+    def isVisible(self):
+        return self.visible
+
+
+class FakeMainWindow(QObject):
+    """替身主窗口:只提供桌宠跟随所需的可见性信号与查询。"""
+
+    visibilityChanged = Signal()
+
+    def __init__(self, visible=True):
+        super().__init__()
+        self._visible = bool(visible)
+
+    def isVisible(self):
+        return self._visible
+
+    def set_visible(self, value):
+        self._visible = bool(value)
+        self.visibilityChanged.emit()
+
 
 class PetManagerTests(unittest.TestCase):
-    def _make(self, *, standalone=False, auto_show=False, api_key="", base_url="", source_ready=False):
+    def _make(self, *, standalone=False, auto_show=False, api_key="", base_url="", source_ready=False,
+              main_window=None):
         controller = FakeController(PetConfig(
             api_key=api_key, base_url=base_url, auto_show=auto_show), source_ready=source_ready)
         windows = []
@@ -65,7 +86,8 @@ class PetManagerTests(unittest.TestCase):
             settings_windows.append(win)
             return win
 
-        manager = PetManager(controller, window_factory, settings_factory, standalone=standalone)
+        manager = PetManager(controller, window_factory, settings_factory, standalone=standalone,
+                             main_window=main_window)
         return manager, controller, windows, settings_windows
 
     def test_standalone_starts_enabled_and_shows(self):
@@ -135,6 +157,58 @@ class PetManagerTests(unittest.TestCase):
         # 开关为开但窗口尚未创建:保存配置后应自动显示
         controller.configSaved.emit()
         self.assertEqual(len(windows), 1)
+        self.assertTrue(windows[0].visible)
+
+    # ---------------------------------------------------------- 跟随主窗口生命周期
+
+    def test_pet_hidden_while_main_window_hidden(self):
+        main_window = FakeMainWindow(visible=False)
+        manager, _, windows, _ = self._make(auto_show=True, main_window=main_window)
+        manager.show_at_startup()
+        # 主窗口还没显示:连桌宠窗口都不创建,避免先闪一下再被隐藏
+        self.assertEqual(windows, [])
+
+        main_window.set_visible(True)
+        self.assertEqual(len(windows), 1)
+        self.assertTrue(windows[0].visible)
+
+    def test_pet_follows_main_window_visibility(self):
+        main_window = FakeMainWindow(visible=True)
+        manager, _, windows, _ = self._make(auto_show=True, main_window=main_window)
+        manager.show_at_startup()
+        self.assertTrue(windows[0].visible)
+
+        # 主窗口隐藏(关闭到托盘):桌宠跟随隐藏,但开关状态不变
+        main_window.set_visible(False)
+        self.assertFalse(windows[0].visible)
+        self.assertTrue(manager.petEnabled)
+
+        # 主窗口再次出现:桌宠跟着回来
+        main_window.set_visible(True)
+        self.assertTrue(windows[0].visible)
+
+    def test_pet_stays_hidden_after_switch_off(self):
+        main_window = FakeMainWindow(visible=True)
+        manager, _, windows, _ = self._make(auto_show=True, main_window=main_window)
+        manager.show_at_startup()
+        manager.setEnabled(False)
+        # 关掉开关后主窗口再怎么显隐都不该把桌宠放出来
+        main_window.set_visible(False)
+        main_window.set_visible(True)
+        self.assertFalse(windows[0].visible)
+
+    def test_pet_visible_property_tracks_window(self):
+        main_window = FakeMainWindow(visible=True)
+        manager, _, _, _ = self._make(standalone=False, auto_show=False, main_window=main_window)
+        self.assertFalse(manager.petVisible)  # 窗口还没创建
+        manager.setEnabled(True)
+        self.assertTrue(manager.petVisible)
+        manager.setEnabled(False)
+        self.assertFalse(manager.petVisible)
+
+    def test_standalone_ignores_main_window(self):
+        manager, _, windows, _ = self._make(standalone=True)
+        manager.show_at_startup()
         self.assertTrue(windows[0].visible)
 
 

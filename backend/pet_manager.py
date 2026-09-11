@@ -25,6 +25,7 @@ class PetManager(QObject):
 
     enabledChanged = Signal()
     hasKeyChanged = Signal()
+    visibleChanged = Signal()
     openSettingsRequested = Signal()
 
     def __init__(
@@ -34,6 +35,7 @@ class PetManager(QObject):
         settings_factory: Callable[[], Optional[QObject]],
         standalone: bool = False,
         parent: QObject | None = None,
+        main_window: QObject | None = None,
     ):
         super().__init__(parent)
         self._controller = controller
@@ -42,10 +44,20 @@ class PetManager(QObject):
         self._standalone = standalone
         self._window: Optional[QObject] = None
         self._settings_window: Optional[QObject] = None
+        # 桌宠寿命跟随主窗口:主窗口隐藏(关闭到托盘)时桌宠一并隐藏,
+        # 主窗口重新出现时再按开关恢复。独立入口没有主窗口,不受此约束。
+        self._main_window = main_window
+        # 主窗口尚未显示时创建的桌宠窗口先保持隐藏,由主窗口可见后统一显示。
+        # 构造时主窗口已经可见(启动时挂载)则直接进入就绪状态。
+        self._lifecycle_ready = main_window is None or bool(main_window.isVisible())
         # 独立入口没有主窗口,启动即显示;集成模式由 auto_show 决定。
         self._enabled = standalone or controller.config.auto_show
         controller.configSaved.connect(self._on_controller_config_saved)
         controller.statusChanged.connect(self._refresh_has_key)
+        if main_window is not None:
+            signal = getattr(main_window, "visibilityChanged", None)
+            if signal is not None:
+                signal.connect(self._on_main_window_visibility_changed)
 
     # ------------------------------------------------------------------ 属性
 
@@ -57,6 +69,16 @@ class PetManager(QObject):
     def petHasApiKey(self) -> bool:
         # 复用 Codex/Claude 时也算"已配置":以解析出的凭证为准。
         return bool(self._controller.sourceReady)
+
+    @Property(bool, notify=visibleChanged)
+    def petVisible(self) -> bool:
+        """桌宠悬浮窗当前是否真的显示着(受开关与主窗口可见性共同约束)。"""
+        if self._window is None:
+            return False
+        query = getattr(self._window, "isVisible", None)
+        if query is None:
+            return False
+        return bool(query())
 
     # ------------------------------------------------------------------ 槽
 
@@ -97,7 +119,10 @@ class PetManager(QObject):
     # ------------------------------------------------------------------ 内部
 
     def show_at_startup(self) -> None:
-        """应用启动完成后调用:开关为开时显示桌宠。"""
+        """应用启动完成后调用:开关为开且主窗口可见时显示桌宠。"""
+        if self._main_window is not None and not bool(self._main_window.isVisible()):
+            return
+        self._lifecycle_ready = True
         if self._enabled:
             self._show_window()
 
@@ -107,13 +132,32 @@ class PetManager(QObject):
             if self._window is None:
                 LOGGER.warning("桌宠悬浮窗创建失败")
                 return
-        self._window.setVisible(True)
+        # 主窗口未显示时先不露出桌宠,等主窗口出现再跟着出现。
+        if self._lifecycle_ready and not self._main_window_hidden():
+            self._window.setVisible(True)
+        self.visibleChanged.emit()
         # 不在此处强制刷新:控制器自带轮询计时器,数据本就保持新鲜;
         # 每次显示都打一发会白白消耗 new-api 的限流配额。
 
     def _hide_window(self) -> None:
         if self._window is not None:
             self._window.setVisible(False)
+            self.visibleChanged.emit()
+
+    def _main_window_hidden(self) -> bool:
+        if self._main_window is None:
+            return False
+        return not bool(self._main_window.isVisible())
+
+    def _on_main_window_visibility_changed(self) -> None:
+        """主窗口显隐变化:桌宠跟随隐藏/恢复(开关关闭时不复活)。"""
+        if self._main_window_hidden():
+            self._hide_window()
+            return
+        # 首次可见即视为生命周期就绪,此后开关是唯一的显示条件。
+        self._lifecycle_ready = True
+        if self._enabled:
+            self._show_window()
 
     def _on_controller_config_saved(self) -> None:
         self._refresh_has_key()

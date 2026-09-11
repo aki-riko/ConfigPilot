@@ -9,12 +9,21 @@ new-api 的额度(quota)是整数计分,默认 QuotaPerUnit = 500000 对应 $1
 from __future__ import annotations
 
 from datetime import datetime
+import math
 from typing import Any
 
 
 LOG_TYPE_CONSUME = 2
 
 _CURRENCY_SYMBOLS = {"USD": "$", "CNY": "¥"}
+
+# 大数简写:千(K) / 百万(M) / 十亿(B)。中文语境里 M=百万、B=十亿。
+_COMPACT_STEPS = (
+    (1_000_000_000_000, "T"),
+    (1_000_000_000, "B"),
+    (1_000_000, "M"),
+    (1_000, "K"),
+)
 
 
 def quota_to_amount(
@@ -38,6 +47,37 @@ def format_amount(amount: float, currency: str) -> str:
         return f"{amount:,.0f}"
     symbol = _CURRENCY_SYMBOLS.get(currency, "$")
     return f"{symbol}{amount:,.2f}"
+
+
+def format_compact_count(value: float | int | None) -> str:
+    """大数简写:1159.13 万 → 1.16M,11.59 亿 → 1.16B,小于 1000 原样显示。
+
+    小数位随量级收敛(十亿以上 2 位、百万 2 位、千 1 位),并去掉多余的 0,
+    这样日志行、卡片和气泡里都不会再出现 1,159,134,252 这种长串。
+    """
+    if value is None:
+        return "0"
+    if isinstance(value, bool):  # bool 是 int 子类,单独挡掉,避免 True 变成 1
+        return "0"
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return "0"
+    if not math.isfinite(amount):
+        return "0"
+    sign = "-" if amount < 0 else ""
+    amount = abs(amount)
+    for threshold, suffix in _COMPACT_STEPS:
+        if amount >= threshold:
+            scaled = amount / threshold
+            digits = 1 if suffix == "K" else 2
+            text = f"{scaled:.{digits}f}".rstrip("0").rstrip(".")
+            fraction = text.split(".")[1] if "." in text else ""
+            # 282050 这类"差一点就到整数"的数,尾数是 0/1 时丢掉小数更干净
+            if fraction in ("", "0", "1"):
+                text = f"{round(scaled):,}"
+            return f"{sign}{text}{suffix}"
+    return f"{sign}{amount:,.0f}"
 
 
 def format_quota(
@@ -138,7 +178,7 @@ def build_log_rows(
             {
                 "time": stamp.strftime("%m-%d %H:%M"),
                 "model": str(entry.get("model_name") or "unknown"),
-                "tokens": f"+{prompt:,} / +{completion:,}",
+                "tokens": f"+{format_compact_count(prompt)} / +{format_compact_count(completion)}",
                 "quotaText": format_quota_precise(
                     int(entry.get("quota") or 0), currency, quota_per_unit, cny_rate
                 ),

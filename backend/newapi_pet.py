@@ -432,9 +432,40 @@ class NewApiPet(QObject):
         return f"今日已用 {amount} · {self._today['count']} 次"
 
     @Property(str, notify=usageChanged)
+    def todayAmountText(self) -> str:
+        """今日消费金额(不带前缀),供卡片拆行展示。"""
+        config = self._effective_config()
+        return quota_math.format_quota(
+            self._today["quota"], config.currency, config.quota_per_unit, config.cny_rate
+        )
+
+    @Property(int, notify=usageChanged)
+    def todayCount(self) -> int:
+        return int(self._today["count"])
+
+    @Property(int, notify=usageChanged)
+    def todayPromptTokens(self) -> int:
+        return int(self._today["prompt_tokens"])
+
+    @Property(int, notify=usageChanged)
+    def todayCompletionTokens(self) -> int:
+        return int(self._today["completion_tokens"])
+
+    @Property(str, notify=usageChanged)
+    def todayPromptTokensText(self) -> str:
+        """输入 Token 简写(如 1.16B)。"""
+        return quota_math.format_compact_count(self._today["prompt_tokens"])
+
+    @Property(str, notify=usageChanged)
+    def todayCompletionTokensText(self) -> str:
+        """输出 Token 简写(如 282K)。"""
+        return quota_math.format_compact_count(self._today["completion_tokens"])
+
+    @Property(str, notify=usageChanged)
     def todayTokensText(self) -> str:
         return (
-            f"↑{self._today['prompt_tokens']:,} ↓{self._today['completion_tokens']:,} tokens"
+            f"↑{quota_math.format_compact_count(self._today['prompt_tokens'])}"
+            f" ↓{quota_math.format_compact_count(self._today['completion_tokens'])}"
         )
 
     @Property(str, notify=usageChanged)

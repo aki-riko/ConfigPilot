@@ -189,10 +189,18 @@ def main() -> int:
             lambda: _make_qml_window("PetWindow.qml"),
             lambda: _make_qml_window("PetSettingsDialog.qml"),
             standalone=False,
+            # 桌宠寿命跟随主窗口:主窗口隐藏(关闭到托盘)时一并隐藏。
+            main_window=window_instance,
         )
         engine.rootContext().setContextProperty("PetManager", pet_manager)
         if not os.environ.get("SELFTEST"):
             pet_manager.show_at_startup()
+        else:
+            print(
+                "[SELFTEST] 桌宠:开关 =", pet_manager.petEnabled,
+                "/ 悬浮窗可见 =", pet_manager.petVisible,
+                "/ 主窗口可见 =", bool(window_instance.isVisible()) if window_instance else None,
+            )
     except Exception as exc:
         print(f"[WARN] 余额桌宠初始化失败: {exc}", file=sys.stderr)
 

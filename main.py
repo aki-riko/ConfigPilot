@@ -142,6 +142,35 @@ def main() -> int:
         if not window_instance.isVisible():
             window_instance.show()
 
+    # 余额监控桌宠:仅当用户已配置 API Key 且 auto_show 时才创建,
+    # 未配置用户的行为与之前完全一致。
+    if not os.environ.get("SELFTEST"):
+        try:
+            from backend.newapi_pet import NewApiPet
+            from backend.pet_config import (
+                load_pet_config_safe,
+                resolve_effective_config,
+                resolve_pet_config_path,
+            )
+
+            pet_config_path = resolve_pet_config_path()
+            pet_loaded, pet_error = load_pet_config_safe(pet_config_path)
+            if pet_error:
+                print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
+            pet_effective = resolve_effective_config(pet_loaded)
+            if pet_effective.api_key and pet_effective.auto_show:
+                engine.rootContext().setContextProperty("PetStandalone", False)
+                pet_controller = NewApiPet(str(pet_config_path), pet_effective)
+                engine.rootContext().setContextProperty("NewApiPet", pet_controller)
+                roots_before = len(engine.rootObjects())
+                engine.load(
+                    QUrl.fromLocalFile(os.path.join(app_dir, "qml", "pet", "PetWindow.qml"))
+                )
+                if len(engine.rootObjects()) <= roots_before:
+                    print("[WARN] 加载 PetWindow.qml 失败,桌宠未启用", file=sys.stderr)
+        except Exception as exc:
+            print(f"[WARN] 余额桌宠初始化失败: {exc}", file=sys.stderr)
+
     # headless 自检:设了 SELFTEST 则加载成功后定时退出
     if os.environ.get("SELFTEST"):
         from PySide6.QtCore import QTimer

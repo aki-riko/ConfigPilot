@@ -33,6 +33,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **Claude Desktop Subpage**：直接写入 Claude 自己的本地配置库，一键启用 Developer Mode 与 `deploymentMode=3p`
 - **第三方推理 Gateway**：配置 endpoint、`bearer` / `x-api-key`、API key、模型发现、模型 ID、显示名、1M 上下文、Tier alias 和额外 Header；endpoint 原样写入，Claude Desktop 自行请求 `/v1/messages`
 - **Claude 配置安全**：编辑当前已应用配置，敏感字段留空默认保留；写入前创建 `.bak`，损坏的现有 JSON 会拒绝覆盖
+- **余额监控桌宠**：NEWAPI 站点的悬浮小飞宠，气泡实时显示令牌余额与今日用量，点击展开调用明细（模型 / Tokens / 消耗金额）；仅凭 API Key 轮询 new-api 只读接口，令牌耗尽或过期也能查余额
 
 > Claude Desktop 配置写入后必须完全退出并重新打开。ConfigPilot 不会强制结束正在运行的 Cowork / Code 会话。
 
@@ -87,6 +88,32 @@ ISCC ConfigPilot.iss
 ```
 产物在 `installer\ConfigPilot_Setup_x.x.x.exe`。
 
+## 余额监控桌宠
+
+右下角常驻一只小飞宠，气泡显示令牌余额与今日已用；点击桌宠展开明细面板（剩余 / 总额度 / 今日 Tokens / 最近调用记录），可拖动、右键打开菜单（立即刷新 / 设置 / 退出）。
+
+数据只凭 API Key 轮询 new-api 的两条只读接口（无需登录，令牌耗尽 / 过期 / 禁用也能查余额）：
+
+- `GET {base}/api/usage/token/` —— 令牌的总额度 / 已用 / 剩余
+- `GET {base}/api/log/token` —— 该令牌最近 1000 条日志，用于计算「今日已用」与明细列表
+
+**启用方式**：配置文件 `%LOCALAPPDATA%\ConfigPilot\pet_config.json`（不存在则桌宠不出现，不影响原有行为）：
+
+```json
+{
+  "base_url": "https://your-newapi-site.com",
+  "api_key": "sk-xxxxxxxx",
+  "poll_interval_seconds": 60,
+  "currency": "CNY",
+  "quota_per_unit": 500000,
+  "cny_rate": 7.3
+}
+```
+
+也可以不落盘，用环境变量 `CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖。只想单独跑桌宠不打开主窗口：`python pet_main.py`（未配置时桌宠会提示右键打开设置窗口）。
+
+> 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。若站点系统设置改过额度展示或汇率，把 `quota_per_unit` / `cny_rate` 改成与站点一致即可；`currency` 可选 `CNY` / `USD` / `TOKENS`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
+
 ## 配置 providers.json
 
 可选中转预置列表。`name` 是说明名称，其余字段对应写入 `config.toml`：
@@ -110,12 +137,19 @@ ISCC ConfigPilot.iss
 ```
 configpilot/
 ├── main.py                  入口:注册后端 / svg 图标 provider
+├── pet_main.py              独立桌宠入口(不打开主窗口)
 ├── backend/
 │   ├── codex_config.py      配置读写 + 获取模型(后台线程)
 │   ├── claude_desktop_config.py  Developer Mode + 第三方推理配置
-│   └── model_profiles.py    模型规则加载与校验
+│   ├── model_profiles.py    模型规则加载与校验
+│   ├── newapi_pet.py        余额桌宠控制器(轮询 new-api 只读接口)
+│   ├── pet_config.py        桌宠配置加载/保存/校验
+│   └── quota_math.py        额度换算与今日用量统计
 ├── qml/
 │   ├── main.qml             窗口 + 导航 + 启动屏 + 图标
+│   ├── pet/
+│   │   ├── PetWindow.qml    余额桌宠悬浮窗
+│   │   └── PetSettingsDialog.qml  桌宠设置窗口
 │   └── views/
 │       ├── CodexView.qml    Codex 配置页
 │       ├── ClaudeDesktopView.qml  Claude Desktop Subpage

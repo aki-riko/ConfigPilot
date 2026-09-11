@@ -22,6 +22,9 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 
 from backend import quota_math
 from backend.pet_config import (
+    SOURCE_AUTO,
+    SOURCE_MANUAL,
+    VALID_SOURCES,
     PetConfig,
     build_config_from_user_input,
     load_pet_config_safe,
@@ -45,8 +48,15 @@ class NewApiPet(QObject):
     configSaved = Signal()
     saveErrorChanged = Signal()
     usageBumped = Signal()
+    sourcesChanged = Signal()
 
-    def __init__(self, config_path: str, config: PetConfig | None = None, parent: QObject | None = None):
+    def __init__(
+        self,
+        config_path: str,
+        config: PetConfig | None = None,
+        source_resolver=None,
+        parent: QObject | None = None,
+    ):
         super().__init__(parent)
         self._config_path = str(config_path)
         if config is None:
@@ -55,6 +65,12 @@ class NewApiPet(QObject):
                 LOGGER.warning("桌宠配置加载失败,使用默认配置: %s", error)
             config = loaded
         self._config = resolve_effective_config(config)
+        self._resolver = source_resolver
+
+        # 当前解析出的凭证(站点根 + key + 实际来源),轮询与状态展示都读它。
+        self._resolved_base = ""
+        self._resolved_key = ""
+        self._resolved_source = self._config.source
 
         self._nam = QNetworkAccessManager(self)
         try:
@@ -87,7 +103,38 @@ class NewApiPet(QObject):
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
         self._poll_timer.timeout.connect(self.refresh)
         self._poll_timer.start()
+
+        if self._resolver is not None:
+            self._resolver.credsChanged.connect(self._on_creds_changed)
+            self._resolver.sourcesChanged.connect(self.sourcesChanged.emit)
+            self._resolver.refresh()
+        self._update_credentials()
         QTimer.singleShot(0, self.refresh)
+
+    # ------------------------------------------------------------------ 凭证解析
+
+    def _update_credentials(self) -> None:
+        base, key, used = self._resolve_credentials()
+        self._resolved_base = base
+        self._resolved_key = key
+        self._resolved_source = used
+
+    def _resolve_credentials(self) -> tuple[str, str, str]:
+        source = self._config.source
+        if source != SOURCE_MANUAL and self._resolver is not None:
+            site, key, used = self._resolver.resolve(source)
+            return site, key, used
+        # 手动模式,或独立入口没有解析器:回退到配置文件 / 环境变量。
+        env = resolve_effective_config(self._config)
+        return env.base_url, env.api_key, SOURCE_MANUAL
+
+    def _on_creds_changed(self) -> None:
+        self._update_credentials()
+        self.statusChanged.emit()
+        self.sourcesChanged.emit()
+        # 凭证到位后立即补一次轮询。
+        if self._resolved_base and self._resolved_key:
+            self.refresh()
 
     # ------------------------------------------------------------------ 配置
 
@@ -101,11 +148,39 @@ class NewApiPet(QObject):
 
     @Property(str, notify=configSaved)
     def configBaseUrl(self) -> str:
-        return self._effective_config().base_url
+        return self._config.base_url
 
     @Property(str, notify=configSaved)
     def configApiKey(self) -> str:
-        return self._effective_config().api_key
+        return self._config.api_key
+
+    @Property(str, notify=configSaved)
+    def currentSource(self) -> str:
+        return self._config.source
+
+    @Property(str, notify=statusChanged)
+    def effectiveSite(self) -> str:
+        return self._resolved_base
+
+    @Property(str, notify=statusChanged)
+    def sourceLabel(self) -> str:
+        labels = {
+            SOURCE_MANUAL: "手动配置",
+            "codex": "Codex 当前配置",
+            "claude": "Claude Gateway",
+        }
+        return labels.get(self._resolved_source, self._resolved_source)
+
+    @Property("QVariantList", notify=sourcesChanged)
+    def petSources(self) -> list:
+        if self._resolver is None:
+            return [
+                {"id": "codex", "label": "Codex 当前配置", "site": "", "hasKey": False},
+                {"id": "claude", "label": "Claude Gateway", "site": "", "hasKey": False},
+            ]
+        sources = list(self._resolver.sources_for_ui())
+        sources.append({"id": SOURCE_MANUAL, "label": "手动填写", "site": self._config.base_url, "hasKey": bool(self._config.api_key)})
+        return sources
 
     @Property(str, notify=configSaved)
     def configIntervalText(self) -> str:
@@ -145,7 +220,7 @@ class NewApiPet(QObject):
     def saveErrorText(self) -> str:
         return self._save_error
 
-    @Slot(str, str, str, str, str, str, str, result=bool)
+    @Slot(str, str, str, str, str, str, str, str, result=bool)
     def saveSettings(
         self,
         base_url: str,
@@ -155,27 +230,27 @@ class NewApiPet(QObject):
         per_unit_text: str,
         rate_text: str,
         pet_image: str,
+        source: str,
     ) -> bool:
         """保存设置窗口提交的内容;校验失败返回 False 并写入 saveErrorText。"""
         parsed, error = build_config_from_user_input(
-            base_url, api_key, interval_text, currency, per_unit_text, rate_text, pet_image
+            base_url, api_key, interval_text, currency, per_unit_text, rate_text,
+            pet_image, source,
         )
         if error:
             self._save_error = error
             self.saveErrorChanged.emit()
             LOGGER.info("桌宠设置保存被拒绝: %s", error)
             return False
-        merged = PetConfig(
+        merged = replace(
+            self._config,
             base_url=parsed.base_url,
             api_key=parsed.api_key,
+            source=parsed.source,
             poll_interval_seconds=parsed.poll_interval_seconds,
             currency=parsed.currency,
             quota_per_unit=parsed.quota_per_unit,
             cny_rate=parsed.cny_rate,
-            auto_show=self._config.auto_show,
-            bubble_timeout_seconds=self._config.bubble_timeout_seconds,
-            window_x=self._config.window_x,
-            window_bottom_y=self._config.window_bottom_y,
             pet_image=parsed.pet_image,
         )
         try:
@@ -188,7 +263,32 @@ class NewApiPet(QObject):
         self._config = merged
         self._save_error = ""
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
+        if self._resolver is not None:
+            self._resolver.refresh()
+        self._update_credentials()
         self.saveErrorChanged.emit()
+        self.configSaved.emit()
+        self.statusChanged.emit()
+        self.refresh()
+        return True
+
+    @Slot(str, result=bool)
+    def setSource(self, source: str) -> bool:
+        """切换凭证来源(codex/claude/manual/auto)并持久化。"""
+        source = str(source).strip()
+        if source not in VALID_SOURCES:
+            return False
+        if self._config.source == source:
+            return True
+        self._config = replace(self._config, source=source)
+        try:
+            save_pet_config(self._config_path, self._config)
+        except OSError as exc:
+            LOGGER.warning("桌宠来源写入失败: %s", exc)
+            return False
+        if self._resolver is not None:
+            self._resolver.refresh()
+        self._update_credentials()
         self.configSaved.emit()
         self.statusChanged.emit()
         self.refresh()
@@ -197,15 +297,21 @@ class NewApiPet(QObject):
     @Slot()
     def refresh(self) -> None:
         """立即轮询一次余额与日志。"""
-        config = self._effective_config()
-        if not config.api_key or not config.base_url:
+        self._update_credentials()
+        base = self._resolved_base
+        key = self._resolved_key
+        if not base or not key:
+            # 来源凭证尚未就绪:触发一次后台解析,等 credsChanged 再补轮询。
+            if self._config.source != SOURCE_MANUAL and self._resolver is not None:
+                self._resolver.refresh()
+            self.statusChanged.emit()
             return
         self._generation += 1
         generation = self._generation
         self._pending = {"usage": True, "logs": True}
         self._staged = {}
-        self._get(config, "/api/usage/token/", generation, "usage", self._handle_usage)
-        self._get(config, "/api/log/token", generation, "logs", self._handle_logs)
+        self._get(base, key, "/api/usage/token/", generation, "usage", self._handle_usage)
+        self._get(base, key, "/api/log/token", generation, "logs", self._handle_logs)
 
     @Slot(int, int)
     def savePosition(self, x: int, bottom_y: int) -> None:
@@ -297,27 +403,32 @@ class NewApiPet(QObject):
 
     @Property(str, notify=statusChanged)
     def statusText(self) -> str:
-        config = self._effective_config()
-        if not config.api_key or not config.base_url:
+        if not self._resolved_base or not self._resolved_key:
+            if self._config.source != SOURCE_MANUAL and self._resolver is not None:
+                return "正在读取已配置的接口凭证…"
             return "未配置：右键桌宠 → 设置"
         if self._last_error:
             return f"请求失败：{self._last_error}"
         if self._last_updated <= 0:
             return "正在获取…"
         stamp = datetime.fromtimestamp(self._last_updated).strftime("%H:%M:%S")
-        return f"每 {config.poll_interval_seconds}s 刷新 · {stamp}"
+        return f"{self.sourceLabel} · 每 {self._config.poll_interval_seconds}s 刷新 · {stamp}"
 
     @Property(bool, notify=statusChanged)
     def hasError(self) -> bool:
-        config = self._effective_config()
-        return bool(config.api_key and config.base_url and self._last_error)
+        return bool(self._resolved_base and self._resolved_key and self._last_error)
+
+    @Property(bool, notify=statusChanged)
+    def sourceReady(self) -> bool:
+        """当前来源是否已解析出可用的站点 + key(含复用 Codex/Claude)。"""
+        return bool(self._resolved_base and self._resolved_key)
 
     # ------------------------------------------------------------------ 网络
 
-    def _get(self, config: PetConfig, path: str, generation: int, key: str, handler) -> None:
-        url = QUrl(config.base_url + path)
+    def _get(self, base_url: str, api_key: str, path: str, generation: int, key: str, handler) -> None:
+        url = QUrl(base_url + path)
         request = QNetworkRequest(url)
-        request.setRawHeader(b"Authorization", f"Bearer {config.api_key}".encode("utf-8"))
+        request.setRawHeader(b"Authorization", f"Bearer {api_key}".encode("utf-8"))
         request.setRawHeader(b"Accept", b"application/json")
         reply = self._nam.get(request)
         reply.finished.connect(

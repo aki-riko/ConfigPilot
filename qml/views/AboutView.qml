@@ -14,6 +14,8 @@ Item {
         typeof ConfigManager !== "undefined" ? ConfigManager : null
     readonly property var petManager:
         typeof PetManager !== "undefined" ? PetManager : null
+    readonly property var newApiPet:
+        typeof NewApiPet !== "undefined" ? NewApiPet : null
     readonly property string appVersion:
         typeof AppVersion !== "undefined" ? AppVersion : ""
     readonly property string appAuthor:
@@ -221,8 +223,10 @@ Item {
                         width: parent ? parent.width : 0
                         title: "显示余额桌宠"
                         content: root.petManager && root.petManager.petHasApiKey
-                                 ? "在桌面右下角显示小飞宠，气泡监控 NewAPI 令牌余额与今日用量"
-                                 : "已开启但尚未配置接口地址与 API Key，请在下方设置中填写"
+                                 ? ("复用 " + (root.newApiPet ? root.newApiPet.sourceLabel : "")
+                                    + "：" + (root.newApiPet ? root.newApiPet.effectiveSite : "")
+                                    + " · 气泡监控令牌余额与今日用量")
+                                 : "未检测到可用的 Codex/Claude 配置，可在下方设置里选择来源或手动填写接口地址与 API Key"
                         icon: Fluent.Enums.icon.animal_cat
                         type: Fluent.Enums.settingCard.type_switch
                         checked: root.petManager ? root.petManager.petEnabled : false

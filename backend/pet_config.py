@@ -25,6 +25,12 @@ _BASE_URL_ENVIRONMENT = "CONFIGPILOT_NEWAPI_BASE"
 _API_KEY_ENVIRONMENT = "CONFIGPILOT_NEWAPI_KEY"
 
 _CURRENCIES = ("USD", "CNY", "TOKENS")
+# 凭证来源:auto=自动复用 Codex/Claude;codex/claude=指定来源;manual=手动填写。
+SOURCE_AUTO = "auto"
+SOURCE_CODEX = "codex"
+SOURCE_CLAUDE = "claude"
+SOURCE_MANUAL = "manual"
+VALID_SOURCES = (SOURCE_AUTO, SOURCE_CODEX, SOURCE_CLAUDE, SOURCE_MANUAL)
 _MIN_POLL_INTERVAL_SECONDS = 5
 _MAX_POLL_INTERVAL_SECONDS = 3600
 _MIN_BUBBLE_TIMEOUT_SECONDS = 2
@@ -39,6 +45,7 @@ class PetConfig:
 
     base_url: str = ""
     api_key: str = ""
+    source: str = SOURCE_AUTO
     poll_interval_seconds: int = 60
     currency: str = "CNY"
     quota_per_unit: float = _DEFAULT_QUOTA_PER_UNIT
@@ -140,11 +147,15 @@ def parse_pet_config(data: object) -> PetConfig:
     auto_show = data.get("auto_show", True)
     if not isinstance(auto_show, bool):
         raise ValueError("配置项 'auto_show' 必须是布尔值")
+    source = data.get("source", SOURCE_AUTO)
+    if not isinstance(source, str) or source not in VALID_SOURCES:
+        raise ValueError(f"配置项 'source' 必须是 {'/'.join(VALID_SOURCES)} 之一")
     return PetConfig(
         base_url=_optional_http_url(data.get("base_url"), "base_url"),
         api_key=data.get("api_key", "").strip()
         if isinstance(data.get("api_key", ""), str)
         else _raise_type("api_key"),
+        source=source,
         poll_interval_seconds=_bounded_int(
             data.get("poll_interval_seconds"),
             "poll_interval_seconds",
@@ -198,6 +209,7 @@ def save_pet_config(path: str | Path, config: PetConfig) -> None:
     payload = {
         "base_url": config.base_url,
         "api_key": config.api_key,
+        "source": config.source,
         "poll_interval_seconds": config.poll_interval_seconds,
         "currency": config.currency,
         "quota_per_unit": config.quota_per_unit,
@@ -223,8 +235,12 @@ def build_config_from_user_input(
     per_unit_text: str,
     rate_text: str,
     pet_image: str,
+    source: str = SOURCE_MANUAL,
 ) -> tuple[PetConfig, str]:
-    """把设置窗口的字符串输入解析成配置;失败时返回错误信息。"""
+    """把设置窗口的字符串输入解析成配置;失败时返回错误信息。
+
+    source != manual 时接口地址与 key 由来源解析,这里不保存它们。
+    """
     try:
         interval = int(str(interval_text).strip())
     except ValueError:
@@ -237,14 +253,21 @@ def build_config_from_user_input(
         rate = float(str(rate_text).strip())
     except ValueError:
         return PetConfig(), "CNY 汇率必须是数字"
-    base = _optional_http_url(str(base_url), "接口地址")
-    if str(api_key).strip() and base == "":
-        return PetConfig(), "填写了 API Key 时必须同时填写接口地址"
+    source_text = str(source).strip() or SOURCE_MANUAL
+    if source_text == SOURCE_MANUAL:
+        base = _optional_http_url(str(base_url), "接口地址")
+        key = str(api_key).strip()
+        if key and base == "":
+            return PetConfig(), "手动模式下填写了 API Key 时必须同时填写接口地址"
+    else:
+        base = ""
+        key = ""
     try:
         config = parse_pet_config(
             {
                 "base_url": base,
-                "api_key": str(api_key),
+                "api_key": key,
+                "source": source_text,
                 "poll_interval_seconds": interval,
                 "currency": str(currency),
                 "quota_per_unit": per_unit,

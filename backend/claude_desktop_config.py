@@ -389,6 +389,29 @@ class ClaudeDesktopConfig(QObject):
             self._on_reload_failed,
         )
 
+    def read_gateway_credentials(self) -> tuple[str, str]:
+        """同步读取当前 Gateway 档案的 (endpoint, api_key),供桌宠后台线程复用。
+
+        与 _read_snapshot 使用同一档案定位逻辑,但额外返回明文 key;
+        仅在后台工作线程调用,不在 GUI 线程执行磁盘读取。
+        """
+        meta = read_json_object(self._meta_path)
+        profile_id, _ = self._active_profile(meta)
+        if not profile_id:
+            active_id, _ = self._active_profile_entry(meta)
+            if active_id:
+                source = read_json_object(self._config_library_dir / f"{active_id}.json")
+                if source.get("inferenceProvider") == "gateway":
+                    profile_id = active_id
+        if not profile_id:
+            return "", ""
+        profile = read_json_object(self._config_library_dir / f"{profile_id}.json")
+        if profile.get("inferenceProvider") != "gateway":
+            return "", ""
+        endpoint = str(profile.get("inferenceGatewayBaseUrl", "") or "")
+        api_key = str(profile.get("inferenceGatewayApiKey", "") or "")
+        return endpoint, api_key
+
     def _prepare_profile(
         self,
         cfg: dict,

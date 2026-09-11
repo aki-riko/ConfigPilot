@@ -25,11 +25,16 @@ def main() -> int:
     from backend.newapi_pet import NewApiPet
     from backend.pet_config import resolve_pet_config_path
     from backend.pet_manager import PetManager
+    from backend.pet_sources import PetSourceResolver
 
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("PetStandalone", True)
     try:
-        pet = NewApiPet(str(resolve_pet_config_path()))
+        from backend.codex_config_store import CodexConfigStore
+
+        codex_home = os.path.join(os.path.expanduser("~"), ".codex")
+        resolver = PetSourceResolver(CodexConfigStore(codex_home), None)
+        pet = NewApiPet(str(resolve_pet_config_path()), source_resolver=resolver)
     except RuntimeError as exc:
         print(f"[ERROR] 桌宠初始化失败: {exc}", file=sys.stderr)
         return -1

@@ -154,13 +154,17 @@ def main() -> int:
             resolve_pet_config_path,
         )
         from backend.pet_manager import PetManager
+        from backend.pet_sources import PetSourceResolver
 
         pet_config_path = resolve_pet_config_path()
         pet_loaded, pet_error = load_pet_config_safe(pet_config_path)
         if pet_error:
             print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
         pet_effective = resolve_effective_config(pet_loaded)
-        pet_controller = NewApiPet(str(pet_config_path), pet_effective)
+        pet_resolver = PetSourceResolver(codex.store, claude_desktop)
+        pet_controller = NewApiPet(
+            str(pet_config_path), pet_effective, source_resolver=pet_resolver
+        )
         engine.rootContext().setContextProperty("PetStandalone", False)
         engine.rootContext().setContextProperty("NewApiPet", pet_controller)
 

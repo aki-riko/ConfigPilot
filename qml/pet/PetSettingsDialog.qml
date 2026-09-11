@@ -1,4 +1,4 @@
-// 余额监控桌宠的设置窗口:无边框置顶小窗,保存经 NewApiPet.saveSettings 校验。
+// 余额监控桌宠的设置窗口:优先复用 Codex/Claude 已配好的接口与 Key。
 import QtQuick
 import QtQuick.Window
 
@@ -7,14 +7,32 @@ Window {
 
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
     color: "transparent"
-    width: 392
-    height: 452
+    width: 400
+    height: 548
     visible: false
     title: "余额监控设置"
 
     readonly property bool petReady: typeof NewApiPet !== "undefined" && NewApiPet !== null
     readonly property bool managerReady: typeof PetManager !== "undefined" && PetManager !== null
     property string currency: "CNY"
+    property string source: "auto"
+    property var sources: []
+
+    readonly property bool manualMode: source === "manual"
+    // 当前所选来源解析出的站点根(用于展示"复用 XX")。
+    readonly property string selectedSite: {
+        if (source === "manual") return baseField.text
+        for (var i = 0; i < sources.length; ++i) {
+            if (sources[i].id === source) return sources[i].site
+        }
+        return ""
+    }
+    readonly property string selectedLabel: {
+        for (var i = 0; i < sources.length; ++i) {
+            if (sources[i].id === source) return sources[i].label
+        }
+        return source === "auto" ? "自动复用" : "手动填写"
+    }
 
     // 由 PetManager.openSettings() 唤起:主界面设置页按钮与桌宠右键菜单都走这里。
     Connections {
@@ -24,6 +42,8 @@ Window {
 
     function openForEdit() {
         if (petReady) {
+            dialog.source = NewApiPet.currentSource
+            dialog.sources = NewApiPet.petSources
             baseField.text = NewApiPet.configBaseUrl
             keyField.text = NewApiPet.configApiKey
             intervalField.text = NewApiPet.configIntervalText
@@ -36,14 +56,14 @@ Window {
         x = Math.max(0, Screen.desktopAvailableWidth / 2 - width / 2)
         y = Math.max(0, Screen.desktopAvailableHeight / 2 - height / 2)
         visible = true
-        baseField.focusInput()
+        if (manualMode) baseField.focusInput()
     }
 
     function save() {
         if (!petReady) return
         var ok = NewApiPet.saveSettings(
             baseField.text, keyField.text, intervalField.text, dialog.currency,
-            perUnitField.text, rateField.text, imageField.text)
+            perUnitField.text, rateField.text, imageField.text, dialog.source)
         if (ok) {
             visible = false
             return
@@ -93,9 +113,90 @@ Window {
                 }
             }
 
+            // ------------------------------------------------ 凭证来源选择
+            Text {
+                text: "凭证来源"
+                font.pixelSize: 11
+                color: "#8A93A6"
+            }
+            Flow {
+                width: parent.width
+                spacing: 6
+
+                Repeater {
+                    model: [
+                        { "id": "auto", "label": "自动复用", "hasKey": false },
+                        { "id": "codex", "label": "Codex", "hasKey": false },
+                        { "id": "claude", "label": "Claude", "hasKey": false },
+                        { "id": "manual", "label": "手动", "hasKey": false }
+                    ]
+
+                    delegate: Rectangle {
+                        id: chip
+                        readonly property bool available: modelData.id === "auto"
+                                                          || modelData.id === "manual"
+                                                          || _sourceAvailable(modelData.id)
+                        width: chipRow.implicitWidth + 24
+                        height: 30
+                        radius: 15
+                        color: dialog.source === modelData.id ? "#3E5BD8" : "#FFFFFF"
+                        border.color: dialog.source === modelData.id ? "#3E5BD8" : "#C9D3EC"
+                        opacity: available ? 1.0 : 0.5
+
+                        Row {
+                            id: chipRow
+                            anchors.centerIn: parent
+                            spacing: 5
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.label
+                                font.pixelSize: 12
+                                color: dialog.source === modelData.id ? "#FFFFFF" : "#5B6478"
+                            }
+                            Rectangle {
+                                visible: modelData.id !== "auto" && modelData.id !== "manual"
+                                width: 7; height: 7; radius: 4
+                                color: _sourceHasKey(modelData.id) ? "#3FB950" : "#C9D3EC"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: chip.available
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: dialog.source = modelData.id
+                        }
+                    }
+                }
+            }
+
+            // 复用信息行
+            Rectangle {
+                width: parent.width
+                height: 34
+                radius: 8
+                visible: !dialog.manualMode
+                color: "#EDF2FF"
+                border.color: "#D9E1F5"
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: dialog.selectedSite.length > 0
+                          ? "复用 " + dialog.selectedLabel + "：" + dialog.selectedSite
+                          : "复用 " + dialog.selectedLabel + "：未检测到可用配置，可切换到手动"
+                    font.pixelSize: 11
+                    color: "#3E5BD8"
+                    elide: Text.ElideRight
+                }
+            }
+
             LabeledField {
                 id: baseField
                 width: parent.width
+                fieldEnabled: dialog.manualMode
                 label: "接口地址(new-api 站点根地址)"
                 placeholder: "https://api.example.com"
             }
@@ -103,7 +204,8 @@ Window {
             LabeledField {
                 id: keyField
                 width: parent.width
-                label: "API Key(仅本地保存,也可用环境变量 CONFIGPILOT_NEWAPI_KEY)"
+                fieldEnabled: dialog.manualMode
+                label: "API Key(手动模式;复用来源时忽略)"
                 placeholder: "sk-..."
             }
 
@@ -245,15 +347,21 @@ Window {
                     }
                 }
             }
-
-            Text {
-                width: parent.width
-                text: "站点若无 CNY 展示,汇率与 $ 额度需与 new-api 系统设置中的 QuotaPerUnit 保持一致。"
-                font.pixelSize: 10
-                color: "#A6ADC0"
-                wrapMode: Text.WrapAnywhere
-            }
         }
+    }
+
+    function _sourceAvailable(id) {
+        for (var i = 0; i < sources.length; ++i) {
+            if (sources[i].id === id) return sources[i].site.length > 0
+        }
+        return false
+    }
+
+    function _sourceHasKey(id) {
+        for (var i = 0; i < sources.length; ++i) {
+            if (sources[i].id === id) return sources[i].hasKey
+        }
+        return false
     }
 
     // ---------------------------------------------------------------- 输入框组件
@@ -265,10 +373,12 @@ Window {
         property alias placeholder: hint.text
         property alias validator: input.validator
         property bool invalid: false
+        property bool fieldEnabled: true
 
-        function focusInput() { input.forceActiveFocus() }
+        function focusInput() { if (fieldEnabled) input.forceActiveFocus() }
 
         spacing: 4
+        opacity: fieldEnabled ? 1.0 : 0.55
 
         Text {
             id: labelText
@@ -281,7 +391,7 @@ Window {
             width: parent.width
             height: 32
             radius: 8
-            color: "#FFFFFF"
+            color: fieldRoot.fieldEnabled ? "#FFFFFF" : "#EEF1F8"
             border.color: input.activeFocus ? "#3E5BD8" : (fieldRoot.invalid ? "#D5484A" : "#C9D3EC")
             border.width: input.activeFocus ? 2 : 1
 
@@ -295,6 +405,7 @@ Window {
                 color: "#2B3252"
                 clip: true
                 selectByMouse: true
+                enabled: fieldRoot.fieldEnabled
                 verticalAlignment: TextInput.AlignVCenter
 
                 Keys.onReturnPressed: dialog.save()

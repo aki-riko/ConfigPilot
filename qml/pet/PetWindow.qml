@@ -10,6 +10,9 @@ Window {
     color: "transparent"
     width: 340
     height: petWindow.panelHeight
+    // 底边固定在 bottomY,气泡/明细向上展开。声明式绑定让 height→y 在同一
+    // 求值周期内原子更新,避免命令式改 y 读到旧 height 造成的跳动。
+    y: bottomY >= 0 ? bottomY - height : 0
     title: "ConfigPilot 余额桌宠"
     visible: false
 
@@ -43,13 +46,6 @@ Window {
         }
     }
 
-    onPanelHeightChanged: applyGeometry()
-
-    function applyGeometry() {
-        if (bottomY < 0) return
-        y = bottomY - height
-    }
-
     function clampX(value) {
         var maxX = Screen.desktopAvailableWidth - width
         if (maxX < 0) return 0
@@ -63,7 +59,6 @@ Window {
         if (startBottom === undefined || startBottom < 0) startBottom = Screen.desktopAvailableHeight - 12
         x = clampX(startX)
         bottomY = startBottom
-        applyGeometry()
         showBubble()
     }
 
@@ -644,7 +639,6 @@ Window {
                         moved = true
                         petWindow.x += dx
                         petWindow.bottomY += dy
-                        petWindow.applyGeometry()
                     }
                     onReleased: function (mouse) {
                         cursorShape = Qt.OpenHandCursor

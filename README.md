@@ -97,15 +97,16 @@ ISCC ConfigPilot.iss
 - `GET {base}/api/usage/token/` —— 令牌的总额度 / 已用 / 剩余
 - `GET {base}/api/log/token` —— 该令牌最近 1000 条日志，用于计算「今日已用」与明细列表
 
+**凭证来源（默认自动复用，无需重复填 Key）**：桌宠默认 `source=auto`，直接复用你在 ConfigPilot 里已经配好的连接——优先用 **Codex 当前配置**（`config.toml` 的 `base_url` + `auth.json`/环境变量的 key），其次 **Claude Desktop Gateway**（endpoint + `inferenceGatewayApiKey`）；把推理端点自动归一化回站点根再查询。也可在设置窗口顶部切到指定来源或「手动」填写。凭证读取在后台线程完成，不阻塞界面。
+
 **启用方式**：
 
-1. **应用内开关（推荐）**：打开 ConfigPilot → 左侧「设置」页 → 「余额监控桌宠」分组 → 打开「显示余额桌宠」开关，再点「打开设置」填写接口地址与 API Key 即可。开关状态会持久化，下次启动自动恢复；在桌宠右键菜单选「退出桌宠」也会同步关掉这个开关。
-2. **配置文件**：`%LOCALAPPDATA%\ConfigPilot\pet_config.json`（不存在则按默认值，开关默认开）：
+1. **应用内开关（推荐）**：打开 ConfigPilot → 左侧「设置」页 → 「余额监控桌宠」分组 → 打开「显示余额桌宠」开关即可（已配 Codex/Claude 的话直接就能看余额）；点「打开设置」可切换来源、改轮询间隔与金额换算。开关状态持久化，下次启动自动恢复；桌宠右键「退出桌宠」会同步关掉开关。
+2. **配置文件**：`%LOCALAPPDATA%\ConfigPilot\pet_config.json`（`source` 默认 `auto`）：
 
 ```json
 {
-  "base_url": "https://your-newapi-site.com",
-  "api_key": "sk-xxxxxxxx",
+  "source": "auto",
   "poll_interval_seconds": 60,
   "currency": "CNY",
   "quota_per_unit": 500000,
@@ -113,9 +114,7 @@ ISCC ConfigPilot.iss
 }
 ```
 
-3. **环境变量**（不落盘）：`CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖地址与 Key。
-
-只想单独跑桌宠、不打开主窗口：`python pet_main.py`（未配置时桌宠会提示右键 → 设置）。
+手动模式才需要 `base_url` / `api_key`；也可用环境变量 `CONFIGPILOT_NEWAPI_BASE` / `CONFIGPILOT_NEWAPI_KEY` 覆盖。只想单独跑桌宠、不打开主窗口：`python pet_main.py`（同样自动复用 Codex 配置）。
 
 > 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。若站点系统设置改过额度展示或汇率，把 `quota_per_unit` / `cny_rate` 改成与站点一致即可；`currency` 可选 `CNY` / `USD` / `TOKENS`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
 
@@ -150,6 +149,7 @@ configpilot/
 │   ├── newapi_pet.py        余额桌宠控制器(轮询 new-api 只读接口)
 │   ├── pet_config.py        桌宠配置加载/保存/校验
 │   ├── pet_manager.py       桌宠开关与悬浮窗生命周期
+│   ├── pet_sources.py       复用 Codex/Claude 已配置的接口与 Key
 │   └── quota_math.py        额度换算与今日用量统计
 ├── qml/
 │   ├── main.qml             窗口 + 导航 + 启动屏 + 图标

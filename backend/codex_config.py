@@ -169,6 +169,11 @@ class CodexConfig(QObject):
     def configPath(self):
         return self._config_path
 
+    @property
+    def store(self):
+        """暴露只读配置存储,供余额桌宠后台复用当前 provider 的 base_url 与 key。"""
+        return self._store
+
     @Property(str, notify=changed)
     def provider(self):
         return self._provider

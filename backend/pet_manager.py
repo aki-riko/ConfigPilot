@@ -55,8 +55,8 @@ class PetManager(QObject):
 
     @Property(bool, notify=hasKeyChanged)
     def petHasApiKey(self) -> bool:
-        config = self._controller.config
-        return bool(config.api_key and config.base_url)
+        # 复用 Codex/Claude 时也算"已配置":以解析出的凭证为准。
+        return bool(self._controller.sourceReady)
 
     # ------------------------------------------------------------------ 槽
 

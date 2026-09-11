@@ -15,15 +15,20 @@ class FakeController(QObject):
     configSaved = Signal()
     statusChanged = Signal()
 
-    def __init__(self, config: PetConfig):
+    def __init__(self, config: PetConfig, source_ready: bool = False):
         super().__init__()
         self._config = config
+        self._source_ready = source_ready
         self.auto_show_calls = []
         self.refresh_calls = 0
 
     @property
     def config(self):
         return self._config
+
+    @property
+    def sourceReady(self):
+        return self._source_ready
 
     def setAutoShow(self, enabled):
         self.auto_show_calls.append(bool(enabled))
@@ -44,9 +49,9 @@ class FakeWindow(QObject):
 
 
 class PetManagerTests(unittest.TestCase):
-    def _make(self, *, standalone=False, auto_show=False, api_key="", base_url=""):
+    def _make(self, *, standalone=False, auto_show=False, api_key="", base_url="", source_ready=False):
         controller = FakeController(PetConfig(
-            api_key=api_key, base_url=base_url, auto_show=auto_show))
+            api_key=api_key, base_url=base_url, auto_show=auto_show), source_ready=source_ready)
         windows = []
         settings_windows = []
 
@@ -120,9 +125,9 @@ class PetManagerTests(unittest.TestCase):
         self.assertEqual(received, [1, 1])
 
     def test_has_api_key_property(self):
-        manager, _, _, _ = self._make(api_key="sk-x", base_url="https://a.example.com")
+        manager, _, _, _ = self._make(source_ready=True)
         self.assertTrue(manager.petHasApiKey)
-        manager2, _, _, _ = self._make()
+        manager2, _, _, _ = self._make(source_ready=False)
         self.assertFalse(manager2.petHasApiKey)
 
     def test_config_saved_shows_window_when_enabled(self):

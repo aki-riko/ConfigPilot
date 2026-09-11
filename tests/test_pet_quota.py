@@ -13,11 +13,16 @@ from backend.pet_config import (
     save_pet_config,
 )
 from backend.quota_math import (
+    BALANCE_SOURCE_ACCOUNT,
+    BALANCE_SOURCE_TOKEN,
+    billing_amount_to_quota,
     build_log_rows,
     format_compact_count,
     format_quota,
+    format_quota_compact,
     format_quota_precise,
     local_midnight_timestamp,
+    resolve_balance_source,
     summarize_today,
 )
 
@@ -40,6 +45,17 @@ class QuotaMathTests(unittest.TestCase):
         self.assertEqual(format_quota_precise(1_000_000, "CNY", 500_000.0, 7.3), "¥14.6")
         self.assertEqual(format_quota_precise(0, "CNY", 500_000.0, 7.3), "¥0")
         self.assertEqual(format_quota_precise(500_000, "USD", 500_000.0, 7.3), "$1")
+
+    def test_compact_card_format_keeps_magnitude_readable(self):
+        # 卡片宽度有限:超过一千必须简写,否则 "-¥48,132,920.48" 会被省略成读不出量级
+        self.assertEqual(format_quota_compact(-3_296_775_375_482, "CNY", 500_000.0, 7.3),
+                         "-¥48.13M")
+        self.assertEqual(format_quota_compact(500_000, "CNY", 500_000.0, 7.3), "¥7.30")
+        self.assertEqual(format_quota_compact(2_500_000_000, "USD", 500_000.0, 7.3), "$5K")
+        self.assertEqual(format_quota_compact(0, "CNY", 500_000.0, 7.3), "¥0.00")
+        self.assertEqual(format_quota_compact(-25_000, "USD", 500_000.0, 7.3), "-$0.05")
+        # TOKENS 口径下就是纯数字简写,不带货币符号
+        self.assertEqual(format_quota_compact(1_159_134_252, "TOKENS", 500_000.0, 7.3), "1.16B")
 
     def test_compact_count_abbreviates_millions_and_billions(self):
         # K=千 / M=百万 / B=十亿,小数位随量级收敛并去掉多余的 0
@@ -66,6 +82,58 @@ class QuotaMathTests(unittest.TestCase):
         self.assertEqual(format_compact_count("12"), "12")
         self.assertEqual(format_compact_count("not-a-number"), "0")
         self.assertEqual(format_compact_count(float("inf")), "0")
+
+    def test_billing_amount_restores_site_display_unit(self):
+        # billing 返回的是"站点展示口径"金额,必须先还原成 quota 再按桌宠口径格式化
+        self.assertEqual(
+            billing_amount_to_quota(990365.511636, "USD", 500_000.0, 7.3), 495_182_755_818.0
+        )
+        # CNY:站点用 7.3 汇率乘过,这里除回去
+        self.assertEqual(
+            billing_amount_to_quota(7300.0, "CNY", 500_000.0, 7.3), 500_000_000.0
+        )
+        # TOKENS:原值就是 quota
+        self.assertEqual(billing_amount_to_quota(12345, "TOKENS", 500_000.0, 7.3), 12345.0)
+        # 自定义币种:按站点自定义汇率还原
+        self.assertEqual(
+            billing_amount_to_quota(100.0, "CUSTOM", 500_000.0, 7.3, 2.0), 25_000_000.0
+        )
+        # 展示类型大小写/空值都按 USD 兜底(billing.go 的 default 分支就是 USD)
+        self.assertEqual(billing_amount_to_quota(1.0, " usd ", 500_000.0, 7.3), 500_000.0)
+        self.assertEqual(billing_amount_to_quota(1.0, "", 500_000.0, 7.3), 500_000.0)
+
+    def test_billing_amount_handles_garbage(self):
+        for bad in (None, "n/a", {}, float("nan"), float("inf"), True):
+            with self.subTest(bad=bad):
+                self.assertEqual(billing_amount_to_quota(bad, "USD", 500_000.0, 7.3), 0.0)
+        # 汇率为 0 属于脏数据,按 1.0 兜底而不是抛错
+        self.assertEqual(billing_amount_to_quota(73.0, "CNY", 500_000.0, 0.0), 36_500_000.0)
+
+    def test_account_balance_is_subscription_minus_usage(self):
+        # 站点关掉 DisplayTokenStatEnabled 后:subscription=余额+已用,usage=已用
+        total = billing_amount_to_quota(990365.511636, "USD", 500_000.0, 7.3)
+        used = billing_amount_to_quota(7583916.2626, "USD", 500_000.0, 7.3)
+        balance = int(round(total - used))
+        self.assertEqual(balance, -3_296_775_375_482)
+        # 桌宠按 CNY 展示时用的是桌宠自己的换算,不掺站点口径;负号在货币符号前
+        self.assertEqual(
+            format_quota(balance, "CNY", 500_000.0, 7.3), "-¥48,132,920.48"
+        )
+        self.assertEqual(format_quota(-2_500, "USD", 500_000.0, 7.3), "-$0.01")
+        self.assertEqual(format_quota_precise(-2_500, "CNY", 500_000.0, 7.3), "-¥0.0365")
+
+    def test_resolve_balance_source_matrix(self):
+        # auto:令牌无限额度才有必要改用账户余额
+        self.assertEqual(resolve_balance_source("auto", True, True), BALANCE_SOURCE_ACCOUNT)
+        self.assertEqual(resolve_balance_source("auto", True, False), BALANCE_SOURCE_TOKEN)
+        self.assertEqual(resolve_balance_source("auto", False, True), BALANCE_SOURCE_TOKEN)
+        # 显式要账户余额,但还没拿到 → 退回令牌,不显示空值
+        self.assertEqual(resolve_balance_source("account", True, False), BALANCE_SOURCE_ACCOUNT)
+        self.assertEqual(resolve_balance_source("account", False, False), BALANCE_SOURCE_TOKEN)
+        # 显式要令牌口径:永远不切
+        self.assertEqual(resolve_balance_source("token", True, True), BALANCE_SOURCE_TOKEN)
+        # 未知值按 auto 处理
+        self.assertEqual(resolve_balance_source("", True, True), BALANCE_SOURCE_ACCOUNT)
 
     def test_summarize_today_only_counts_today_consumes(self):
         now = datetime(2026, 2, 7, 15, 0)
@@ -203,6 +271,57 @@ class PetConfigTests(unittest.TestCase):
                 else:
                     self.assertNotEqual(error, "")
                     self.assertEqual(parsed, PetConfig())
+
+    def test_balance_source_defaults_and_validation(self):
+        config = parse_pet_config({})
+        self.assertEqual(config.balance_source, "auto")
+        self.assertEqual(config.account_poll_interval_seconds, 300)
+
+        config = parse_pet_config({
+            "balance_source": "account",
+            "account_poll_interval_seconds": 900,
+        })
+        self.assertEqual(config.balance_source, "account")
+        self.assertEqual(config.account_poll_interval_seconds, 900)
+
+        for bad in ({"balance_source": "wallet"}, {"balance_source": 1},
+                    {"account_poll_interval_seconds": 10},      # < 30
+                    {"account_poll_interval_seconds": 99999}):  # > 7200
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    parse_pet_config(bad)
+
+    def test_balance_source_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pet_config.json"
+            save_pet_config(path, PetConfig(balance_source="account",
+                                            account_poll_interval_seconds=600))
+            loaded = load_pet_config(path)
+            self.assertEqual(loaded.balance_source, "account")
+            self.assertEqual(loaded.account_poll_interval_seconds, 600)
+
+    def test_build_config_keeps_legacy_seven_arg_call(self):
+        # 老调用(7 个位置参数)必须仍然可用,新字段走默认值
+        config, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", ""
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(config.balance_source, "auto")
+        self.assertEqual(config.account_poll_interval_seconds, 300)
+
+        config, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", "",
+            "manual", "account", "60",
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(config.balance_source, "account")
+        self.assertEqual(config.account_poll_interval_seconds, 60)
+
+        _, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", "",
+            "manual", "account", "abc",
+        )
+        self.assertEqual(error, "账户余额轮询间隔必须是整数秒")
 
     def test_env_overrides(self):
         base = PetConfig(base_url="https://from-file.example.com", api_key="sk-file")

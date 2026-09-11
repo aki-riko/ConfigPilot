@@ -8,7 +8,7 @@ Window {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
     color: "transparent"
     width: 400
-    height: 548
+    height: 704
     visible: false
     title: "余额监控设置"
 
@@ -16,7 +16,15 @@ Window {
     readonly property bool managerReady: typeof PetManager !== "undefined" && PetManager !== null
     property string currency: "CNY"
     property string source: "auto"
+    property string balanceSource: "auto"
     property var sources: []
+
+    // 余额口径:自动 / 令牌额度 / 账户余额(账户余额要求站点关闭 DisplayTokenStatEnabled)
+    readonly property var balanceOptions: [
+        { "id": "auto", "label": "自动" },
+        { "id": "token", "label": "令牌额度" },
+        { "id": "account", "label": "账户余额" }
+    ]
 
     readonly property bool manualMode: source === "manual"
     // 当前所选来源解析出的站点根(用于展示"复用 XX")。
@@ -51,6 +59,8 @@ Window {
             perUnitField.text = NewApiPet.configQuotaPerUnitText
             rateField.text = NewApiPet.configCnyRateText
             imageField.text = NewApiPet.configPetImage
+            dialog.balanceSource = NewApiPet.balanceSource
+            accountIntervalField.text = NewApiPet.configAccountIntervalText
         }
         errorText.text = ""
         x = Math.max(0, Screen.desktopAvailableWidth / 2 - width / 2)
@@ -63,7 +73,8 @@ Window {
         if (!petReady) return
         var ok = NewApiPet.saveSettings(
             baseField.text, keyField.text, intervalField.text, dialog.currency,
-            perUnitField.text, rateField.text, imageField.text, dialog.source)
+            perUnitField.text, rateField.text, imageField.text, dialog.source,
+            dialog.balanceSource, accountIntervalField.text)
         if (ok) {
             visible = false
             return
@@ -79,6 +90,8 @@ Window {
         border.color: "#D9E1F5"
 
         Column {
+            id: formColumn
+            objectName: "settingsFormColumn"
             anchors.fill: parent
             anchors.margins: 18
             spacing: 10
@@ -259,6 +272,76 @@ Window {
                         }
                     }
                 }
+            }
+
+            // ------------------------------------------------ 余额口径
+            Column {
+                width: parent.width
+                spacing: 4
+
+                Text {
+                    text: "余额口径（大数字显示哪一套额度）"
+                    font.pixelSize: 11
+                    color: "#8A93A6"
+                }
+                Row {
+                    spacing: 6
+
+                    Repeater {
+                        model: dialog.balanceOptions
+
+                        delegate: Rectangle {
+                            width: balanceChipRow.implicitWidth + 24
+                            height: 28
+                            radius: 14
+                            color: dialog.balanceSource === modelData.id ? "#3E5BD8" : "#FFFFFF"
+                            border.color: dialog.balanceSource === modelData.id ? "#3E5BD8" : "#C9D3EC"
+
+                            Row {
+                                id: balanceChipRow
+                                anchors.centerIn: parent
+                                spacing: 5
+
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.label
+                                    font.pixelSize: 11
+                                    color: dialog.balanceSource === modelData.id ? "#FFFFFF" : "#5B6478"
+                                }
+                                Rectangle {
+                                    visible: modelData.id === "account"
+                                    width: 7; height: 7; radius: 4
+                                    color: petReady && NewApiPet.accountReady ? "#3FB950" : "#C9D3EC"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: dialog.balanceSource = modelData.id
+                            }
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: petReady && NewApiPet.accountReady
+                          ? ("当前生效：" + NewApiPet.primaryBalanceCaption + " "
+                             + NewApiPet.primaryBalanceText + " · 账户已用 " + NewApiPet.accountUsedText)
+                          : "账户余额未就绪：需站点关闭「显示 Token 统计信息」后才会返回钱包余额"
+                    font.pixelSize: 10
+                    color: petReady && NewApiPet.accountReady ? "#5B6478" : "#B0762B"
+                    wrapMode: Text.Wrap
+                }
+            }
+
+            LabeledField {
+                id: accountIntervalField
+                objectName: "accountIntervalField"
+                width: parent.width
+                label: "账户余额轮询间隔(秒,30-7200;变化慢,建议 300)"
+                placeholder: "300"
+                validator: RegularExpressionValidator { regularExpression: /[0-9]+/ }
             }
 
             Row {

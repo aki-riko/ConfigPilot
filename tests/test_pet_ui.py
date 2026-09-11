@@ -75,7 +75,7 @@ SPRITE_SIZE = 120
 SPRITE_BOTTOM_MARGIN = PANEL_PADDING
 SPRITE_GAP = PANEL_PADDING * 2
 CARD_TOP = PANEL_PADDING
-DETAIL_CONTENT_HEIGHT = 322
+DETAIL_CONTENT_HEIGHT = 344
 BUBBLE_HEIGHT = 76
 BUBBLE_TOP = PANEL_PADDING
 EXPECTED_HEIGHTS = {
@@ -97,6 +97,7 @@ class StubPet(QObject):
     saveErrorChanged = Signal()
     usageBumped = Signal()
     sourcesChanged = Signal()
+    accountChanged = Signal()
 
     @Property(bool, notify=statusChanged)
     def sourceReady(self): return True
@@ -145,6 +146,28 @@ class StubPet(QObject):
     @Property(int, notify=configSaved)
     def windowBottomY(self): return -1
 
+    # ---- 账户钱包余额口径:令牌无限额度 → auto 应切到账户余额
+    @Property(bool, notify=accountChanged)
+    def accountReady(self): return True
+    @Property(str, notify=accountChanged)
+    def accountBalanceText(self): return "¥1.23K"
+    @Property(str, notify=accountChanged)
+    def accountUsedText(self): return "¥13,605.24"
+    @Property(str, notify=accountChanged)
+    def accountUpdatedText(self): return "07:12:34"
+    @Property(str, notify=accountChanged)
+    def accountErrorText(self): return ""
+    @Property(str, notify=configSaved)
+    def balanceSource(self): return "auto"
+    @Property(str, notify=accountChanged)
+    def activeBalanceSource(self): return "account"
+    @Property(str, notify=usageChanged)
+    def primaryBalanceText(self): return self.accountBalanceText
+    @Property(str, notify=usageChanged)
+    def primaryBalanceCaption(self): return "账户余额"
+    @Property(bool, notify=usageChanged)
+    def primaryBalanceNegative(self): return False
+
     @Slot()
     def refresh(self): pass
     @Slot(int, int)
@@ -180,6 +203,66 @@ class PetQmlLoadTests(unittest.TestCase):
         )
         self._objects.append(obj)
         return obj
+
+    def test_detail_card_shows_account_balance_and_secondary(self):
+        """明细卡大数字走账户余额口径,同时把令牌额度摊开在旁边。"""
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("mode", "detail")
+        window.setProperty("visible", True)
+        APP.processEvents()
+
+        self.assertEqual(window.property("primaryBalanceCaption"), "账户余额")
+        self.assertEqual(window.property("primaryBalanceText"), "¥1.23K")
+        # 令牌额度是 ∞,必须仍然能看到,不能被账户口径顶掉
+        self.assertEqual(window.property("secondaryBalanceText"), "令牌额度 ∞")
+        self.assertEqual(window.property("accountFreshText"), "账户余额更新于 07:12:34")
+
+        panel = window.findChild(QQuickItem, "petPanel")
+        self.assertIsNotNone(panel)
+        texts = []
+        _collect(panel, lambda i: i.metaObject().className().startswith("QQuickText"), texts)
+        rendered = [str(item.property("text")) for item in texts]
+        self.assertIn("账户余额", rendered)
+        self.assertIn("¥1.23K", rendered)
+        self.assertIn("令牌额度 ∞", rendered)
+
+    def test_settings_dialog_content_fits_window(self):
+        """设置窗口是固定高度,加字段必须同步改高度,否则按钮会被裁掉。"""
+        engine = self._engine()
+        dialog = self._create(engine, "PetSettingsDialog.qml")
+        APP.processEvents()
+        column = dialog.findChild(QQuickItem, "settingsFormColumn")
+        self.assertIsNotNone(column, "设置表单 Column 没有 objectName,无法定位")
+        used = float(column.property("implicitHeight"))
+        available = float(dialog.property("height")) - 36  # anchors.margins: 18 * 2
+        self.assertLessEqual(
+            used, available,
+            f"设置表单内容 {used}px 超出可用 {available}px,需要调大 dialog.height",
+        )
+
+    def test_settings_dialog_has_balance_source_chips(self):
+        """设置窗口必须能切余额口径,并显示账户余额是否就绪。"""
+        engine = self._engine()
+        dialog = self._create(engine, "PetSettingsDialog.qml")
+        dialog.setProperty("visible", True)
+        APP.processEvents()
+
+        root = dialog.findChild(QQuickItem, "settingsFormColumn")
+        self.assertIsNotNone(root)
+        texts = []
+        _collect(root, lambda i: i.metaObject().className().startswith("QQuickText"), texts)
+        rendered = [str(item.property("text")) for item in texts]
+        for label in ("余额口径（大数字显示哪一套额度）", "自动", "令牌额度", "账户余额"):
+            self.assertIn(label, rendered)
+        # 替身的账户余额已就绪 → 提示行应显示"当前生效",而不是警告色文案
+        hint = [text for text in rendered if text.startswith("当前生效")]
+        self.assertEqual(len(hint), 1, f"没渲染出当前生效提示: {rendered}")
+        self.assertIn("账户余额 ¥1.23K", hint[0])
+
+        # 账户轮询间隔字段必须存在(值在 openForEdit 里从配置回填)
+        field = dialog.findChild(QQuickItem, "accountIntervalField")
+        self.assertIsNotNone(field, "缺少账户余额轮询间隔输入框")
 
     def test_pet_window_and_settings_dialog_instantiate(self):
         engine = self._engine()

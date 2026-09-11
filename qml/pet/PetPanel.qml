@@ -55,6 +55,12 @@ Item {
     property var statusText
     property var logRows
     property var logFooterText
+    // 余额口径:大数字用 primary*,另一套口径与新鲜度放在对照行里
+    property var primaryBalanceText
+    property var primaryBalanceCaption
+    property var primaryNegative
+    property var secondaryBalanceText
+    property var accountFreshText
 
     // 明细卡片高度 = 卡片内容高度,窗口高度由它反推。
     readonly property int cardHeight: detailContentHeight
@@ -193,10 +199,10 @@ Item {
 
                     PetStatCard {
                         width: (parent.width - 10) / 2
-                        caption: "剩余额度"
-                        value: panel.balanceText
+                        caption: panel.primaryBalanceCaption
+                        value: panel.primaryBalanceText
                         highlight: true
-                        danger: panel.failed || panel.empty
+                        danger: panel.failed || panel.empty || panel.primaryNegative
                         surfaceColor: panel.surfaceColor
                         borderColor: panel.borderColor
                         captionColor: panel.mutedTextColor
@@ -215,6 +221,37 @@ Item {
                         valueColor: panel.primaryTextColor
                         highlightColor: panel.accentColor
                         dangerColor: panel.dangerColor
+                    }
+                }
+
+                // ---------------------------------------- 另一套口径 + 账户余额新鲜度
+                Item {
+                    width: parent.width
+                    height: 14
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.right: accountFresh.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: panel.secondaryBalanceText
+                        font.pixelSize: 10
+                        color: panel.mutedTextColor
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                    }
+
+                    Text {
+                        id: accountFresh
+                        anchors.right: parent.right
+                        width: Math.min(implicitWidth, parent.width / 2)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: panel.accountFreshText
+                        font.pixelSize: 10
+                        color: panel.mutedTextColor
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        horizontalAlignment: Text.AlignRight
                     }
                 }
 
@@ -420,10 +457,17 @@ Item {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: panel.balanceText
-                        font.pixelSize: 22
+                        text: panel.primaryBalanceCaption
+                        font.pixelSize: 10
+                        color: panel.mutedTextColor
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: panel.primaryBalanceText
+                        font.pixelSize: 20
                         font.bold: true
-                        color: panel.alertState ? panel.dangerColor : panel.accentColor
+                        color: (panel.alertState || panel.primaryNegative)
+                               ? panel.dangerColor : panel.accentColor
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

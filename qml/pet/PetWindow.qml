@@ -28,14 +28,15 @@ Window {
 
     // ---------------------------------------------------------------- 布局常量
     // 与 PetPanel 内部的固定行高一一对应,改动任一侧都要同步。
-    // 明细卡片内容:24(头) + 1(分隔) + 52(额度卡) + 34(Token 条)
-    //             + 14(状态行) + 14(最近调用标题) + 90(三行日志) + 14(脚注)
-    //             + 8*7(行间距) + 12*2(卡片内边距) = 321 → 取 322
+    // 明细卡片内容:24(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照)
+    //             + 34(Token 条) + 14(状态行) + 14(最近调用标题)
+    //             + 90(三行日志) + 14(脚注)
+    //             + 8*8(行间距) + 12*2(卡片内边距) = 343 → 取 344
     readonly property int panelPadding: 8
     readonly property int panelWidth: 324
     readonly property int spriteSize: 120
     readonly property int spriteRightMargin: 14
-    readonly property int detailContentHeight: 322
+    readonly property int detailContentHeight: 344
     readonly property int bubbleAreaHeight: 76
 
     readonly property int cardTop: panelPadding
@@ -96,6 +97,25 @@ Window {
         var count = logRows.length
         if (count === 0) return "暂无调用记录"
         return "最近 " + count + " 条调用 · 数据来自 new-api 只读接口"
+    }
+
+    // ---- 余额口径:账户钱包余额 vs 令牌剩余额度(两个都摊开,不藏数字)
+    readonly property string primaryBalanceText: petReady ? NewApiPet.primaryBalanceText : "—"
+    readonly property string primaryBalanceCaption: petReady ? NewApiPet.primaryBalanceCaption : "剩余额度"
+    readonly property bool primaryIsAccount: petReady && NewApiPet.activeBalanceSource === "account"
+    readonly property bool primaryNegative: petReady && NewApiPet.primaryBalanceNegative
+    readonly property bool accountReady: petReady && NewApiPet.accountReady
+    readonly property string accountBalanceText: petReady ? NewApiPet.accountBalanceText : "—"
+    readonly property string accountUsedText: petReady ? NewApiPet.accountUsedText : "—"
+    readonly property string secondaryBalanceText: primaryIsAccount
+                                                   ? ("令牌额度 " + balanceText)
+                                                   : (accountReady ? ("账户余额 " + accountBalanceText)
+                                                                   : "账户余额 未就绪")
+    readonly property string accountFreshText: {
+        if (!petReady) return ""
+        var stamp = NewApiPet.accountUpdatedText
+        if (!accountReady || stamp === "") return "账户余额未就绪"
+        return "账户余额更新于 " + stamp
     }
 
     // ---------------------------------------------------------------- 生命周期
@@ -230,5 +250,10 @@ Window {
         statusText: petWindow.statusText
         logRows: petWindow.logRows
         logFooterText: petWindow.logFooterText
+        primaryBalanceText: petWindow.primaryBalanceText
+        primaryBalanceCaption: petWindow.primaryBalanceCaption
+        primaryNegative: petWindow.primaryNegative
+        secondaryBalanceText: petWindow.secondaryBalanceText
+        accountFreshText: petWindow.accountFreshText
     }
 }

@@ -31,8 +31,15 @@ SOURCE_CODEX = "codex"
 SOURCE_CLAUDE = "claude"
 SOURCE_MANUAL = "manual"
 VALID_SOURCES = (SOURCE_AUTO, SOURCE_CODEX, SOURCE_CLAUDE, SOURCE_MANUAL)
+# 余额口径:与 quota_math.BALANCE_SOURCE_* 一致(配置层不 import 计算层,避免反向依赖)。
+BALANCE_AUTO = "auto"
+BALANCE_TOKEN = "token"
+BALANCE_ACCOUNT = "account"
+VALID_BALANCE_SOURCES = (BALANCE_AUTO, BALANCE_TOKEN, BALANCE_ACCOUNT)
 _MIN_POLL_INTERVAL_SECONDS = 5
 _MAX_POLL_INTERVAL_SECONDS = 3600
+_MIN_ACCOUNT_POLL_INTERVAL_SECONDS = 30
+_MAX_ACCOUNT_POLL_INTERVAL_SECONDS = 7200
 _MIN_BUBBLE_TIMEOUT_SECONDS = 2
 _MAX_BUBBLE_TIMEOUT_SECONDS = 120
 _DEFAULT_QUOTA_PER_UNIT = 500_000.0
@@ -55,6 +62,10 @@ class PetConfig:
     window_x: int = -1
     window_bottom_y: int = -1
     pet_image: str = ""
+    # 大数字显示令牌额度还是账户钱包余额;auto = 令牌开了无限额度时改用账户余额。
+    balance_source: str = BALANCE_AUTO
+    # 账户余额变化慢,单独低频轮询,避免打爆 new-api 的按路由限流配额。
+    account_poll_interval_seconds: int = 300
 
 
 def resolve_pet_config_path(
@@ -150,6 +161,11 @@ def parse_pet_config(data: object) -> PetConfig:
     source = data.get("source", SOURCE_AUTO)
     if not isinstance(source, str) or source not in VALID_SOURCES:
         raise ValueError(f"配置项 'source' 必须是 {'/'.join(VALID_SOURCES)} 之一")
+    balance_source = data.get("balance_source", BALANCE_AUTO)
+    if not isinstance(balance_source, str) or balance_source not in VALID_BALANCE_SOURCES:
+        raise ValueError(
+            f"配置项 'balance_source' 必须是 {'/'.join(VALID_BALANCE_SOURCES)} 之一"
+        )
     return PetConfig(
         base_url=_optional_http_url(data.get("base_url"), "base_url"),
         api_key=data.get("api_key", "").strip()
@@ -177,6 +193,14 @@ def parse_pet_config(data: object) -> PetConfig:
         window_x=_optional_int(data.get("window_x"), "window_x"),
         window_bottom_y=_optional_int(data.get("window_bottom_y"), "window_bottom_y"),
         pet_image=_optional_file_path(data.get("pet_image"), "pet_image"),
+        balance_source=balance_source,
+        account_poll_interval_seconds=_bounded_int(
+            data.get("account_poll_interval_seconds"),
+            "account_poll_interval_seconds",
+            _MIN_ACCOUNT_POLL_INTERVAL_SECONDS,
+            _MAX_ACCOUNT_POLL_INTERVAL_SECONDS,
+            300,
+        ),
     )
 
 
@@ -219,6 +243,8 @@ def save_pet_config(path: str | Path, config: PetConfig) -> None:
         "window_x": config.window_x,
         "window_bottom_y": config.window_bottom_y,
         "pet_image": config.pet_image,
+        "balance_source": config.balance_source,
+        "account_poll_interval_seconds": config.account_poll_interval_seconds,
     }
     tmp_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -236,6 +262,8 @@ def build_config_from_user_input(
     rate_text: str,
     pet_image: str,
     source: str = SOURCE_MANUAL,
+    balance_source: str = BALANCE_AUTO,
+    account_interval_text: str = "300",
 ) -> tuple[PetConfig, str]:
     """把设置窗口的字符串输入解析成配置;失败时返回错误信息。
 
@@ -245,6 +273,10 @@ def build_config_from_user_input(
         interval = int(str(interval_text).strip())
     except ValueError:
         return PetConfig(), "轮询间隔必须是整数秒"
+    try:
+        account_interval = int(str(account_interval_text).strip() or "300")
+    except ValueError:
+        return PetConfig(), "账户余额轮询间隔必须是整数秒"
     try:
         per_unit = float(str(per_unit_text).strip())
     except ValueError:
@@ -273,6 +305,8 @@ def build_config_from_user_input(
                 "quota_per_unit": per_unit,
                 "cny_rate": rate,
                 "pet_image": str(pet_image),
+                "balance_source": str(balance_source).strip() or BALANCE_AUTO,
+                "account_poll_interval_seconds": account_interval,
             }
         )
     except ValueError as exc:

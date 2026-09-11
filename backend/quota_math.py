@@ -42,11 +42,15 @@ def quota_to_amount(
 
 
 def format_amount(amount: float, currency: str) -> str:
-    """金额格式化;TOKENS 显示整数额度,其余带货币符号保留两位。"""
+    """金额格式化;TOKENS 显示整数额度,其余带货币符号保留两位。
+
+    负数必须是 "-¥48.00" 而不是 "¥-48.00" —— 符号在货币符号前面才读得通。
+    """
     if currency == "TOKENS":
         return f"{amount:,.0f}"
     symbol = _CURRENCY_SYMBOLS.get(currency, "$")
-    return f"{symbol}{amount:,.2f}"
+    sign = "-" if amount < 0 else ""
+    return f"{sign}{symbol}{abs(amount):,.2f}"
 
 
 def format_compact_count(value: float | int | None) -> str:
@@ -93,6 +97,28 @@ def format_quota(
     )
 
 
+def format_quota_compact(
+    quota: float,
+    currency: str,
+    quota_per_unit: float,
+    cny_rate: float,
+) -> str:
+    """卡片/气泡里的大数字专用:超过一千就用 K/M/B 简写。
+
+    账户余额可能是几千万这种量级,写全 "-¥48,132,920.48" 会被卡片宽度省略成
+    "-¥48,13..." 反而读不出数量级;简写成 "-¥48.13M" 一眼能看懂。
+    """
+    amount = quota_to_amount(quota, currency, quota_per_unit, cny_rate)
+    if currency == "TOKENS":
+        return format_compact_count(amount)
+    symbol = _CURRENCY_SYMBOLS.get(currency, "$")
+    sign = "-" if amount < 0 else ""
+    magnitude = abs(amount)
+    if magnitude >= 1000:
+        return f"{sign}{symbol}{format_compact_count(magnitude)}"
+    return f"{sign}{symbol}{magnitude:,.2f}"
+
+
 def format_quota_precise(
     quota: float,
     currency: str,
@@ -103,13 +129,73 @@ def format_quota_precise(
     if currency == "TOKENS":
         return f"{quota:,.0f}"
     symbol = _CURRENCY_SYMBOLS.get(currency, "$")
-    text = f"{symbol}{quota_to_amount(quota, currency, quota_per_unit, cny_rate):.4f}"
+    amount = quota_to_amount(quota, currency, quota_per_unit, cny_rate)
+    sign = "-" if amount < 0 else ""
+    text = f"{symbol}{abs(amount):.4f}"
     if "." in text:
         text = text.rstrip("0").rstrip(".")
         # 货币符号后至少保留一位小数,避免 "$." 这类空小数。
         if text.endswith(symbol):
             text += "0"
-    return text
+    return sign + text
+
+
+# ---------------------------------------------------------------- 账户余额(billing 接口)
+# new-api 的 /v1/dashboard/billing/* 返回的是"站点展示口径"的金额,不是原始额度:
+# controller/billing.go 按 GetQuotaDisplayType() 分支 —— USD 除 QuotaPerUnit、
+# CNY 再乘汇率、TOKENS 保持原值。所以必须先按站点口径还原成 quota,
+# 再按桌宠自己的口径格式化,否则数字会差 500000 倍。
+SITE_DISPLAY_TOKENS = "TOKENS"
+SITE_DISPLAY_CNY = "CNY"
+SITE_DISPLAY_CUSTOM = "CUSTOM"
+
+# 余额口径:token=令牌自身额度(现状默认),account=账户钱包余额,auto=令牌无限额度时改用账户
+BALANCE_SOURCE_TOKEN = "token"
+BALANCE_SOURCE_ACCOUNT = "account"
+BALANCE_SOURCE_AUTO = "auto"
+VALID_BALANCE_SOURCES = (BALANCE_SOURCE_AUTO, BALANCE_SOURCE_TOKEN, BALANCE_SOURCE_ACCOUNT)
+
+
+def billing_amount_to_quota(
+    amount: object,
+    display_type: str,
+    quota_per_unit: float,
+    usd_to_cny: float,
+    custom_rate: float = 1.0,
+) -> float:
+    """把 billing 接口返回的展示金额还原成原始额度(quota)。"""
+    if isinstance(amount, bool):  # bool 是 int 子类,True 不该被当成 1
+        return 0.0
+    try:
+        value = float(amount)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value):
+        return 0.0
+    per_unit = float(quota_per_unit) or 1.0
+    kind = str(display_type or "").strip().upper()
+    if kind == SITE_DISPLAY_TOKENS:
+        return value
+    if kind == SITE_DISPLAY_CNY:
+        return value / (float(usd_to_cny) or 1.0) * per_unit
+    if kind == SITE_DISPLAY_CUSTOM:
+        return value / (float(custom_rate) or 1.0) * per_unit
+    return value * per_unit  # USD:字段名带 _usd,语义就是美元
+
+
+def resolve_balance_source(
+    source: str,
+    account_ready: bool,
+    token_unlimited: bool,
+) -> str:
+    """决定大数字到底显示"令牌额度"还是"账户余额"。"""
+    wanted = str(source or BALANCE_SOURCE_AUTO).strip().lower()
+    if wanted == BALANCE_SOURCE_ACCOUNT:
+        return "account" if account_ready else "token"
+    if wanted == BALANCE_SOURCE_TOKEN:
+        return "token"
+    # auto:令牌开了无限额度时它的剩余额度恒为 ∞,没有信息量 → 改用账户余额
+    return "account" if (account_ready and token_unlimited) else "token"
 
 
 def local_midnight_timestamp(now: datetime | None = None) -> float:

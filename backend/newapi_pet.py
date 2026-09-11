@@ -14,6 +14,7 @@ from dataclasses import replace
 from datetime import datetime
 import json
 import logging
+import math
 import time
 from typing import Any, Optional
 
@@ -49,6 +50,7 @@ class NewApiPet(QObject):
     saveErrorChanged = Signal()
     usageBumped = Signal()
     sourcesChanged = Signal()
+    accountChanged = Signal()
 
     def __init__(
         self,
@@ -109,10 +111,33 @@ class NewApiPet(QObject):
         self._blocked_until = 0.0
         self._retry_after = 0
 
+        # 账户钱包余额:走 /v1/dashboard/billing/*,与令牌额度是两套数据。
+        # 站点把金额按自己的"额度展示类型"换算过(billing.go),所以要先还原成
+        # quota 再按桌宠口径格式化;展示类型从公开的 /api/status 读一次即可。
+        self._account_quota: Optional[int] = None
+        self._account_used: Optional[int] = None
+        self._account_error = ""
+        self._account_updated = 0.0
+        self._account_generation = 0
+        self._account_pending: dict[str, bool] = {}
+        self._account_staged: dict[str, Any] = {}
+        self._account_inflight = False
+        self._site_display_type = "USD"
+        self._site_quota_per_unit = 500_000.0
+        self._site_usd_rate = 7.3
+        self._site_custom_rate = 1.0
+        self._site_display_known = False
+        self._site_display_base = ""
+
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
         self._poll_timer.timeout.connect(self.refresh)
         self._poll_timer.start()
+
+        self._account_timer = QTimer(self)
+        self._account_timer.setInterval(self._config.account_poll_interval_seconds * 1000)
+        self._account_timer.timeout.connect(self._refresh_account)
+        self._account_timer.start()
 
         if self._resolver is not None:
             self._resolver.credsChanged.connect(self._on_creds_changed)
@@ -155,6 +180,7 @@ class NewApiPet(QObject):
     def _on_creds_changed(self) -> None:
         self._reset_auto_selection()
         self._update_credentials()
+        self._reset_account()
         self.statusChanged.emit()
         self.sourcesChanged.emit()
         # 凭证到位后立即补一次轮询。
@@ -229,6 +255,10 @@ class NewApiPet(QObject):
     def configPetImage(self) -> str:
         return self._effective_config().pet_image
 
+    @Property(str, notify=configSaved)
+    def configAccountIntervalText(self) -> str:
+        return str(self._effective_config().account_poll_interval_seconds)
+
     @Property(int, notify=configSaved)
     def bubbleTimeoutSeconds(self) -> int:
         return self._effective_config().bubble_timeout_seconds
@@ -245,7 +275,7 @@ class NewApiPet(QObject):
     def saveErrorText(self) -> str:
         return self._save_error
 
-    @Slot(str, str, str, str, str, str, str, str, result=bool)
+    @Slot(str, str, str, str, str, str, str, str, str, str, result=bool)
     def saveSettings(
         self,
         base_url: str,
@@ -256,11 +286,13 @@ class NewApiPet(QObject):
         rate_text: str,
         pet_image: str,
         source: str,
+        balance_source: str = "auto",
+        account_interval_text: str = "300",
     ) -> bool:
         """保存设置窗口提交的内容;校验失败返回 False 并写入 saveErrorText。"""
         parsed, error = build_config_from_user_input(
             base_url, api_key, interval_text, currency, per_unit_text, rate_text,
-            pet_image, source,
+            pet_image, source, balance_source, account_interval_text,
         )
         if error:
             self._save_error = error
@@ -277,6 +309,8 @@ class NewApiPet(QObject):
             quota_per_unit=parsed.quota_per_unit,
             cny_rate=parsed.cny_rate,
             pet_image=parsed.pet_image,
+            balance_source=parsed.balance_source,
+            account_poll_interval_seconds=parsed.account_poll_interval_seconds,
         )
         try:
             save_pet_config(self._config_path, merged)
@@ -288,15 +322,30 @@ class NewApiPet(QObject):
         self._config = merged
         self._save_error = ""
         self._poll_timer.setInterval(self._config.poll_interval_seconds * 1000)
+        self._account_timer.setInterval(self._config.account_poll_interval_seconds * 1000)
         self._reset_auto_selection()
         if self._resolver is not None:
             self._resolver.refresh()
         self._update_credentials()
+        self._reset_account()
         self.saveErrorChanged.emit()
         self.configSaved.emit()
         self.statusChanged.emit()
         self.refresh()
         return True
+
+    def _reset_account(self) -> None:
+        """换来源/换站点后丢掉旧的账户数据,并强制重新识别站点展示口径。"""
+        self._account_quota = None
+        self._account_used = None
+        self._account_error = ""
+        self._account_updated = 0.0
+        self._account_pending.clear()
+        self._account_staged = {}
+        self._site_display_known = False
+        self._site_display_base = ""
+        self._account_generation += 1  # 丢弃在途的账户响应
+        self.accountChanged.emit()
 
     @Slot(str, result=bool)
     def setSource(self, source: str) -> bool:
@@ -326,6 +375,8 @@ class NewApiPet(QObject):
         """立即轮询一次余额与日志(auto 模式重置候选游标)。"""
         self._auto_attempt = 0
         self._do_refresh()
+        # 手动刷新时顺带把账户余额也拉一次,两个口径的"上次更新"才对得上。
+        QTimer.singleShot(0, self._refresh_account)
 
     def _do_refresh(self) -> None:
         # 单飞:一轮请求未回来时不叠加,只记一次待补,避免自己把自己打到限流。
@@ -395,6 +446,13 @@ class NewApiPet(QObject):
         config = self._effective_config()
         return quota_math.format_quota(quota, config.currency, config.quota_per_unit, config.cny_rate)
 
+    def _fmt_compact(self, quota: float) -> str:
+        """卡片/气泡里的大数字:超过一千用 K/M/B 简写,免得被宽度省略掉数量级。"""
+        config = self._effective_config()
+        return quota_math.format_quota_compact(
+            quota, config.currency, config.quota_per_unit, config.cny_rate
+        )
+
     @Property(str, notify=usageChanged)
     def tokenName(self) -> str:
         return self._token_name
@@ -403,7 +461,7 @@ class NewApiPet(QObject):
     def balanceText(self) -> str:
         if self._unlimited:
             return "∞"
-        return self._fmt(self._total_available)
+        return self._fmt_compact(self._total_available)
 
     @Property(str, notify=usageChanged)
     def grantedText(self) -> str:
@@ -434,10 +492,7 @@ class NewApiPet(QObject):
     @Property(str, notify=usageChanged)
     def todayAmountText(self) -> str:
         """今日消费金额(不带前缀),供卡片拆行展示。"""
-        config = self._effective_config()
-        return quota_math.format_quota(
-            self._today["quota"], config.currency, config.quota_per_unit, config.cny_rate
-        )
+        return self._fmt_compact(self._today["quota"])
 
     @Property(int, notify=usageChanged)
     def todayCount(self) -> int:
@@ -467,6 +522,67 @@ class NewApiPet(QObject):
             f"↑{quota_math.format_compact_count(self._today['prompt_tokens'])}"
             f" ↓{quota_math.format_compact_count(self._today['completion_tokens'])}"
         )
+
+    # ------------------------------------------------------ 账户钱包余额(billing)
+    # 账户字段变化时同时发 usageChanged,大数字相关属性统一挂一个通知信号即可。
+
+    @Property(bool, notify=accountChanged)
+    def accountReady(self) -> bool:
+        return self._account_quota is not None and not self._account_error
+
+    @Property(str, notify=accountChanged)
+    def accountErrorText(self) -> str:
+        return self._account_error
+
+    @Property(str, notify=accountChanged)
+    def accountBalanceText(self) -> str:
+        if self._account_quota is None:
+            return "—"
+        return self._fmt_compact(self._account_quota)
+
+    @Property(str, notify=accountChanged)
+    def accountUsedText(self) -> str:
+        if self._account_used is None:
+            return "—"
+        return self._fmt(self._account_used)
+
+    @Property(str, notify=accountChanged)
+    def accountUpdatedText(self) -> str:
+        if self._account_updated <= 0:
+            return ""
+        return datetime.fromtimestamp(self._account_updated).strftime("%H:%M:%S")
+
+    @Property(str, notify=configSaved)
+    def balanceSource(self) -> str:
+        """配置的余额口径:auto / token / account。"""
+        return self._effective_config().balance_source
+
+    @Property(str, notify=accountChanged)
+    def activeBalanceSource(self) -> str:
+        """实际生效的口径(account=账户钱包,token=令牌额度)。"""
+        return quota_math.resolve_balance_source(
+            self._effective_config().balance_source,
+            self.accountReady,
+            self._unlimited,
+        )
+
+    @Property(str, notify=usageChanged)
+    def primaryBalanceText(self) -> str:
+        """气泡/明细里那个大数字:按生效口径取账户余额或令牌剩余额度。"""
+        if self.activeBalanceSource == quota_math.BALANCE_SOURCE_ACCOUNT:
+            return self.accountBalanceText
+        return self.balanceText
+
+    @Property(str, notify=usageChanged)
+    def primaryBalanceCaption(self) -> str:
+        if self.activeBalanceSource == quota_math.BALANCE_SOURCE_ACCOUNT:
+            return "账户余额"
+        return "剩余额度"
+
+    @Property(bool, notify=usageChanged)
+    def primaryBalanceNegative(self) -> bool:
+        return (self.activeBalanceSource == quota_math.BALANCE_SOURCE_ACCOUNT
+                and self._account_quota is not None and self._account_quota < 0)
 
     @Property(str, notify=usageChanged)
     def expiresText(self) -> str:
@@ -511,36 +627,58 @@ class NewApiPet(QObject):
 
     # ------------------------------------------------------------------ 网络
 
-    def _get(self, base_url: str, api_key: str, path: str, generation: int, key: str, handler) -> None:
+    def _get(
+        self,
+        base_url: str,
+        api_key: str,
+        path: str,
+        generation: int,
+        key: str,
+        handler,
+        auth: bool = True,
+        counter: str = "main",
+    ) -> None:
         url = QUrl(base_url + path)
         request = QNetworkRequest(url)
-        request.setRawHeader(b"Authorization", f"Bearer {api_key}".encode("utf-8"))
+        if auth:
+            request.setRawHeader(b"Authorization", f"Bearer {api_key}".encode("utf-8"))
         request.setRawHeader(b"Accept", b"application/json")
         reply = self._nam.get(request)
         reply.finished.connect(
-            lambda rep=reply, gen=generation, req_key=key, cb=handler: self._on_finished(rep, gen, req_key, cb)
+            lambda rep=reply, gen=generation, req_key=key, cb=handler, cnt=counter:
+            self._on_finished(rep, gen, req_key, cb, cnt)
         )
 
-    def _on_finished(self, reply: QNetworkReply, generation: int, key: str, handler) -> None:
+    def _live_generation(self, counter: str) -> int:
+        return self._account_generation if counter == "account" else self._generation
+
+    def _on_finished(
+        self,
+        reply: QNetworkReply,
+        generation: int,
+        key: str,
+        handler,
+        counter: str = "main",
+    ) -> None:
         try:
             reply.deleteLater()
-            if generation != self._generation:
+            if generation != self._live_generation(counter):
                 return  # 过期响应(用户改配置/手动刷新后),直接丢弃
             body = bytes(reply.readAll())
             status = reply.attribute(QNetworkRequest.HttpStatusCodeAttribute)
             status_int = int(status) if status is not None else None
             if reply.error() != QNetworkReply.NetworkError.NoError:
-                self._handle_failure(status_int, self._retry_after_seconds(reply),
-                                      self._describe_failure(reply, body), key)
+                self._route_failure(counter, status_int, self._retry_after_seconds(reply),
+                                    self._describe_failure(reply, body), key)
                 return
             if status_int is None or status_int != 200:
-                self._handle_failure(status_int, self._retry_after_seconds(reply),
-                                      self._describe_failure(reply, body), key)
+                self._route_failure(counter, status_int, self._retry_after_seconds(reply),
+                                    self._describe_failure(reply, body), key)
                 return
             try:
                 data = json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, ValueError) as exc:
-                self._handle_failure(status_int, 0, f"响应解析失败: {exc}", key)
+                self._route_failure(counter, status_int, 0, f"响应解析失败: {exc}", key)
                 return
             handler(data)
         except RuntimeError as exc:  # reply 已被销毁等运行期异常
@@ -590,6 +728,124 @@ class NewApiPet(QObject):
             if self._maybe_advance_auto():
                 return
         self._drain_queued()
+
+    def _route_failure(self, counter: str, status, retry_after: int, message: str, key: str) -> None:
+        if counter == "account":
+            self._handle_account_failure(status, retry_after, message, key)
+            return
+        self._handle_failure(status, retry_after, message, key)
+
+    def _handle_account_failure(self, status, retry_after: int, message: str, key: str) -> None:
+        """账户余额请求失败:只影响余额口径,不污染令牌状态、不参与 auto 来源回退。"""
+        self._account_pending.clear()
+        self._account_error = message
+        self._account_inflight = False
+        LOGGER.info("桌宠账户余额请求失败(%s): %s", key, message)
+        if status in (429, 503):
+            wait = retry_after if retry_after > 0 else max(self._config.poll_interval_seconds, 60)
+            self._blocked_until = time.time() + wait
+        self.accountChanged.emit()
+        self.statusChanged.emit()
+
+    def _refresh_account(self) -> None:
+        """低频拉取账户钱包余额;站点展示口径未知时先读公开的 /api/status。"""
+        if self._account_inflight:
+            return
+        if time.time() < self._blocked_until:
+            return
+        self._update_credentials()
+        base, key = self._resolved_base, self._resolved_key
+        if not base or not key:
+            return
+        self._account_inflight = True
+        self._account_generation += 1
+        generation = self._account_generation
+        if not self._site_display_known or self._site_display_base != base:
+            # 公开接口,不带 key
+            self._get(base, "", "/api/status", generation, "site",
+                      self._handle_site_status, auth=False, counter="account")
+            return
+        self._account_pending = {"subscription": True, "usage": True}
+        self._account_staged = {}
+        self._get(base, key, "/v1/dashboard/billing/subscription", generation,
+                  "subscription", self._handle_subscription, counter="account")
+        self._get(base, key, "/v1/dashboard/billing/usage", generation,
+                  "usage", self._handle_usage_amount, counter="account")
+
+    def _handle_site_status(self, data: Any) -> None:
+        """记住站点的额度展示口径,才能把 billing 金额还原成原始额度。"""
+        self._account_inflight = False
+        payload = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) \
+            else (data if isinstance(data, dict) else {})
+        display = str(payload.get("quota_display_type") or "").strip().upper()
+        self._site_display_type = display or "USD"
+        self._site_quota_per_unit = self._positive_float(payload.get("quota_per_unit"), 500_000.0)
+        self._site_usd_rate = self._positive_float(payload.get("usd_exchange_rate"), 7.3)
+        self._site_custom_rate = self._positive_float(
+            payload.get("custom_currency_exchange_rate"), 1.0)
+        self._site_display_known = True
+        self._site_display_base = self._resolved_base
+        self._refresh_account()
+
+    @staticmethod
+    def _positive_float(value: Any, fallback: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        return parsed if parsed > 0 and math.isfinite(parsed) else fallback
+
+    def _handle_subscription(self, data: Any) -> None:
+        self._account_staged["subscription"] = self._extract_amount(data, "hard_limit_usd")
+        self._account_pending.pop("subscription", None)
+        self._maybe_finish_account()
+
+    def _handle_usage_amount(self, data: Any) -> None:
+        self._account_staged["usage"] = self._extract_amount(data, "total_usage")
+        self._account_pending.pop("usage", None)
+        self._maybe_finish_account()
+
+    @staticmethod
+    def _extract_amount(data: Any, field: str) -> Optional[float]:
+        if not isinstance(data, dict):
+            return None
+        value = data.get(field)
+        if value is None and isinstance(data.get("data"), dict):
+            value = data["data"].get(field)
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if math.isfinite(parsed) else None
+
+    def _maybe_finish_account(self) -> None:
+        if self._account_pending:
+            return
+        self._account_inflight = False
+        subscription = self._account_staged.get("subscription")
+        usage = self._account_staged.get("usage")
+        self._account_staged = {}
+        if subscription is None or usage is None:
+            self._account_error = "billing 响应缺少金额字段"
+            self.accountChanged.emit()
+            self.statusChanged.emit()
+            return
+        total = quota_math.billing_amount_to_quota(
+            subscription, self._site_display_type, self._site_quota_per_unit,
+            self._site_usd_rate, self._site_custom_rate,
+        )
+        used = quota_math.billing_amount_to_quota(
+            usage, self._site_display_type, self._site_quota_per_unit,
+            self._site_usd_rate, self._site_custom_rate,
+        )
+        self._account_quota = int(round(total - used))
+        self._account_used = int(round(used))
+        self._account_error = ""
+        self._account_updated = time.time()
+        self.accountChanged.emit()
+        # 大数字可能切到账户口径,面板绑的是 usageChanged,这里补发一次。
+        self.usageChanged.emit()
+        self.statusChanged.emit()
 
     def _drain_queued(self) -> None:
         if self._queued_refresh:

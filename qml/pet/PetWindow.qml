@@ -107,15 +107,21 @@ Window {
     readonly property bool accountReady: petReady && NewApiPet.accountReady
     readonly property string accountBalanceText: petReady ? NewApiPet.accountBalanceText : "—"
     readonly property string accountUsedText: petReady ? NewApiPet.accountUsedText : "—"
+    // 左栏只显示"另一套口径"的数字;拿不到就留空,状态放右栏,不重复
+    // 左栏只显示"另一套口径"的数字;拿不到就留空,状态放右栏,不重复
     readonly property string secondaryBalanceText: primaryIsAccount
                                                    ? ("令牌额度 " + balanceText)
                                                    : (accountReady ? ("账户余额 " + accountBalanceText)
-                                                                   : "账户余额 未就绪")
+                                                                   : "")
+    // 右栏只显示账户余额的新鲜度或失败原因,与左栏不重复
     readonly property string accountFreshText: {
         if (!petReady) return ""
-        var stamp = NewApiPet.accountUpdatedText
-        if (!accountReady || stamp === "") return "账户余额未就绪"
-        return "账户余额更新于 " + stamp
+        if (accountReady) {
+            var stamp = NewApiPet.accountUpdatedText
+            return stamp === "" ? "" : "账户余额更新于 " + stamp
+        }
+        var brief = NewApiPet.accountErrorBrief
+        return brief === "" ? "正在获取账户余额…" : ("账户余额获取失败：" + brief)
     }
 
     // ---------------------------------------------------------------- 生命周期

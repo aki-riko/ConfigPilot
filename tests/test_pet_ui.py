@@ -8,6 +8,7 @@ PetWindow / PetPanel 真正实例化一次,并核对三种形态的窗口高度�
 
 import os
 from pathlib import Path
+import re
 import unittest
 
 
@@ -90,6 +91,10 @@ PET_MODE_MIN_HEIGHT = SPRITE_BOTTOM_MARGIN + SPRITE_SIZE
 class StubPet(QObject):
     """桌宠控制器的替身:提供 QML 需要的全部只读属性。"""
 
+    # 测试里可临时改成账户未就绪,验证界面不重复渲染"未就绪"
+    account_ok = True
+    account_error = ""
+
     usageChanged = Signal()
     logsChanged = Signal()
     statusChanged = Signal()
@@ -148,23 +153,29 @@ class StubPet(QObject):
 
     # ---- 账户钱包余额口径:令牌无限额度 → auto 应切到账户余额
     @Property(bool, notify=accountChanged)
-    def accountReady(self): return True
+    def accountReady(self): return self.account_ok
     @Property(str, notify=accountChanged)
-    def accountBalanceText(self): return "¥1.23K"
+    def accountBalanceText(self): return "¥1.23K" if self.account_ok else "—"
     @Property(str, notify=accountChanged)
     def accountUsedText(self): return "¥13,605.24"
     @Property(str, notify=accountChanged)
     def accountUpdatedText(self): return "07:12:34"
     @Property(str, notify=accountChanged)
-    def accountErrorText(self): return ""
+    def accountErrorText(self): return "" if self.account_ok else self.account_error
+    @Property(str, notify=accountChanged)
+    def accountErrorBrief(self):
+        if self.account_ok:
+            return ""
+        found = re.search(r"HTTP\s+(\d{3})", self.account_error)
+        return f"HTTP {found.group(1)}" if found else self.account_error[:24]
     @Property(str, notify=configSaved)
     def balanceSource(self): return "auto"
     @Property(str, notify=accountChanged)
-    def activeBalanceSource(self): return "account"
+    def activeBalanceSource(self): return "account" if self.account_ok else "token"
     @Property(str, notify=usageChanged)
-    def primaryBalanceText(self): return self.accountBalanceText
+    def primaryBalanceText(self): return self.accountBalanceText if self.account_ok else "∞"
     @Property(str, notify=usageChanged)
-    def primaryBalanceCaption(self): return "账户余额"
+    def primaryBalanceCaption(self): return "账户余额" if self.account_ok else "剩余额度"
     @Property(bool, notify=usageChanged)
     def primaryBalanceNegative(self): return False
 
@@ -263,6 +274,32 @@ class PetQmlLoadTests(unittest.TestCase):
         # 账户轮询间隔字段必须存在(值在 openForEdit 里从配置回填)
         field = dialog.findChild(QQuickItem, "accountIntervalField")
         self.assertIsNotNone(field, "缺少账户余额轮询间隔输入框")
+
+    def test_account_not_ready_row_does_not_duplicate_message(self):
+        """账户余额未就绪时,左右两栏不能各写一遍同样的话。"""
+
+        class NotReadyStub(StubPet):
+            account_ok = False
+            account_error = "HTTP 404（站点未提供 new-api 查询接口，可能不是 new-api 站点）"
+
+        engine = QQmlEngine()
+        stub = NotReadyStub()
+        engine.rootContext().setContextProperty("PetStandalone", True)
+        engine.rootContext().setContextProperty("NewApiPet", stub)
+        component = QQmlComponent(engine)
+        component.loadUrl(QUrl.fromLocalFile(str(PET_DIR / "PetWindow.qml")))
+        self.assertFalse(component.isError())
+        window = component.create()
+        APP.processEvents()
+
+        self.assertEqual(str(window.property("secondaryBalanceText")), "",
+                         "左栏在未就绪时不该重复写状态")
+        fresh = str(window.property("accountFreshText"))
+        self.assertIn("HTTP 404", fresh, f"右栏应给出简短失败原因: {fresh}")
+        self.assertEqual(fresh.count("未就绪"), 0)
+        # 未就绪 → 大数字退回令牌口径,不能显示空值
+        self.assertEqual(window.property("primaryBalanceCaption"), "剩余额度")
+        self.assertEqual(window.property("primaryBalanceText"), "∞")
 
     def test_pet_window_and_settings_dialog_instantiate(self):
         engine = self._engine()
@@ -498,6 +535,24 @@ class PetRequestHeadersTests(unittest.TestCase):
         self.assertIn("前置防护", friendly(403, "HTTP 403"))
         self.assertIn("未收到 HTTP 响应", friendly(None, "ConnectionRefused"))
         self.assertEqual(friendly(429, "HTTP 429"), "HTTP 429")
+
+
+    def test_account_error_brief_keeps_only_status_code(self):
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import PetConfig
+
+        pet = NewApiPet("__no_such_config_path_for_test__.json",
+                        PetConfig(base_url="", api_key=""))
+        cases = {
+            "HTTP 404（站点未提供 new-api 查询接口，可能不是 new-api 站点）": "HTTP 404",
+            "请求失败：HTTP 403：invalid access token": "HTTP 403",
+            "ConnectionRefused: 连接被拒绝": "ConnectionRefused",
+            "": "",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                pet._account_error = raw  # noqa: SLF001
+                self.assertEqual(pet.accountErrorBrief, expected)
 
 
 if __name__ == "__main__":

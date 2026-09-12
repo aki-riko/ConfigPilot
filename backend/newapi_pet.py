@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 import logging
 import math
+import re
 import time
 from typing import Any, Optional
 
@@ -128,6 +129,7 @@ class NewApiPet(QObject):
         self._account_pending: dict[str, bool] = {}
         self._account_staged: dict[str, Any] = {}
         self._account_inflight = False
+        self._account_retry_scheduled = False
         self._site_display_type = "USD"
         self._site_quota_per_unit = 500_000.0
         self._site_usd_rate = 7.3
@@ -567,6 +569,17 @@ class NewApiPet(QObject):
         return self._account_error
 
     @Property(str, notify=accountChanged)
+    def accountErrorBrief(self) -> str:
+        """给一行小字用的简短失败原因:只取 HTTP 状态码,没有就截首段,避免挤爆卡片。"""
+        message = self._account_error
+        if not message:
+            return ""
+        found = re.search(r"HTTP\s+(\d{3})", message)
+        if found:
+            return f"HTTP {found.group(1)}"
+        return message.split("（")[0].split(":")[0][:24]
+
+    @Property(str, notify=accountChanged)
     def accountBalanceText(self) -> str:
         if self._account_quota is None:
             return "—"
@@ -794,6 +807,27 @@ class NewApiPet(QObject):
             self._blocked_until = time.time() + wait
         self.accountChanged.emit()
         self.statusChanged.emit()
+        if key == "site" and status in (404, 403, None):
+            # 站点没有公开的 /api/status(例如非 new-api 或前置防护):
+            # 按 OpenAI 默认口径(USD / QuotaPerUnit=500000)继续试 billing,
+            # 否则账户余额会被这个可选接口永久卡住。
+            self._site_display_known = True
+            self._site_display_base = self._resolved_base
+            self._schedule_account_retry(500)
+            return
+        if status is None or status >= 500:
+            # 网络抖动/服务端错误值得快速再试一次;401/403/404 交给慢周期,不刷配额。
+            self._schedule_account_retry(5000)
+
+    def _schedule_account_retry(self, delay_ms: int) -> None:
+        if self._account_retry_scheduled:
+            return
+        self._account_retry_scheduled = True
+        QTimer.singleShot(delay_ms, self._account_retry_now)
+
+    def _account_retry_now(self) -> None:
+        self._account_retry_scheduled = False
+        self._refresh_account()
 
     def _refresh_account(self) -> None:
         """低频拉取账户钱包余额;站点展示口径未知时先读公开的 /api/status。"""

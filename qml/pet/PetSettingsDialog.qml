@@ -153,10 +153,22 @@ Window {
             anchors.margins: Fluent.Enums.spacing.xl
             spacing: Fluent.Enums.spacing.l
 
-            // ------------------------------------------------ 标题行
+            // ------------------------------------------------ 标题行(可拖动)
             Item {
+                id: titleBar
+                objectName: "settingsTitleBar"
                 Layout.fillWidth: true
                 Layout.preferredHeight: Fluent.Enums.controlSize.buttonHeight
+
+                // 无边框窗口的拖动:用框架的 Fluent.WindowDragHandle,它内部走
+                // Qt 6 的 Window.startSystemMove(),交给系统接管拖动,避免手算
+                // mouse delta 在多 DPI / Qt.Tool 窗口下的闪回与漂移。
+                // 必须声明在 CloseButton 之前:手柄贴底层,关闭按钮留在上层截住
+                // 自己的点击(否则点关闭会被当成拖动的起始按下)。
+                Fluent.WindowDragHandle {
+                    objectName: "settingsDragHandle"
+                    anchors.fill: parent
+                }
 
                 Fluent.Label {
                     anchors.left: parent.left

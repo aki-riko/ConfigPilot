@@ -57,6 +57,29 @@ Window {
         { "id": "account", "label": "账户余额" }
     ]
 
+    // 桌宠形象候选:老的自绘矢量形体 + resources/pet 里随程序发布的 Q 版立绘。
+    readonly property var imageChoices: {
+        var choices = [{ "token": "vector", "label": "自绘小飞宠" }]
+        if (petReady) {
+            var presets = NewApiPet.petImagePresets
+            for (var i = 0; i < presets.length; ++i) {
+                if (presets[i].exists) {
+                    choices.push({ "token": presets[i].token, "label": presets[i].label })
+                }
+            }
+        }
+        return choices
+    }
+    // 路径框当前值归一化:留空表示"用清单里的默认立绘",芯片才能正确高亮。
+    readonly property string activeImageToken: {
+        var raw = imageField.text.trim()
+        if (raw === "") return petReady ? NewApiPet.defaultPetImageToken : ""
+        return raw
+    }
+    // 预览走后端解析(支持 preset 令牌与用户自备绝对路径),不落盘。
+    readonly property string petImagePreviewPath:
+            petReady ? NewApiPet.resolvePetImage(imageField.text) : ""
+
     readonly property bool manualMode: source === "manual"
     // 当前所选来源解析出的站点根(用于展示"复用 XX")。
     readonly property string selectedSite: {
@@ -393,11 +416,58 @@ Window {
                         title: "桌宠外观"
                         spacing: Fluent.Enums.spacing.xs
 
+                        // 左预览右单选;点芯片只是把令牌写进下面的路径框,
+                        // 路径框仍是唯一提交值(自备图片的老用法不变)。
+                        RowLayout {
+                            width: parent.width
+                            spacing: Fluent.Enums.spacing.m
+
+                            Rectangle {
+                                objectName: "petImagePreview"
+                                Layout.preferredWidth: 64
+                                Layout.preferredHeight: 64
+                                Layout.alignment: Qt.AlignVCenter
+                                radius: 10
+                                color: Fluent.Enums.dialogColors.containerBg
+                                border.color: Fluent.Enums.dialogColors.border
+                                border.width: 1
+                                visible: dialog.petImagePreviewPath !== ""
+
+                                Image {
+                                    anchors.fill: parent
+                                    anchors.margins: 5
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                    mipmap: true
+                                    source: dialog.petImagePreviewPath !== ""
+                                            ? "file:///" + dialog.petImagePreviewPath.replace(/\\/g, "/") : ""
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: Fluent.Enums.spacing.s
+
+                                Repeater {
+                                    model: dialog.imageChoices
+
+                                    delegate: Fluent.Chip {
+                                        text: modelData.label
+                                        // 单选语义:选中即把令牌写回路径框
+                                        checkable: false
+                                        closable: false
+                                        checked: dialog.activeImageToken === modelData.token
+                                        onClicked: imageField.text = modelData.token
+                                    }
+                                }
+                            }
+                        }
+
                         LabeledField {
                             id: imageField
                             objectName: "imageField"
                             width: parent.width
-                            label: "桌宠图片路径（可选，留空使用内置小飞宠）"
+                            label: "桌宠图片路径（可选，留空使用内置形象）"
                             placeholder: "D:\\pictures\\pet.png"
                         }
                     }

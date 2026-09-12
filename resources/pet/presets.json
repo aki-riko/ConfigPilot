@@ -1,0 +1,22 @@
+{
+  "_说明": "桌宠内置立绘清单。file 相对于本目录;label 是设置窗里显示的中文名。",
+  "_令牌": "用户配置 pet_image 里存 preset:<id>;留空 = 用 default;vector = 老的自绘矢量小飞宠;其余按绝对路径当用户自备图处理。",
+  "default": "navigator",
+  "presets": [
+    {
+      "id": "navigator",
+      "label": "小领航 · 阿诺",
+      "file": "navigator.png"
+    },
+    {
+      "id": "barista",
+      "label": "小焙 · 玛琪",
+      "file": "barista.png"
+    },
+    {
+      "id": "archivist",
+      "label": "小档 · 璃",
+      "file": "archivist.png"
+    }
+  ]
+}

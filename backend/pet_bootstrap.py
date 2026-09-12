@@ -88,6 +88,8 @@ def install_pet(
         str(pet_config_path),
         resolve_effective_config(pet_loaded),
         source_resolver=resolver,
+        # 内置桌宠立绘随程序目录发布(resources/pet),不写进用户配置目录。
+        resources_dir=os.path.join(app_dir, "resources"),
     )
 
     engine.rootContext().setContextProperty("PetStandalone", standalone)

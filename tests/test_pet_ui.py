@@ -150,10 +150,12 @@ class StubPet(QObject):
     sourcesChanged = Signal()
     accountChanged = Signal()
 
-    def __init__(self):
+    def __init__(self, resources_dir: str = ""):
         super().__init__()
         self.refresh_calls = 0
         self.saved_positions = []
+        # 形象解析用真实的 resources/pet,这样 QML 加载测试同时验证内置立绘接线。
+        self._resources_dir = str(resources_dir or ROOT / "resources")
 
     @Property(bool, notify=statusChanged)
     def sourceReady(self): return True
@@ -195,6 +197,26 @@ class StubPet(QObject):
         ]
     @Property(str, notify=configSaved)
     def configPetImage(self): return ""
+    @Property(str, notify=configSaved)
+    def petImageSource(self):
+        from backend.pet_art import resolve_pet_image
+
+        return resolve_pet_image(self.configPetImage, self._resources_dir)
+    @Property("QVariantList", notify=configSaved)
+    def petImagePresets(self):
+        from backend.pet_art import list_pet_presets
+
+        return [preset.to_map() for preset in list_pet_presets(self._resources_dir)]
+    @Property(str, notify=configSaved)
+    def defaultPetImageToken(self):
+        from backend.pet_art import default_preset_token
+
+        return default_preset_token(self._resources_dir)
+    @Slot(str, result=str)
+    def resolvePetImage(self, token):
+        from backend.pet_art import resolve_pet_image
+
+        return resolve_pet_image(token, self._resources_dir)
     @Property(int, notify=configSaved)
     def bubbleTimeoutSeconds(self): return 8
     @Property(int, notify=configSaved)
@@ -314,6 +336,35 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertIn("账户余额", rendered)
         self.assertIn("¥1.23K", rendered)
         self.assertIn("令牌额度 ∞", rendered)
+
+    def test_built_in_pet_art_reaches_sprite_and_chips(self):
+        """内置立绘经后端解析后真的落到 PetSprite.imagePath,设置窗芯片同步列出。
+
+        这条串起"配置令牌 → backend.pet_art 解析 → QML 绑定"整条链:
+        任何一环名字写错,桌宠就退回隐身/自绘形体,而界面看起来一切正常。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+
+        sprite = window.findChild(QQuickItem, "petSprite")
+        self.assertIsNotNone(sprite, "找不到桌宠本体节点")
+        image_path = str(sprite.property("imagePath")).replace("\\", "/")
+        self.assertTrue(image_path.lower().endswith("resources/pet/navigator.png"),
+                        f"桌宠没有用上默认内置立绘: {image_path!r}")
+        self.assertTrue(Path(image_path).is_file(), f"立绘文件不存在: {image_path}")
+
+        dialog = self._create(engine, "PetSettingsDialog.qml")
+        # QML 的 var 数组读回来是 QJSValue,要先 toVariant() 才是 Python 列表
+        choices = dialog.property("imageChoices")
+        choices = choices.toVariant() if hasattr(choices, "toVariant") else choices
+        tokens = [choice["token"] for choice in choices]
+        self.assertEqual(tokens[0], "vector", "老的自绘形体必须仍然可选")
+        self.assertIn("preset:navigator", tokens)
+        self.assertEqual(dialog.property("activeImageToken"), "preset:navigator",
+                         "配置留空时芯片应高亮清单里的默认立绘")
+        self.assertTrue(Path(str(dialog.property("petImagePreviewPath"))).is_file())
 
     def test_settings_form_scrolls_instead_of_overflowing(self):
         """设置表单由 Fluent.ScrollArea 承载:内容可以长过视口,但必须能滚动到。

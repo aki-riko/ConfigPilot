@@ -15,6 +15,7 @@ from datetime import datetime
 import json
 import logging
 import math
+import os
 import re
 import time
 from typing import Any, Optional
@@ -23,6 +24,7 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from backend import quota_math
+from backend.pet_art import default_preset_token, list_pet_presets, resolve_pet_image
 from backend.pet_config import (
     SOURCE_AUTO,
     SOURCE_MANUAL,
@@ -46,6 +48,12 @@ _MAX_LOG_ROWS = 50
 USER_AGENT = "ConfigPilot (Qt QNetworkAccessManager)"
 
 
+def _default_resources_dir() -> str:
+    """包位置推导 resources 目录(源码运行与 Nuitka 单目录打包都成立)。"""
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(package_root, "resources")
+
+
 class NewApiPet(QObject):
     """轮询余额/日志并向 QML 暴露只读状态与设置入口。"""
 
@@ -63,10 +71,14 @@ class NewApiPet(QObject):
         config_path: str,
         config: PetConfig | None = None,
         source_resolver=None,
+        resources_dir: str = "",
         parent: QObject | None = None,
     ):
         super().__init__(parent)
         self._config_path = str(config_path)
+        # 内置立绘目录:优先用装配层传入的程序目录;缺省时按包位置推导,
+        # 源码运行与 Nuitka 单目录打包(<dist>/resources)都能命中。
+        self._resources_dir = str(resources_dir or _default_resources_dir())
         if config is None:
             loaded, error = load_pet_config_safe(self._config_path)
             if error:
@@ -267,6 +279,26 @@ class NewApiPet(QObject):
     @Property(str, notify=configSaved)
     def configPetImage(self) -> str:
         return self._effective_config().pet_image
+
+    @Property(str, notify=configSaved)
+    def petImageSource(self) -> str:
+        """立绘令牌解析后的绝对路径;空串 = 用 PetSprite 自绘的矢量形体。"""
+        return resolve_pet_image(self._effective_config().pet_image, self._resources_dir)
+
+    @Property("QVariantList", notify=configSaved)
+    def petImagePresets(self) -> list:
+        """resources/pet 里可用的内置立绘,供设置窗做形象选择。"""
+        return [preset.to_map() for preset in list_pet_presets(self._resources_dir)]
+
+    @Property(str, notify=configSaved)
+    def defaultPetImageToken(self) -> str:
+        """pet_image 留空时实际生效的立绘令牌(设置窗据此高亮当前选项)。"""
+        return default_preset_token(self._resources_dir)
+
+    @Slot(str, result=str)
+    def resolvePetImage(self, token: str) -> str:
+        """按界面上正在编辑的值实时解析路径(设置窗预览用,不落盘)。"""
+        return resolve_pet_image(token, self._resources_dir)
 
     @Property(str, notify=configSaved)
     def configAccountIntervalText(self) -> str:

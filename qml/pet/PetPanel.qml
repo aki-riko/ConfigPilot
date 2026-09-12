@@ -632,8 +632,10 @@ Item {
         anchors.rightMargin: panel.spriteRightMargin
         // 贴底定位:三种形态下桌宠屏幕位置恒定,且一定在窗口内
         y: panel.spriteTop
-        imagePath: panel.ready && NewApiPet.configPetImage !== ""
-                   ? NewApiPet.configPetImage : ""
+        // 形象令牌由后端解析(preset:<id> / 绝对路径 / vector / 空=默认内置立绘)。
+        // 这里不再挂 panel.ready:立绘跟凭证就绪与否无关,挂上会让桌宠在启动瞬间
+        // 先闪一下自绘形体再换成立绘。
+        imagePath: NewApiPet && NewApiPet.petImageSource ? NewApiPet.petImageSource : ""
         alert: panel.alertState
     }
 

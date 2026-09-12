@@ -23,6 +23,9 @@ _*.py
 _*.png
 *.log
 
+# 生成流水线产物(桌宠立绘候选等),不入库
+.artifacts/
+
 # Codex 真实配置备份(若误入目录)
 config.toml.bak
 auth.json.bak

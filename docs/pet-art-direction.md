@@ -62,9 +62,10 @@ $env:RELYX_API_KEY  = "<可用的 sk-...>"
 ```
 
 产物在 `.artifacts/pet/`：`<style>__<model>__NN.png`（定稿尺寸）+ `_preview.png`（深浅底对比）。
-`--install` 把图放进 `resources/pet/<name>.png`，并把绝对路径写进
-`%LOCALAPPDATA%\ConfigPilot\pet_config.json` 的 `pet_image`，桌宠下一次刷新即生效
-（`PetSprite.qml` 的 `imagePath` 通道）。加 `--no-config` 只放文件不改配置。
+`--install` 把图放进 `resources/pet/<name>.png`；默认还会把该绝对路径写进本机
+`%LOCALAPPDATA%\ConfigPilot\pet_config.json` 的 `pet_image`，桌宠立刻换装。
+**发布内置形象时加 `--no-config`**：留空配置就走清单 `default`，不该把某台机器的绝对路径
+写进用户配置。新增内置形象要在 `resources/pet/presets.json` 补一条 `{id, label, file}`。
 
 离线自检（不联网、不需要密钥）：
 
@@ -72,8 +73,36 @@ $env:RELYX_API_KEY  = "<可用的 sk-...>"
 .venv\Scripts\python.exe scripts\generate_pet_art.py --self-test
 ```
 
-## 后续（定稿形象选定后）
+## 已落地的接线
 
-把 `resources/pet/` 里的立绘做成设置窗"桌宠外观"里的内置形象候选（Chips 选择 + 仍保留
-自定义路径），替掉现在只能填绝对路径的单一输入框；这一步需要改
-`qml/pet/PetSettingsDialog.qml` 与 `backend/newapi_pet.py`，等图定稿再做，避免返工。
+立绘随程序发布在 `resources/pet/`（Nuitka 的 `--include-data-dir=resources=resources`
+与 Inno 的 `main.dist\*` 递归拷贝都会带上），用户配置里只存一个短令牌：
+
+| `pet_image` 取值 | 生效形象 |
+| --- | --- |
+| `""`（留空） | `resources/pet/presets.json` 里 `default` 指向的立绘，当前是 `preset:navigator` |
+| `preset:<id>` | 指定某个内置立绘 |
+| `vector` | 老的自绘矢量小飞宠，仍然保留、仍然可选 |
+| `D:\pics\pet.png` | 用户自备图片（原行为，完全兼容） |
+
+- `backend/pet_art.py`：令牌 ↔ 绝对路径的唯一解析处（清单缺失时退化为扫描目录；
+  id 过白名单正则，`file` 字段过 `basename`，不能穿越出立绘目录）。
+- `backend/newapi_pet.py`：新增 `petImageSource` / `petImagePresets` /
+  `defaultPetImageToken` 三个只读属性与 `resolvePetImage(token)` 槽。
+- `qml/pet/PetPanel.qml`：`PetSprite.imagePath` 改吃 `petImageSource`，并且不再挂
+  `panel.ready` —— 立绘与凭证就绪无关，挂上会让桌宠启动瞬间先闪一下自绘形体。
+- `qml/pet/PetSettingsDialog.qml`：「桌宠外观」卡片加了 64px 实时预览 + 内置形象芯片行，
+  点芯片只是把令牌写回原来的路径框，路径框仍是唯一提交值。
+
+验证：`tests/test_pet_art.py`（令牌解析 10 例）与 `tests/test_pet_ui.py`
+（`test_built_in_pet_art_reaches_sprite_and_chips` 串起"配置 → 解析 → QML 绑定"整条链，
+离屏抓图确认立绘真的画进了悬浮窗）。
+
+## 定稿记录
+
+- 主形象 `navigator`（小领航 · 阿诺）：杏橙发 / 金青瞳 / 奶油飞行帽 / 抱一枚刻星金币，
+  腰上挂罗盘与钥匙 —— 与 ConfigPilot 的"领航 + 余额"语义对齐。
+- 四个模型都出过同一概念：`gpt-image-2.5-flare` 头身比最夸张、轮廓最干净，120px 下最耐看，
+  定为发布版本；`gpt-image-2` 描线最精致但靴带、皮带扣这类细节在 120px 会糊。
+- `barista`、`archivist` 也各出一版并作为可选内置形象一起发布，风格统一走 flare。
+

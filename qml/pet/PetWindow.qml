@@ -55,16 +55,20 @@ Window {
     readonly property int spriteSize: 120
     readonly property int spriteRightMargin: 14
     readonly property int detailContentHeight: 352
-    readonly property int bubbleAreaHeight: 76
+    // 气泡改成独立原生窗口(Fluent.TeachingTip)后不再占悬浮窗高度:
+    // bubbleAreaHeight 归零、bubbleTop 归零,气泡形态与 pet 形态同高,
+    // 气泡弹层自己的高度由 bubbleTipHeight 决定。
+    readonly property int bubbleAreaHeight: 0
+    readonly property int bubbleTipHeight: 84
 
     readonly property int cardTop: panelPadding
     // 桌宠区:必须放下 下边距 + 桌宠 + 与上方内容之间的空档
     readonly property int spriteBottomMargin: panelPadding
     readonly property int spriteGap: panelPadding * 2
     readonly property int petAreaHeight: spriteBottomMargin + spriteSize + spriteGap
-    // 气泡顶边(面板内部用它给气泡定位)
-    readonly property int bubbleTop: panelPadding
-    // 气泡模式的面板高度 = 气泡顶边 + 气泡 + 空档 + 桌宠 + 下边距
+    // 气泡锚点顶边(面板内部用它给弹层锚点定位)
+    readonly property int bubbleTop: 0
+    // 气泡形态的面板高度 = 气泡顶边 + 锚点(0) + 空档 + 桌宠 + 下边距
     readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
                                              + spriteSize + spriteBottomMargin
 
@@ -234,6 +238,7 @@ Window {
         petAreaHeight: petWindow.petAreaHeight
         detailContentHeight: petWindow.detailContentHeight
         bubbleAreaHeight: petWindow.bubbleAreaHeight
+        bubbleTipHeight: petWindow.bubbleTipHeight
         bubbleTop: petWindow.bubbleTop
         cardTop: petWindow.cardTop
         spriteBottomMargin: petWindow.spriteBottomMargin

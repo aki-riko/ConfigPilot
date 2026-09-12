@@ -120,8 +120,11 @@ SPRITE_BOTTOM_MARGIN = PANEL_PADDING
 SPRITE_GAP = PANEL_PADDING * 2
 CARD_TOP = PANEL_PADDING
 DETAIL_CONTENT_HEIGHT = 352
-BUBBLE_HEIGHT = 76
-BUBBLE_TOP = PANEL_PADDING
+# 气泡改成独立原生窗口(Fluent.TeachingTip)后不再占悬浮窗高度:
+# 气泡形态与 pet 形态同高,弹层高度另由 PetWindow.bubbleTipHeight 决定。
+BUBBLE_HEIGHT = 0
+BUBBLE_TOP = 0
+BUBBLE_TIP_HEIGHT = 84
 EXPECTED_HEIGHTS = {
     "detail": CARD_TOP + DETAIL_CONTENT_HEIGHT + SPRITE_GAP + SPRITE_SIZE + SPRITE_BOTTOM_MARGIN,
     "bubble": BUBBLE_TOP + BUBBLE_HEIGHT + SPRITE_GAP + SPRITE_SIZE + SPRITE_BOTTOM_MARGIN,
@@ -636,6 +639,9 @@ class PetQmlLoadTests(unittest.TestCase):
 
         这条路径历史上是 `petWindow.hideTimer.stop()` —— QML 取不到"根对象 id.子元素 id",
         于是每次进出气泡都抛 "Cannot call method 'stop' of undefined"。
+
+        气泡改成独立原生窗口(Fluent.TeachingTip)后,交互层在弹层窗口里,
+        所以要驱动的是那个弹层窗口,而不是悬浮窗。
         """
         engine = self._engine()
         window = self._create(engine, "PetWindow.qml")
@@ -646,25 +652,27 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertIsNotNone(timer, "气泡计时器没有 objectName,无法定位")
 
         panel = window.findChild(QQuickItem, "petPanel")
-        bubble_areas = self._mouse_area_in(panel.childItems()[1])
-        self.assertTrue(bubble_areas, "气泡里没有 MouseArea")
+        tip = panel.findChild(QObject, "petBubbleTip")
+        self.assertIsNotNone(tip, "气泡锚点里没有 TeachingTip")
+        popup = tip.property("_popupWindow")
+        self.assertIsNotNone(popup, "气泡弹层窗口没有创建")
+
+        bubble_areas = self._mouse_area_in(popup.contentItem())
+        self.assertTrue(bubble_areas, "气泡弹层里没有 MouseArea")
         area = bubble_areas[0]
-        inside = area.mapToScene(
-            QPoint(int(area.width() / 2), int(area.height() / 2))
-        ).toPoint()
-        outside = QPoint(4, max(1, int(window.property("height")) - 6))
+        inside = QPoint(int(area.width() / 2), int(area.height() / 2))
+        outside = QPoint(-8, -8)
 
         captured = _capture_qml_warnings()
         try:
             self.assertTrue(timer.property("running"), "气泡出现后计时器应该是运行的")
-            QTest.mouseMove(window, inside)
+            QTest.mouseMove(popup, inside)
             APP.processEvents()
             self.assertFalse(timer.property("running"), "鼠标在气泡上时不应继续计时")
 
-            QTest.mouseMove(window, outside)
+            QTest.mouseMove(popup, outside)
             APP.processEvents()
             self.assertTrue(timer.property("running"), "鼠标离开气泡后应该重新计时")
-            self.assertEqual(window.property("mode"), "bubble")
         finally:
             warnings = captured.stop()
         self.assertEqual(warnings, [], "气泡进出过程中出现 QML 运行期警告: " + " | ".join(warnings))
@@ -689,10 +697,16 @@ class PetQmlLoadTests(unittest.TestCase):
             panel = window.findChild(QQuickItem, "petPanel")
             self.assertIsNotNone(panel, "PetPanel 没有 objectName,无法定位")
 
-            # 点击气泡 → 明细
-            bubble_areas = self._mouse_area_in(panel.childItems()[1])
-            self.assertTrue(bubble_areas, "气泡里没有 MouseArea")
-            self._click(window, bubble_areas[0])
+            # 点击气泡 → 明细。气泡现在是独立原生窗口,交互层在弹层里。
+            tip = panel.findChild(QObject, "petBubbleTip")
+            self.assertIsNotNone(tip, "气泡锚点里没有 TeachingTip")
+            popup = tip.property("_popupWindow")
+            self.assertIsNotNone(popup, "气泡弹层窗口没有创建")
+            bubble_areas = self._mouse_area_in(popup.contentItem())
+            self.assertTrue(bubble_areas, "气泡弹层里没有 MouseArea")
+            QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,
+                             self._center_of(popup, bubble_areas[0]))
+            APP.processEvents()
             self.assertEqual(window.property("mode"), "detail")
             # 过渡跑完再点收起,否则按钮还在淡入上浮,点击会落空
             self.assertTrue(self._settle(window, "detail"), "明细卡过渡没有收敛,无法稳定点击")

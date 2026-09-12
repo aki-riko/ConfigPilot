@@ -35,6 +35,8 @@ Item {
     property var petAreaHeight
     property var detailContentHeight
     property var bubbleAreaHeight
+    // 气泡弹层高度:气泡现在是独立原生窗口,不再占悬浮窗高度,由窗口按内容给值
+    property var bubbleTipHeight
     property var bubbleTop
     property var cardTop
     property var spriteBottomMargin
@@ -483,11 +485,23 @@ Item {
     }
 
     // ============================================================ 余额气泡
-    // 位置必须在 childItems()[1]:测试用它定位气泡里的 MouseArea。
-    // 表面改用 Fluent.ShadowedRectangle(SDF 阴影,随皮肤给出正确的投影),
-    // 尖角仍自绘 —— 见文件头"三处保留自绘"第 1 条。
+    // 位置必须在 childItems()[1]:测试按 childItems()[1] 取气泡锚点。
+    // 气泡改用框架的 Fluent.TeachingTip(原生弹层 + 箭头 + 声明式富内容),不再自绘。
+    // 它是独立原生窗口,所以本节点退化成"锚点":高度为 0,自身位置决定气泡出现在哪里。
+    // 悬停暂停与点击展开由内容里的 MouseArea 接回 —— TipPopup 家族没有悬停钩子;
+    // 自动收起仍由 PetWindow 的 hideTimer 管理,因此 duration 用 persistent。
     Item {
-        id: bubble
+        id: bubbleAnchor
+        // 气泡是独立原生窗口,不受父级 visible 支配,必须显式开关并跟随形态。
+        // 还必须等面板高度切换完成再 show:收缩是延后 200ms 生效的,过渡期间锚点仍在
+        // 旧位置,弹层会按旧锚点定格(实测偏 12px),而锚点这次移动来自祖先面板重排、
+        // 不是自身几何变化,框架的位置跟踪器看不到,无法自动纠正。
+        readonly property bool bubbleShown: panel.mode === "bubble"
+                                            && panel.panelHeight === panel.bubblePanelHeight
+        onBubbleShownChanged: bubbleShown ? bubbleTip.show() : bubbleTip.close()
+        // 初始显示必须延后到事件循环:Component.onCompleted 阶段弹层窗口刚被创建,
+        // 此时 show() 会被随后的初始化流程重置回隐藏(实测首帧 visible=False)。
+        Component.onCompleted: if (bubbleShown) Qt.callLater(bubbleTip.show)
         // 与明细面板同一套过渡语义(见 detailPanel 处的说明)。
         property real shiftY: panel.mode === "bubble" ? 0 : Fluent.Enums.spacing.l
         Behavior on shiftY {
@@ -496,7 +510,7 @@ Item {
                 easing.type: Easing.OutCubic
             }
         }
-        transform: Translate { y: bubble.shiftY }
+        transform: Translate { y: bubbleAnchor.shiftY }
         opacity: panel.mode === "bubble" ? Fluent.Enums.opacityLevel.visible
                                          : Fluent.Enums.opacityLevel.invisible
         visible: opacity > 0.01
@@ -507,112 +521,104 @@ Item {
                 easing.type: Easing.OutCubic
             }
         }
+        // 锚点贴着桌宠上方留一点间隙:气泡底边落在桌宠头顶,
+        // 与原自绘气泡"紧贴桌宠"的观感一致。
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: panel.bubbleTop
+        y: petSprite.y - Fluent.Enums.spacing.l
         width: panel.panelWidth
-        height: panel.bubbleAreaHeight
+        // 锚点保留 1px 高度:零高度 Item 在弹层定位里会被当成零尺寸目标。
+        // 它不参与悬浮窗高度计算(bubbleAreaHeight 为 0)。
+        height: Math.max(1, panel.bubbleAreaHeight)
 
-        Fluent.ShadowedRectangle {
-            id: bubbleBody
-            anchors.fill: parent
-            color: panel.surfaceColor
-            radius: Fluent.Enums.radius.xlarge
-            // 告警态:边框用主题语义红 diluted,仍随主题切换。
-            border.color: panel.alertState
-                          ? Qt.alpha(Fluent.Enums.statusLevel.errorColor, Fluent.Enums.opacityLevel.medium)
-                          : panel.borderColor
-            border.width: Fluent.Enums.border.thin
-            shadowLevel: Fluent.Enums.shadow.level4
+        Fluent.TeachingTip {
+            id: bubbleTip
+            objectName: "petBubbleTip"
+            target: bubbleAnchor
+            // 气泡在桌宠上方:anchor_bottom 把弹层摆在 target 上方
+            anchorPosition: Fluent.Enums.teachingTip.anchor_bottom
+            viewWidth: panel.panelWidth
+            viewHeight: panel.bubbleTipHeight
+            // 自动收起交给 PetWindow 的 hideTimer(它要支持悬停暂停),
+            // 所以这里用 persistent,不让框架自己计时关掉。
+            duration: Fluent.Enums.duration.persistent
+            closable: false
+            modal: false
 
-            Column {
-                anchors.fill: parent
-                anchors.leftMargin: Fluent.Enums.spacing.l
-                anchors.rightMargin: Fluent.Enums.spacing.l
-                anchors.topMargin: Fluent.Enums.spacing.m
-                spacing: Fluent.Enums.spacing.micro
+            // 内容层:三行富排版 + 接回悬停暂停/点击展开的交互层。
+            // 弹层窗口自带 padding,这里再给一层对称留白,避免贴边。
+            Item {
+                width: panel.panelWidth - Fluent.Enums.spacing.xl * 2
+                implicitHeight: bubbleColumn.height
 
-                Fluent.Label {
+                Column {
+                    id: bubbleColumn
                     width: parent.width
-                    text: panel.ready
-                          ? panel.tokenName + " · " + panel.expiresText
-                          : panel.statusText
-                    type: Fluent.Enums.label.type_caption
-                    font.pixelSize: Fluent.Enums.typography.micro
-                    customTextColor: panel.mutedTextColor
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: Fluent.Enums.spacing.m
+                    spacing: Fluent.Enums.spacing.micro
 
                     Fluent.Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: panel.primaryBalanceCaption
+                        width: parent.width
+                        text: panel.ready
+                              ? panel.tokenName + " · " + panel.expiresText
+                              : panel.statusText
                         type: Fluent.Enums.label.type_caption
                         font.pixelSize: Fluent.Enums.typography.micro
                         customTextColor: panel.mutedTextColor
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
                     }
-                    Fluent.Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: panel.primaryBalanceText
-                        type: Fluent.Enums.label.type_subtitle
-                        font.pixelSize: Fluent.Enums.typography.titleLarge
-                        customTextColor: (panel.alertState || panel.primaryNegative)
-                                         ? panel.dangerColor : panel.accentColor
+
+                    Row {
+                        width: parent.width
+                        spacing: Fluent.Enums.spacing.m
+
+                        Fluent.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: panel.primaryBalanceCaption
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.micro
+                            customTextColor: panel.mutedTextColor
+                        }
+                        Fluent.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: panel.primaryBalanceText
+                            type: Fluent.Enums.label.type_subtitle
+                            font.pixelSize: Fluent.Enums.typography.titleLarge
+                            customTextColor: (panel.alertState || panel.primaryNegative)
+                                             ? panel.dangerColor : panel.accentColor
+                        }
+                        Fluent.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: panel.ready ? "Tokens " + panel.promptTokensText
+                                                + " / " + panel.completionTokensText : ""
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.micro
+                            customTextColor: panel.mutedTextColor
+                        }
                     }
+
                     Fluent.Label {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: panel.ready ? "Tokens " + panel.promptTokensText
-                                            + " / " + panel.completionTokensText : ""
+                        width: parent.width
+                        text: panel.todaySummary
                         type: Fluent.Enums.label.type_caption
-                        font.pixelSize: Fluent.Enums.typography.micro
-                        customTextColor: panel.mutedTextColor
+                        font.pixelSize: Fluent.Enums.typography.captionCompact
+                        customTextColor: panel.failed ? panel.dangerColor
+                                                      : panel.secondaryTextColor
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
                     }
                 }
 
-                Fluent.Label {
-                    width: parent.width
-                    text: panel.todaySummary
-                    type: Fluent.Enums.label.type_caption
-                    font.pixelSize: Fluent.Enums.typography.captionCompact
-                    customTextColor: panel.failed ? panel.dangerColor : panel.secondaryTextColor
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
+                // 鼠标停在气泡上时不要自动收起;离开后重新计时;点击展开明细卡。
+                // 这里必须调窗口函数:QML 取不到"根对象 id.子元素 id"。
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: petWindow.toggleDetail()
+                    onEntered: petWindow.pauseBubbleTimer()
+                    onExited: petWindow.resumeBubbleTimer()
                 }
             }
-
-            MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: petWindow.toggleDetail()
-                // 鼠标停在气泡上时不要自动收起;离开后重新计时。
-                // 这里必须调窗口函数:QML 取不到"根对象 id.子元素 id"(petWindow.hideTimer
-                // 恒为 undefined),直接写会抛 "Cannot call method 'stop' of undefined"。
-                onEntered: petWindow.pauseBubbleTimer()
-                onExited: petWindow.resumeBubbleTimer()
-            }
-        }
-
-        // 指向桌宠的小尖角:横向对齐桌宠中心,气泡中心与桌宠不同轴时也不会"指错"
-        Rectangle {
-            id: bubbleTail
-            width: Fluent.Enums.spacing.l
-            height: Fluent.Enums.spacing.l
-            radius: Fluent.Enums.radius.tiny
-            rotation: 45
-            color: bubbleBody.color
-            border.color: bubbleBody.border.color
-            border.width: Fluent.Enums.border.thin
-            x: Math.max(Fluent.Enums.spacing.l,
-                        Math.min(bubble.width - Fluent.Enums.spacing.xxxl,
-                                 petSprite.x + petSprite.width / 2
-                                 - panel.panelWidth / 2 - width / 2))
-            anchors.bottom: bubbleBody.bottom
-            anchors.bottomMargin: -Fluent.Enums.spacing.s
         }
     }
 

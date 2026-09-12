@@ -304,26 +304,42 @@ class PetQmlLoadTests(unittest.TestCase):
 
         panel = window.findChild(QQuickItem, "petPanel")
         self.assertIsNotNone(panel)
-        texts = []
-        _collect(panel, lambda i: i.metaObject().className().startswith("QQuickText"), texts)
-        rendered = [str(item.property("text")) for item in texts]
+        # Fluent.Label 是 QML 复合类型,元对象名是 Label_QMLTYPE_* 而不是裸 Text 的
+        # QQuickText;这里按"有没有 text 属性"收集,与 _collect_texts 同一口径,
+        # 否则换用框架 Label 之后断言会静默漏掉全部文本。
+        rendered = _collect_texts(panel)
         self.assertIn("账户余额", rendered)
         self.assertIn("¥1.23K", rendered)
         self.assertIn("令牌额度 ∞", rendered)
 
-    def test_settings_dialog_content_fits_window(self):
-        """设置窗口是固定高度,加字段必须同步改高度,否则按钮会被裁掉。"""
+    def test_settings_form_scrolls_instead_of_overflowing(self):
+        """设置表单由 Fluent.ScrollArea 承载:内容可以长过视口,但必须能滚动到。
+
+        旧实现把"字段总高 <= 窗口高 - 边距"当人工约定,加一个字段就会被裁掉;
+        现在正文在 ScrollArea 里,这条约定由框架接管,断言也随之迁移到滚动区。
+        """
         engine = self._engine()
         dialog = self._create(engine, "PetSettingsDialog.qml")
+        dialog.setProperty("visible", True)
         APP.processEvents()
+
+        scroll = dialog.findChild(QQuickItem, "settingsScrollArea")
+        self.assertIsNotNone(scroll, "设置窗口缺少 ScrollArea,长表单会被裁掉")
         column = dialog.findChild(QQuickItem, "settingsFormColumn")
         self.assertIsNotNone(column, "设置表单 Column 没有 objectName,无法定位")
+
+        viewport = float(scroll.property("height"))
+        self.assertGreater(viewport, 0, "滚动区没有高度")
+        content_height = float(scroll.property("contentHeight"))
+        self.assertGreater(content_height, 0, "ScrollArea 没有接管表单内容高度")
+
+        # 表单比视口高时必须留下可滚动余量,否则底部按钮会被顶出可视区
         used = float(column.property("implicitHeight"))
-        available = float(dialog.property("height")) - 36  # anchors.margins: 18 * 2
-        self.assertLessEqual(
-            used, available,
-            f"设置表单内容 {used}px 超出可用 {available}px,需要调大 dialog.height",
-        )
+        if used > viewport:
+            self.assertGreater(
+                content_height, viewport,
+                f"表单 {used}px 高于视口 {viewport}px,但滚动区没有产生滚动余量",
+            )
 
     def test_settings_dialog_has_balance_source_chips(self):
         """设置窗口必须能切余额口径,并显示账户余额是否就绪。"""
@@ -335,7 +351,7 @@ class PetQmlLoadTests(unittest.TestCase):
         root = dialog.findChild(QQuickItem, "settingsFormColumn")
         self.assertIsNotNone(root)
         rendered = _collect_texts(root)
-        for label in ("余额口径（大数字显示哪一套额度）", "自动", "令牌额度", "账户余额"):
+        for label in ("余额口径", "大数字显示哪一套额度", "自动", "令牌额度", "账户余额"):
             self.assertIn(label, rendered)
         # 替身的账户余额已就绪 → 提示行应显示"当前生效",而不是警告色文案
         hint = [text for text in rendered if text.startswith("当前生效")]

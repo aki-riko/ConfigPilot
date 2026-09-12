@@ -2,11 +2,21 @@
 // 拆成独立组件的原因:窗口只管生命周期与位置,面板单独可渲染、可核验。
 // 布局约定:卡片与气泡水平居中、桌宠固定在右下角;卡片每一行都是固定高度,
 // 行高之和 = detailContentHeight,窗口高度由它反推,因此不会出现内容被裁掉。
-// 结构用 PrismQML 封装的组件:卡片 Fluent.Card、操作按钮 Fluent.Button、
-// 分隔线 Fluent.Separator、右键菜单 Fluent.ContextMenu;配色走 Enums 令牌。
-// 唯一保留的自绘结构是余额气泡:它是与悬浮窗共用透明表面、随窗口高度
-// 原子伸缩的"对话气泡",框架的 TipPopup/TeachingTip 是独立原生弹窗 +
-// 纯文本模型,没有悬停暂停/自动收起钩子,塞不进这套固定栅格。
+//
+// PrismQML 组件清单:
+//   卡片 Fluent.Card / 内嵌表面 Fluent.Card(内容条) / 操作按钮 Fluent.Button /
+//   分隔线 Fluent.Separator / 明细列表 Fluent.ListView / 气泡表面 Fluent.ShadowedRectangle /
+//   右键菜单 Fluent.ContextMenu + Fluent.Action / 文本 Fluent.Label;
+//   配色走 Fluent.Enums 主题令牌,字号走 Fluent.Enums.typography。
+//
+// 三处保留自绘,理由写死在这里,不允许"顺手"换掉:
+//   1. 气泡尖角:ShadowedRectangle 画不出指向桌宠的三角,整块气泡仍属悬浮窗
+//      共用透明表面,框架的 TipPopup/TeachingTip 是独立原生弹窗 + 纯文本模型,
+//      没有悬停暂停/自动收起钩子,塞不进这套固定栅格。
+//   2. 桌宠拖动层:拖动要按 bottomY 坐标系移动窗口,并在松手时
+//      NewApiPet.savePosition();Flutter 侧 WindowDragHandle 只发 dragStarted,
+//      没有拖动结束信号,换掉会丢"记住位置"行为。
+//   3. PetSprite 角色插画:见 PetSprite.qml 文件头。
 import QtQuick
 
 import PrismQML as Fluent
@@ -74,6 +84,16 @@ Item {
     readonly property color dangerColor: Fluent.Enums.statusLevel.errorColor
     readonly property color shadowColor: Fluent.Enums.shadowColor
 
+    // ---------------------------------------------------------------- 栅格行高
+    // Enums 没有"桌宠明细卡行高"这一类令牌,而这几行必须严格相加等于
+    // detailContentHeight(352,窗口高度由它反推),所以集中声明在这里,
+    // 不允许再散落到各个子元素上去,避免改一处漏一处。
+    readonly property int headerRowHeight: 32
+    readonly property int statCardHeight: 52
+    readonly property int metaRowHeight: 14
+    readonly property int tokenBarHeight: 34
+    readonly property int logListHeight: 90
+
     // 明细卡片高度 = 卡片内容高度,窗口高度由它反推。
     readonly property int cardHeight: detailContentHeight
 
@@ -106,6 +126,7 @@ Item {
     }
 
     // ============================================================ 明细面板
+    // 位置必须在 childItems()[0]:测试按 childItems()[1] 取气泡。
     Item {
         id: detailPanel
         visible: panel.mode === "detail"
@@ -130,28 +151,28 @@ Item {
             Column {
                 id: cardColumn
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                anchors.topMargin: 12
-                anchors.bottomMargin: 12
-                spacing: 8
+                anchors.leftMargin: Fluent.Enums.spacing.l
+                anchors.rightMargin: Fluent.Enums.spacing.l
+                anchors.topMargin: Fluent.Enums.spacing.l
+                anchors.bottomMargin: Fluent.Enums.spacing.l
+                spacing: Fluent.Enums.spacing.m
 
                 // ---------------------------------------- 头部:令牌名 + 有效期 + 操作
                 Item {
                     id: headerRow
                     width: parent.width
-                    height: 32
+                    height: panel.headerRowHeight
 
-                    Text {
+                    Fluent.Label {
                         id: titleLabel
                         anchors.left: parent.left
                         anchors.right: actions.left
-                        anchors.rightMargin: 8
+                        anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.tokenName
-                        font.pixelSize: 14
-                        font.bold: true
-                        color: panel.primaryTextColor
+                        type: Fluent.Enums.label.type_body_strong
+                        font.pixelSize: Fluent.Enums.typography.body
+                        customTextColor: panel.primaryTextColor
                         elide: Text.ElideRight
                         horizontalAlignment: Text.AlignLeft
                         maximumLineCount: 1
@@ -161,14 +182,15 @@ Item {
                         id: actions
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 6
+                        spacing: Fluent.Enums.spacing.s
 
-                        Text {
+                        Fluent.Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, 96)
+                            width: Math.min(implicitWidth, panel.panelWidth / 3)
                             text: panel.expiresText
-                            font.pixelSize: 10
-                            color: panel.mutedTextColor
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.micro
+                            customTextColor: panel.mutedTextColor
                             elide: Text.ElideRight
                             horizontalAlignment: Text.AlignRight
                         }
@@ -198,11 +220,12 @@ Item {
                 // ---------------------------------------- 额度与今日用量
                 Row {
                     width: parent.width
-                    height: 52
-                    spacing: 10
+                    height: panel.statCardHeight
+                    spacing: Fluent.Enums.spacing.s
 
                     PetStatCard {
-                        width: (parent.width - 10) / 2
+                        width: (parent.width - Fluent.Enums.spacing.s) / 2
+                        height: parent.height
                         caption: panel.primaryBalanceCaption
                         value: panel.primaryBalanceText
                         highlight: true
@@ -210,7 +233,8 @@ Item {
                     }
 
                     PetStatCard {
-                        width: (parent.width - 10) / 2
+                        width: (parent.width - Fluent.Enums.spacing.s) / 2
+                        height: parent.height
                         caption: "今日已用"
                         value: panel.todayAmount
                     }
@@ -219,28 +243,30 @@ Item {
                 // ---------------------------------------- 另一套口径 + 账户余额新鲜度
                 Item {
                     width: parent.width
-                    height: 14
+                    height: panel.metaRowHeight
 
-                    Text {
+                    Fluent.Label {
                         anchors.left: parent.left
                         anchors.right: accountFresh.left
-                        anchors.rightMargin: 8
+                        anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.secondaryBalanceText
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                         elide: Text.ElideRight
                         maximumLineCount: 1
                     }
 
-                    Text {
+                    Fluent.Label {
                         id: accountFresh
                         anchors.right: parent.right
                         width: Math.min(implicitWidth, parent.width / 2)
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.accountFreshText
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         horizontalAlignment: Text.AlignRight
@@ -248,90 +274,99 @@ Item {
                 }
 
                 // ---------------------------------------- Token 简写条
-                Rectangle {
+                // 内嵌表面用框架的 Fluent.Card(皮肤感知的底色/边框/圆角),
+                // 关掉交互避免悬停改色,它只是一条只读数据显示。
+                Fluent.Card {
+                    objectName: "petTokenBar"
                     width: parent.width
-                    height: 34
-                    radius: 10
-                    color: panel.surfaceColor
-                    border.color: panel.borderColor
-                    border.width: 1
+                    height: panel.tokenBarHeight
+                    contentPadding: 0
+                    interactionEnabled: false
+                    border.width: Fluent.Enums.border.thin
 
                     Row {
                         anchors.left: parent.left
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: Fluent.Enums.spacing.m
                         anchors.right: tokenTotal.left
-                        anchors.rightMargin: 8
+                        anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 12
+                        spacing: Fluent.Enums.spacing.l
 
-                        Text {
+                        Fluent.Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "今日 Token"
-                            font.pixelSize: 10
-                            color: panel.mutedTextColor
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.micro
+                            customTextColor: panel.mutedTextColor
                         }
-                        Text {
+                        Fluent.Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "输入 " + panel.promptTokensText
-                            font.pixelSize: 11
-                            color: panel.primaryTextColor
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.captionCompact
+                            customTextColor: panel.primaryTextColor
                         }
-                        Text {
+                        Fluent.Label {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "输出 " + panel.completionTokensText
-                            font.pixelSize: 11
-                            color: panel.primaryTextColor
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.captionCompact
+                            customTextColor: panel.primaryTextColor
                         }
                     }
 
-                    Text {
+                    Fluent.Label {
                         id: tokenTotal
                         anchors.right: tokenCount.left
-                        anchors.rightMargin: 12
+                        anchors.rightMargin: Fluent.Enums.spacing.l
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.grantedText === "∞" || panel.grantedText === "—"
                               ? panel.grantedText
                               : "总额 " + panel.grantedText
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                     }
 
-                    Text {
+                    Fluent.Label {
                         id: tokenCount
                         anchors.right: parent.right
-                        anchors.rightMargin: 10
+                        anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.todayCountText
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                     }
                 }
 
                 // ---------------------------------------- 累计已用 + 数据状态
                 Item {
                     width: parent.width
-                    height: 14
+                    height: panel.metaRowHeight
 
-                    Text {
+                    Fluent.Label {
                         anchors.left: parent.left
                         anchors.right: statusLabel.left
-                        anchors.rightMargin: 8
+                        anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
                         text: "累计已用 " + panel.usedText
-                        font.pixelSize: 10
-                        color: panel.secondaryTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.secondaryTextColor
                         elide: Text.ElideRight
                         maximumLineCount: 1
                     }
 
-                    Text {
+                    Fluent.Label {
                         id: statusLabel
                         anchors.right: parent.right
                         width: Math.min(implicitWidth, parent.width / 2)
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.statusText
-                        font.pixelSize: 10
-                        color: panel.failed ? panel.dangerColor : panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.failed ? panel.dangerColor : panel.mutedTextColor
                         elide: Text.ElideRight
                         maximumLineCount: 1
                         horizontalAlignment: Text.AlignRight
@@ -339,28 +374,34 @@ Item {
                 }
 
                 // ---------------------------------------- 最近调用
-                Text {
+                Fluent.Label {
                     width: parent.width
-                    height: 14
+                    height: panel.metaRowHeight
                     text: "最近调用"
-                    font.pixelSize: 10
-                    color: panel.mutedTextColor
+                    type: Fluent.Enums.label.type_caption
+                    font.pixelSize: Fluent.Enums.typography.micro
+                    customTextColor: panel.mutedTextColor
                 }
 
-                ListView {
+                // 列表用框架的 Fluent.ListView:它自带视口与滚动条接管,
+                // framed 关掉是因为外层 Fluent.Card 已经提供了表面与边框。
+                // animated 关掉:这个列表原来是静态三行,不能引入入场动画。
+                Fluent.ListView {
                     id: logList
+                    objectName: "petLogList"
                     width: parent.width
                     // 固定三行高度:不足三行时底部留白,卡片底边与桌宠的间距始终恒定。
-                    height: 90
-                    clip: true
-                    spacing: 3
+                    height: panel.logListHeight
+                    framed: false
+                    animated: false
+                    spacing: Fluent.Enums.spacing.xxs
                     model: panel.logRows
 
                     delegate: PetLogRow {
                         required property int index
                         required property var modelData
 
-                        width: logList.width
+                        width: parent ? parent.width : 0
                         timeText: modelData.time
                         modelText: modelData.model
                         tokensText: modelData.tokens
@@ -369,12 +410,13 @@ Item {
                     }
                 }
 
-                Text {
+                Fluent.Label {
                     width: parent.width
-                    height: 14
+                    height: panel.metaRowHeight
                     text: panel.logFooterText
-                    font.pixelSize: 10
-                    color: panel.mutedTextColor
+                    type: Fluent.Enums.label.type_caption
+                    font.pixelSize: Fluent.Enums.typography.micro
+                    customTextColor: panel.mutedTextColor
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignLeft
                     maximumLineCount: 1
@@ -384,7 +426,9 @@ Item {
     }
 
     // ============================================================ 余额气泡
-    // 见文件头说明:与悬浮窗共表面的自绘气泡,是栅格的一部分而非独立弹层。
+    // 位置必须在 childItems()[1]:测试用它定位气泡里的 MouseArea。
+    // 表面改用 Fluent.ShadowedRectangle(SDF 阴影,随皮肤给出正确的投影),
+    // 尖角仍自绘 —— 见文件头"三处保留自绘"第 1 条。
     Item {
         id: bubble
         visible: panel.mode === "bubble"
@@ -394,91 +438,72 @@ Item {
         width: panel.panelWidth
         height: panel.bubbleAreaHeight
 
-        Rectangle {
-            anchors.fill: bubbleBody
-            anchors.topMargin: 3
-            radius: bubbleBody.radius
-            color: panel.shadowColor
-        }
-
-        Rectangle {
+        Fluent.ShadowedRectangle {
             id: bubbleBody
             anchors.fill: parent
-            radius: 14
             color: panel.surfaceColor
+            radius: Fluent.Enums.radius.xlarge
             // 告警态:边框用主题语义红 diluted,仍随主题切换。
             border.color: panel.alertState
-                          ? Qt.alpha(Fluent.Enums.statusLevel.errorColor, 0.5)
+                          ? Qt.alpha(Fluent.Enums.statusLevel.errorColor, Fluent.Enums.opacityLevel.medium)
                           : panel.borderColor
-            border.width: 1
-
-            // 指向桌宠的小尖角:横向对齐桌宠中心,气泡中心与桌宠不同轴时也不会"指错"
-            Rectangle {
-                id: bubbleTail
-                width: 14
-                height: 14
-                radius: 3
-                rotation: 45
-                color: bubbleBody.color
-                border.color: bubbleBody.border.color
-                border.width: 1
-                x: Math.max(14, Math.min(parent.width - 28,
-                                         petSprite.x + petSprite.width / 2
-                                         - panel.panelWidth / 2 - width / 2))
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: -6
-            }
+            border.width: Fluent.Enums.border.thin
+            shadowLevel: Fluent.Enums.shadow.level4
 
             Column {
                 anchors.fill: parent
-                anchors.leftMargin: 14
-                anchors.rightMargin: 14
-                anchors.topMargin: 9
-                spacing: 1
+                anchors.leftMargin: Fluent.Enums.spacing.l
+                anchors.rightMargin: Fluent.Enums.spacing.l
+                anchors.topMargin: Fluent.Enums.spacing.m
+                spacing: Fluent.Enums.spacing.micro
 
-                Text {
+                Fluent.Label {
                     width: parent.width
                     text: panel.ready
                           ? panel.tokenName + " · " + panel.expiresText
                           : panel.statusText
-                    font.pixelSize: 10
-                    color: panel.mutedTextColor
+                    type: Fluent.Enums.label.type_caption
+                    font.pixelSize: Fluent.Enums.typography.micro
+                    customTextColor: panel.mutedTextColor
                     elide: Text.ElideRight
                     maximumLineCount: 1
                 }
 
                 Row {
                     width: parent.width
-                    spacing: 8
+                    spacing: Fluent.Enums.spacing.m
 
-                    Text {
+                    Fluent.Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.primaryBalanceCaption
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                     }
-                    Text {
+                    Fluent.Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.primaryBalanceText
-                        font.pixelSize: 20
-                        font.bold: true
-                        color: (panel.alertState || panel.primaryNegative)
-                               ? panel.dangerColor : panel.accentColor
+                        type: Fluent.Enums.label.type_subtitle
+                        font.pixelSize: Fluent.Enums.typography.titleLarge
+                        customTextColor: (panel.alertState || panel.primaryNegative)
+                                         ? panel.dangerColor : panel.accentColor
                     }
-                    Text {
+                    Fluent.Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: panel.ready ? "Tokens " + panel.promptTokensText
                                             + " / " + panel.completionTokensText : ""
-                        font.pixelSize: 10
-                        color: panel.mutedTextColor
+                        type: Fluent.Enums.label.type_caption
+                        font.pixelSize: Fluent.Enums.typography.micro
+                        customTextColor: panel.mutedTextColor
                     }
                 }
 
-                Text {
+                Fluent.Label {
                     width: parent.width
                     text: panel.todaySummary
-                    font.pixelSize: 11
-                    color: panel.failed ? panel.dangerColor : panel.secondaryTextColor
+                    type: Fluent.Enums.label.type_caption
+                    font.pixelSize: Fluent.Enums.typography.captionCompact
+                    customTextColor: panel.failed ? panel.dangerColor : panel.secondaryTextColor
                     elide: Text.ElideRight
                     maximumLineCount: 1
                 }
@@ -496,6 +521,24 @@ Item {
                 onExited: petWindow.resumeBubbleTimer()
             }
         }
+
+        // 指向桌宠的小尖角:横向对齐桌宠中心,气泡中心与桌宠不同轴时也不会"指错"
+        Rectangle {
+            id: bubbleTail
+            width: Fluent.Enums.spacing.l
+            height: Fluent.Enums.spacing.l
+            radius: Fluent.Enums.radius.tiny
+            rotation: 45
+            color: bubbleBody.color
+            border.color: bubbleBody.border.color
+            border.width: Fluent.Enums.border.thin
+            x: Math.max(Fluent.Enums.spacing.l,
+                        Math.min(bubble.width - Fluent.Enums.spacing.xxxl,
+                                 petSprite.x + petSprite.width / 2
+                                 - panel.panelWidth / 2 - width / 2))
+            anchors.bottom: bubbleBody.bottom
+            anchors.bottomMargin: -Fluent.Enums.spacing.s
+        }
     }
 
     // ============================================================ 桌宠本体
@@ -503,7 +546,7 @@ Item {
         id: petSprite
         objectName: "petSprite"
         width: panel.spriteSize
-        height: 128
+        height: panel.spriteSize + Fluent.Enums.spacing.m
         anchors.right: parent.right
         anchors.rightMargin: panel.spriteRightMargin
         // 贴底定位:三种形态下桌宠屏幕位置恒定,且一定在窗口内
@@ -514,12 +557,13 @@ Item {
     }
 
     // 桌宠的拖动 / 点击 / 右键交互层(与明细面板/气泡互不遮挡)
+    // 保留自绘 MouseArea:见文件头"三处保留自绘"第 2 条(拖动要写回位置)。
     MouseArea {
         id: petMouse
-        x: petSprite.x - 6
-        y: petSprite.y - 6
-        width: petSprite.width + 12
-        height: petSprite.height + 12
+        x: petSprite.x - Fluent.Enums.spacing.s
+        y: petSprite.y - Fluent.Enums.spacing.s
+        width: petSprite.width + Fluent.Enums.spacing.l
+        height: petSprite.height + Fluent.Enums.spacing.l
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
         cursorShape: Qt.OpenHandCursor

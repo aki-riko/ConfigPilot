@@ -1,8 +1,14 @@
 // 桌宠本体:优先显示用户在设置里配置的图片,否则绘制内置矢量小飞宠。
-// 交互(拖动/点击/右键)由 PetWindow 的透明层统一处理,这里只负责观感与状态表达。
-// 注意:这里的颜色是"角色插画"配色,类似图片素材,刻意不随主题切换;
-// 界面配色(面板/气泡/菜单/设置)统一走 PrismQML 主题令牌。
+// 交互(拖动/点击/右键)由 PetPanel 的透明层统一处理,这里只负责观感与状态表达。
+//
+// 组件取舍:桌宠形象是一组矢量插画(身体渐变/眼睛/腮红/嘴/角标),PrismQML 没有
+// "角色插画"级别的组件,框架图标集也不包含这个形象,所以形体保留自绘;
+// 但语义色(告警角标)改走 Fluent.Enums,与主程序的状态红同源。
+// 身体配色仍是"角色插画"配色(类似图片素材),刻意不随主题切换 —— 这是角色身份
+// 的一部分,令牌化会让桌宠在深色主题下变成另一个形象。
 import QtQuick
+
+import PrismQML as Fluent
 
 Item {
     id: sprite
@@ -198,8 +204,8 @@ Item {
             width: 22
             height: 22
             radius: 11
-            color: "#E0565B"
-            border.color: "#FFFFFF"
+            color: Fluent.Enums.statusLevel.errorColor
+            border.color: Fluent.Enums.surfaceColor
             border.width: 2
             visible: opacity > 0.01
             opacity: sprite.alert ? 1 : 0

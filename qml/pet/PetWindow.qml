@@ -5,7 +5,13 @@
 //   detail 桌宠 + 明细面板(点击展开:额度、今日用量、Token、最近调用)
 // 布局全部在 PetPanel 里,本文件只管窗口生命周期、位置、以及把数据喂给面板。
 // 数据由 Python 端 NewApiPet 轮询 new-api 只读接口提供。
-// 配色全部走 PrismQML 主题令牌(Fluent.Enums),深浅色与主程序保持一致。
+// 配色全部走 PrismQML 主题令牌(Fluent.Enums),面板/气泡/菜单/设置窗里的
+// 结构件都换成 PrismQML 组件(清单见 PetPanel.qml 与 PetSettingsDialog.qml)。
+//
+// 窗口壳为什么仍是裸 Window:Fluent.WindowsCore 是"应用主窗壳"(标题栏、
+// 导航栏、DWM 圆角阴影、四边缩放手柄、不透明 windowColor),套到桌宠身上会
+// 直接毁掉"透明无边框置顶悬浮"这个形态本身;框架没有透明工具窗级别的壳,
+// 所以这里保留裸 Window,只把配色与尺寸令牌化。
 import QtQuick
 import QtQuick.Window
 
@@ -16,7 +22,7 @@ Window {
 
     // ---------------------------------------------------------------- 基础窗口
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
-    color: "transparent"
+    color: Fluent.Enums.transparent
     width: 340
     height: panel.panelHeight
     // 底边固定在 bottomY,面板向上展开。声明式绑定让 height→y 在同一求值
@@ -35,7 +41,10 @@ Window {
     //             + 34(Token 条) + 14(状态行) + 14(最近调用标题)
     //             + 90(三行日志) + 14(脚注)
     //             + 8*8(行间距) + 12*2(卡片内边距) ≈ 352
-    readonly property int panelPadding: 8
+    //
+    // 下面的尺寸是桌宠专属几何:Enums 里没有"悬浮窗宽度""桌宠图标边长"这类
+    // 令牌,它们是本窗口的栅格定义,不是可复用的样式值,所以集中声明在此。
+    readonly property int panelPadding: Fluent.Enums.spacing.m
     readonly property int panelWidth: 324
     readonly property int spriteSize: 120
     readonly property int spriteRightMargin: 14

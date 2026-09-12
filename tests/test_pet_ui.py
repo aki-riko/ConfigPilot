@@ -428,5 +428,41 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertEqual(warnings, [], "交互过程中出现 QML 运行期警告: " + " | ".join(warnings))
 
 
+class PetDisplayCurrencyTests(unittest.TestCase):
+    """currency=auto 必须跟随站点展示口径,而不是固定乘 7.3。"""
+
+    def _controller(self, currency, site_display_type):
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import PetConfig
+
+        config = PetConfig(currency=currency, base_url="", api_key="")  # 无凭证 → 不发请求
+        pet = NewApiPet("__no_such_config_path_for_test__.json", config)
+        pet._site_display_type = site_display_type  # noqa: SLF001
+        return pet
+
+    def test_auto_follows_site_display_type(self):
+        self.assertEqual(self._controller("auto", "USD")._display_params()[0],  # noqa: SLF001
+                         "USD")
+        self.assertEqual(self._controller("auto", "CNY")._display_params()[0],  # noqa: SLF001
+                         "CNY")
+        self.assertEqual(self._controller("auto", "TOKENS")._display_params()[0],  # noqa: SLF001
+                         "TOKENS")
+        self.assertEqual(self._controller("USD", "CNY")._display_params()[0],  # noqa: SLF001
+                         "USD")
+        self.assertEqual(self._controller("CNY", "USD")._display_params()[0],  # noqa: SLF001
+                         "CNY")
+
+    def test_auto_uses_site_conversion_parameters(self):
+        # 跟随站点时用站点的 quota_per_unit / usd_exchange_rate,不用本地配置
+        pet = self._controller("auto", "USD")
+        pet._site_quota_per_unit = 500_000.0  # noqa: SLF001
+        pet._site_usd_rate = 6.9  # noqa: SLF001
+        currency, per_unit, rate = pet._display_params()  # noqa: SLF001
+        self.assertEqual((currency, per_unit, rate), ("USD", 500_000.0, 6.9))
+        # 站点余额 $914,320.57 在 auto 下应显示美元,而不是被乘成人民币
+        quota = 914_320.57 * 500_000
+        self.assertEqual(pet._fmt(quota), "$914,320.57")  # noqa: SLF001
+
+
 if __name__ == "__main__":
     unittest.main()

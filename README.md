@@ -118,9 +118,7 @@ ISCC ConfigPilot.iss
 {
   "source": "auto",
   "poll_interval_seconds": 120,
-  "currency": "CNY",
-  "quota_per_unit": 500000,
-  "cny_rate": 7.3,
+  "currency": "auto",
   "balance_source": "auto",
   "account_poll_interval_seconds": 300
 }
@@ -130,7 +128,7 @@ ISCC ConfigPilot.iss
 
 > **限流友好**：new-api 的 `CriticalRateLimit` 是每 IP 每路由 20 次 / 20 分钟（约 1 次/分钟）。桌宠默认 120s 轮询、单飞不叠加请求；一旦收到 429/503 会按 `Retry-After` 自动退避（气泡显示「已限流，Ns 后自动重试」，期间不再发请求），退避不算错误。若你的站点限流更严，把 `poll_interval_seconds` 调大即可。
 
-> 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。若站点系统设置改过额度展示或汇率，把 `quota_per_unit` / `cny_rate` 改成与站点一致即可；`currency` 可选 `CNY` / `USD` / `TOKENS`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
+> 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。`currency` 可选 **`auto`（默认，跟随站点）** / `CNY` / `USD` / `TOKENS`：站点在「系统设置 → 计费与支付 → 货币与展示」里选的是哪种展示口径，桌宠就出哪种（站点显示 `$` 就不会被擅自换算成 `¥`）；跟随模式下连 `quota_per_unit` 与汇率都取站点自己的值（来自公开的 `/api/status`）。显式写 `CNY` / `USD` 时才用本地 `quota_per_unit` / `cny_rate`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
 
 ## 配置 providers.json
 

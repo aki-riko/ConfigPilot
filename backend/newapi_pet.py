@@ -97,6 +97,7 @@ class NewApiPet(QObject):
             "completion_tokens": 0,
         }
         self._log_rows: list[dict[str, str]] = []
+        self._raw_logs: list[Any] = []
         self._last_error = ""
         self._save_error = ""
         self._last_updated = 0.0
@@ -240,6 +241,11 @@ class NewApiPet(QObject):
     @Property(str, notify=configSaved)
     def configCurrency(self) -> str:
         return self._effective_config().currency
+
+    @Property(str, notify=statusChanged)
+    def resolvedCurrency(self) -> str:
+        """auto 解析后的实际币种,供设置窗口显示"当前跟随"。"""
+        return self._display_params()[0]
 
     @Property(str, notify=configSaved)
     def configQuotaPerUnitText(self) -> str:
@@ -442,15 +448,36 @@ class NewApiPet(QObject):
 
     # ------------------------------------------------------------------ 状态
 
-    def _fmt(self, quota: float) -> str:
+    def _display_params(self) -> tuple[str, float, float]:
+        """返回 (币种, quota_per_unit, 汇率)。
+
+        配置为 auto 时跟随站点 `/api/status` 的 quota_display_type,汇率也改用站点自己的
+        usd_exchange_rate —— 这样桌宠数字和站点面板同口径(站点显示 $ 就出 $)。
+        """
         config = self._effective_config()
-        return quota_math.format_quota(quota, config.currency, config.quota_per_unit, config.cny_rate)
+        currency = quota_math.resolve_display_currency(config.currency, self._site_display_type)
+        if str(config.currency).strip().lower() == quota_math.CURRENCY_AUTO:
+            return currency, self._site_quota_per_unit, self._site_usd_rate
+        return currency, config.quota_per_unit, config.cny_rate
+
+    def _fmt(self, quota: float) -> str:
+        currency, per_unit, rate = self._display_params()
+        return quota_math.format_quota(quota, currency, per_unit, rate)
 
     def _fmt_compact(self, quota: float) -> str:
         """卡片/气泡里的大数字:超过一千用 K/M/B 简写,免得被宽度省略掉数量级。"""
-        config = self._effective_config()
-        return quota_math.format_quota_compact(
-            quota, config.currency, config.quota_per_unit, config.cny_rate
+        currency, per_unit, rate = self._display_params()
+        return quota_math.format_quota_compact(quota, currency, per_unit, rate)
+
+    def _reformat_rows(self) -> None:
+        """按当前生效口径重建"最近调用"行。
+
+        站点展示类型(/api/status)可能晚于第一轮令牌轮询到达,所以行内容要能在
+        口径确定后重算一次,否则日志金额会停留在错误的币种。
+        """
+        currency, per_unit, rate = self._display_params()
+        self._log_rows = quota_math.build_log_rows(
+            self._raw_logs, currency, per_unit, rate, _MAX_LOG_ROWS
         )
 
     @Property(str, notify=usageChanged)
@@ -483,9 +510,9 @@ class NewApiPet(QObject):
 
     @Property(str, notify=usageChanged)
     def todayText(self) -> str:
-        config = self._effective_config()
+        currency, per_unit, rate = self._display_params()
         amount = quota_math.format_quota(
-            self._today["quota"], config.currency, config.quota_per_unit, config.cny_rate
+            self._today["quota"], currency, per_unit, rate
         )
         return f"今日已用 {amount} · {self._today['count']} 次"
 
@@ -778,6 +805,7 @@ class NewApiPet(QObject):
         payload = data.get("data") if isinstance(data, dict) and isinstance(data.get("data"), dict) \
             else (data if isinstance(data, dict) else {})
         display = str(payload.get("quota_display_type") or "").strip().upper()
+        changed = self._site_display_type != (display or "USD")
         self._site_display_type = display or "USD"
         self._site_quota_per_unit = self._positive_float(payload.get("quota_per_unit"), 500_000.0)
         self._site_usd_rate = self._positive_float(payload.get("usd_exchange_rate"), 7.3)
@@ -785,6 +813,11 @@ class NewApiPet(QObject):
             payload.get("custom_currency_exchange_rate"), 1.0)
         self._site_display_known = True
         self._site_display_base = self._resolved_base
+        if changed and self._raw_logs:
+            # 口径变了(例如第一轮先按 USD 兜底、随后站点其实是 CNY),重算已格式化的行
+            self._reformat_rows()
+            self.logsChanged.emit()
+            self.usageChanged.emit()
         self._refresh_account()
 
     @staticmethod
@@ -834,7 +867,8 @@ class NewApiPet(QObject):
             subscription, self._site_display_type, self._site_quota_per_unit,
             self._site_usd_rate, self._site_custom_rate,
         )
-        used = quota_math.billing_amount_to_quota(
+        # usage 是美分、subscription 是美元,必须各自还原后再相减
+        used = quota_math.billing_usage_amount_to_quota(
             usage, self._site_display_type, self._site_quota_per_unit,
             self._site_usd_rate, self._site_custom_rate,
         )
@@ -902,7 +936,6 @@ class NewApiPet(QObject):
     def _maybe_finish(self) -> None:
         if self._pending:
             return
-        config = self._effective_config()
         usage = self._staged.get("usage")
         logs = self._staged.get("logs")
         self._last_error = ""
@@ -919,10 +952,9 @@ class NewApiPet(QObject):
             if previous_used is not None and self._total_used > previous_used:
                 self.usageBumped.emit()
         if isinstance(logs, list):
+            self._raw_logs = logs
             self._today = quota_math.summarize_today(logs)
-            self._log_rows = quota_math.build_log_rows(
-                logs, config.currency, config.quota_per_unit, config.cny_rate, _MAX_LOG_ROWS
-            )
+            self._reformat_rows()
         self._last_updated = time.time()
         if self._config.source == SOURCE_AUTO and not self._last_error:
             self._auto_locked = self._resolved_source  # 锁定可用来源,避免每轮抖动

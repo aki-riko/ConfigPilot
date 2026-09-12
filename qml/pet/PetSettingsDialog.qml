@@ -247,29 +247,42 @@ Window {
                         spacing: 6
 
                         Repeater {
-                            model: ["CNY", "USD", "TOKENS"]
+                            model: [
+                                { "id": "auto", "label": "跟随站点" },
+                                { "id": "CNY", "label": "CNY" },
+                                { "id": "USD", "label": "USD" },
+                                { "id": "TOKENS", "label": "TOKENS" }
+                            ]
 
                             delegate: Rectangle {
-                                width: 64
+                                width: chipInner.implicitWidth + 24
                                 height: 28
                                 radius: 14
-                                color: dialog.currency === modelData ? "#3E5BD8" : "#FFFFFF"
-                                border.color: dialog.currency === modelData ? "#3E5BD8" : "#C9D3EC"
+                                color: dialog.currency === modelData.id ? "#3E5BD8" : "#FFFFFF"
+                                border.color: dialog.currency === modelData.id ? "#3E5BD8" : "#C9D3EC"
 
                                 Text {
+                                    id: chipInner
                                     anchors.centerIn: parent
-                                    text: modelData
+                                    text: modelData.label
                                     font.pixelSize: 11
-                                    color: dialog.currency === modelData ? "#FFFFFF" : "#5B6478"
+                                    color: dialog.currency === modelData.id ? "#FFFFFF" : "#5B6478"
                                 }
 
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: dialog.currency = modelData
+                                    onClicked: dialog.currency = modelData.id
                                 }
                             }
                         }
+                    }
+                    Text {
+                        text: dialog.currency === "auto" && petReady
+                              ? "当前跟随站点：" + NewApiPet.resolvedCurrency : ""
+                        font.pixelSize: 10
+                        color: "#8A93A6"
+                        visible: text !== ""
                     }
                 }
             }

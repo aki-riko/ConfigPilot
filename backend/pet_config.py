@@ -24,7 +24,9 @@ _PET_CONFIG_FILE_NAME = "pet_config.json"
 _BASE_URL_ENVIRONMENT = "CONFIGPILOT_NEWAPI_BASE"
 _API_KEY_ENVIRONMENT = "CONFIGPILOT_NEWAPI_KEY"
 
-_CURRENCIES = ("USD", "CNY", "TOKENS")
+# auto = 跟随站点的额度展示类型(/api/status 的 quota_display_type),
+# 保证桌宠数字与站点面板同口径(站点显示 $ 就出 $)。
+_CURRENCIES = ("auto", "USD", "CNY", "TOKENS")
 # 凭证来源:auto=自动复用 Codex/Claude;codex/claude=指定来源;manual=手动填写。
 SOURCE_AUTO = "auto"
 SOURCE_CODEX = "codex"
@@ -54,7 +56,7 @@ class PetConfig:
     api_key: str = ""
     source: str = SOURCE_AUTO
     poll_interval_seconds: int = 120
-    currency: str = "CNY"
+    currency: str = "auto"
     quota_per_unit: float = _DEFAULT_QUOTA_PER_UNIT
     cny_rate: float = _DEFAULT_CNY_RATE
     auto_show: bool = True
@@ -152,7 +154,7 @@ def parse_pet_config(data: object) -> PetConfig:
     """从 dict 构造并校验配置,字段损坏时显式报错。"""
     if not isinstance(data, dict):
         raise ValueError("桌宠配置根节点必须是对象")
-    currency = data.get("currency", "CNY")
+    currency = data.get("currency", "auto")
     if not isinstance(currency, str) or currency not in _CURRENCIES:
         raise ValueError(f"配置项 'currency' 必须是 {'/'.join(_CURRENCIES)} 之一")
     auto_show = data.get("auto_show", True)

@@ -16,6 +16,7 @@ from backend.quota_math import (
     BALANCE_SOURCE_ACCOUNT,
     BALANCE_SOURCE_TOKEN,
     billing_amount_to_quota,
+    billing_usage_amount_to_quota,
     build_log_rows,
     format_compact_count,
     format_quota,
@@ -23,6 +24,7 @@ from backend.quota_math import (
     format_quota_precise,
     local_midnight_timestamp,
     resolve_balance_source,
+    resolve_display_currency,
     summarize_today,
 )
 
@@ -110,17 +112,43 @@ class QuotaMathTests(unittest.TestCase):
         self.assertEqual(billing_amount_to_quota(73.0, "CNY", 500_000.0, 0.0), 36_500_000.0)
 
     def test_account_balance_is_subscription_minus_usage(self):
-        # 站点关掉 DisplayTokenStatEnabled 后:subscription=余额+已用,usage=已用
+        # 站点关掉 DisplayTokenStatEnabled 后:subscription=余额+已用(美元),
+        # usage=已用(美分),两者各自还原成 quota 后才能相减。
         total = billing_amount_to_quota(990365.511636, "USD", 500_000.0, 7.3)
-        used = billing_amount_to_quota(7583916.2626, "USD", 500_000.0, 7.3)
+        used = billing_usage_amount_to_quota(7583916.2626, "USD", 500_000.0, 7.3)
         balance = int(round(total - used))
-        self.assertEqual(balance, -3_296_775_375_482)
-        # 桌宠按 CNY 展示时用的是桌宠自己的换算,不掺站点口径;负号在货币符号前
-        self.assertEqual(
-            format_quota(balance, "CNY", 500_000.0, 7.3), "-¥48,132,920.48"
-        )
+        self.assertGreater(balance, 0)
+        self.assertEqual(format_quota(balance, "USD", 500_000.0, 7.3), "$914,526.35")
+        # 桌宠按 CNY 展示时用的是桌宠自己的换算,不掺站点口径
+        self.assertEqual(format_quota(balance, "CNY", 500_000.0, 7.3), "¥6,676,042.35")
         self.assertEqual(format_quota(-2_500, "USD", 500_000.0, 7.3), "-$0.01")
         self.assertEqual(format_quota_precise(-2_500, "CNY", 500_000.0, 7.3), "-¥0.0365")
+
+    def test_billing_usage_is_cents_not_dollars(self):
+        """total_usage 是美分(billing.go:104 amount*100),必须除回去再和 subscription 相减。
+
+        曾经按同一单位直接相减,把 $914,320 的余额算成了 -$6,593,550(-¥48M)。
+        """
+        # 站点实测值(USD 展示):subscription=余额+已用,usage=已用×100
+        total = billing_amount_to_quota(990365.511636, "USD", 500_000.0, 7.3)
+        used = billing_usage_amount_to_quota(7583916.2626, "USD", 500_000.0, 7.3)
+        self.assertEqual(used, 37_919_581_313.0)
+        balance = int(round(total - used))
+        # 对上面板"当前余额 $914,320.57"(两次抓取有正常漂移)
+        self.assertEqual(format_quota(balance, "USD", 500_000.0, 7.3), "$914,526.35")
+        self.assertEqual(format_quota_compact(balance, "CNY", 500_000.0, 7.3), "¥6.68M")
+        # 未除 100 的旧算法确实会算成巨额负数 —— 锁住这个回归
+        wrong = int(round(total - billing_amount_to_quota(7583916.2626, "USD", 500_000.0, 7.3)))
+        self.assertLess(wrong, -3_000_000_000_000)
+
+    def test_billing_usage_amount_handles_garbage(self):
+        self.assertEqual(billing_usage_amount_to_quota(None, "USD", 500_000.0, 7.3), 0.0)
+        self.assertEqual(billing_usage_amount_to_quota("x", "USD", 500_000.0, 7.3), 0.0)
+        self.assertEqual(billing_usage_amount_to_quota(True, "USD", 500_000.0, 7.3), 0.0)
+        # CNY 展示口径下同样先除 100 再反推汇率
+        self.assertEqual(
+            billing_usage_amount_to_quota(730000.0, "CNY", 500_000.0, 7.3), 500_000_000.0
+        )
 
     def test_resolve_balance_source_matrix(self):
         # auto:令牌无限额度才有必要改用账户余额
@@ -197,12 +225,38 @@ class PetConfigTests(unittest.TestCase):
     def test_parse_defaults_from_empty_dict(self):
         config = parse_pet_config({})
         self.assertEqual(config.poll_interval_seconds, 120)
-        self.assertEqual(config.currency, "CNY")
+        # 默认跟随站点展示口径,避免站点显示 $ 而桌宠擅自换算成 ¥
+        self.assertEqual(config.currency, "auto")
         self.assertEqual(config.quota_per_unit, 500_000.0)
         self.assertEqual(config.cny_rate, 7.3)
         self.assertTrue(config.auto_show)
         self.assertEqual(config.base_url, "")
         self.assertEqual(config.api_key, "")
+
+    def test_display_currency_follows_site(self):
+        # auto:跟随 /api/status 的 quota_display_type
+        self.assertEqual(resolve_display_currency("auto", "USD"), "USD")
+        self.assertEqual(resolve_display_currency("auto", "CNY"), "CNY")
+        self.assertEqual(resolve_display_currency("auto", "TOKENS"), "TOKENS")
+        self.assertEqual(resolve_display_currency("auto", "custom"), "CNY")
+        # 站点口径缺失/未知 → 退回 OpenAI 默认的 USD
+        self.assertEqual(resolve_display_currency("auto", ""), "USD")
+        self.assertEqual(resolve_display_currency("auto", "WEIRD"), "USD")
+        # 显式配置优先于站点
+        self.assertEqual(resolve_display_currency("CNY", "USD"), "CNY")
+        self.assertEqual(resolve_display_currency("USD", "CNY"), "USD")
+        self.assertEqual(resolve_display_currency("TOKENS", "USD"), "TOKENS")
+        # 大小写不敏感,垃圾值退回 USD
+        self.assertEqual(resolve_display_currency("AUTO", "USD"), "USD")
+        self.assertEqual(resolve_display_currency("yen", "USD"), "USD")
+
+    def test_auto_currency_uses_site_rate_not_local_rate(self):
+        # 站点 CNY 口径:反推额度用站点的 quota_per_unit/usd_exchange_rate,
+        # 桌宠再按同一口径格式化,保证和面板数字一致而不是差 7.3 倍。
+        self.assertEqual(parse_pet_config({"currency": "auto"}).currency, "auto")
+        self.assertEqual(parse_pet_config({"currency": "USD"}).currency, "USD")
+        with self.assertRaises(ValueError):
+            parse_pet_config({"currency": "JPY"})
 
     def test_parse_rejects_invalid_values(self):
         cases = [

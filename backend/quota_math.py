@@ -53,6 +53,31 @@ def format_amount(amount: float, currency: str) -> str:
     return f"{sign}{symbol}{abs(amount):,.2f}"
 
 
+# 货币口径:"auto" 表示跟随站点的额度展示类型(/api/status 的 quota_display_type),
+# 这样桌宠数字和站点面板一致(站点显示 $ 就出 $,显示 ¥ 就出 ¥)。
+CURRENCY_AUTO = "auto"
+VALID_CURRENCIES = (CURRENCY_AUTO, "USD", "CNY", "TOKENS")
+_SITE_TO_CURRENCY = {
+    "USD": "USD",
+    "CNY": "CNY",
+    "TOKENS": "TOKENS",
+    "CUSTOM": "CNY",  # 自定义币种按本地货币处理,符号由站点侧决定,这里退化为 CNY
+}
+
+
+def resolve_display_currency(config_currency: str, site_display_type: str) -> str:
+    """把配置里的口径解析成具体币种。
+
+    auto 跟随站点;站点口径缺失时退回 USD(OpenAI 兼容接口的默认口径)。
+    """
+    wanted = str(config_currency or CURRENCY_AUTO).strip()
+    if wanted.lower() == CURRENCY_AUTO:
+        site = str(site_display_type or "").strip().upper()
+        return _SITE_TO_CURRENCY.get(site, "USD")
+    upper = wanted.upper()
+    return upper if upper in ("USD", "CNY", "TOKENS") else "USD"
+
+
 def format_compact_count(value: float | int | None) -> str:
     """大数简写:1159.13 万 → 1.16M,11.59 亿 → 1.16B,小于 1000 原样显示。
 
@@ -181,6 +206,34 @@ def billing_amount_to_quota(
     if kind == SITE_DISPLAY_CUSTOM:
         return value / (float(custom_rate) or 1.0) * per_unit
     return value * per_unit  # USD:字段名带 _usd,语义就是美元
+
+
+# OpenAI 兼容惯例:new-api 的 total_usage 是"美分",而 subscription 的 *_usd 是"美元"
+# (见 controller/billing.go:104 `TotalUsage: amount * 100`)。两个口径必须换算一致
+# 才能相减,否则余额会被算成巨额负数。
+BILLING_USAGE_CENTS_PER_DOLLAR = 100.0
+
+
+def billing_usage_amount_to_quota(
+    amount: object,
+    display_type: str,
+    quota_per_unit: float,
+    usd_to_cny: float,
+    custom_rate: float = 1.0,
+) -> float:
+    """还原 /v1/dashboard/billing/usage 的 total_usage(美分)为原始额度。"""
+    if isinstance(amount, bool):  # bool 是 int 子类,不该被当成 1
+        return 0.0
+    try:
+        value = float(amount)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value):
+        return 0.0
+    return billing_amount_to_quota(
+        value / BILLING_USAGE_CENTS_PER_DOLLAR,
+        display_type, quota_per_unit, usd_to_cny, custom_rate,
+    )
 
 
 def resolve_balance_source(

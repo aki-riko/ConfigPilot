@@ -2,7 +2,14 @@
 // 拆成独立组件的原因:窗口只管生命周期与位置,面板单独可渲染、可核验。
 // 布局约定:卡片与气泡水平居中、桌宠固定在右下角;卡片每一行都是固定高度,
 // 行高之和 = detailContentHeight,窗口高度由它反推,因此不会出现内容被裁掉。
+// 结构用 PrismQML 封装的组件:卡片 Fluent.Card、操作按钮 Fluent.Button、
+// 分隔线 Fluent.Separator、右键菜单 Fluent.ContextMenu;配色走 Enums 令牌。
+// 唯一保留的自绘结构是余额气泡:它是与悬浮窗共用透明表面、随窗口高度
+// 原子伸缩的"对话气泡",框架的 TipPopup/TeachingTip 是独立原生弹窗 +
+// 纯文本模型,没有悬停暂停/自动收起钩子,塞不进这套固定栅格。
 import QtQuick
+
+import PrismQML as Fluent
 
 Item {
     id: panel
@@ -25,23 +32,15 @@ Item {
     property var spriteSize
     property var spriteRightMargin
 
-    // 桌面宠物悬浮窗的统一配色
-    property var surfaceColor
-    property var panelColor
-    property var borderColor
-    property var separatorColor
-    property var primaryTextColor
-    property var secondaryTextColor
-    property var mutedTextColor
-    property var accentColor
-    property var dangerColor
-    property var shadowColor
-
     // 数据(全部来自 NewApiPet 的只读属性,窗口负责取值与降级)
     property var ready
     property var failed
     property var empty
     property var alertState
+    // 控制器/管理器是否就绪:面板里"刷新""设置""存位置"都要先过这道判断。
+    // 漏注入会让这些入口静默失效(条件恒为假),所以显式声明、由窗口注入。
+    property var petReady
+    property var managerReady
     property var tokenName
     property var balanceText
     property var todaySummary
@@ -61,6 +60,19 @@ Item {
     property var primaryNegative
     property var secondaryBalanceText
     property var accountFreshText
+
+    // ---------------------------------------------------------------- 主题别名
+    // 面板统一从 Fluent.Enums 取色;这里只给"语义 → 令牌"一个本地名字,
+    // 行内绑定保持和原来一样短。
+    readonly property color surfaceColor: Fluent.Enums.surfaceColor
+    readonly property color borderColor: Fluent.Enums.borderColor
+    readonly property color separatorColor: Fluent.Enums.dividerColor
+    readonly property color primaryTextColor: Fluent.Enums.foregroundColor
+    readonly property color secondaryTextColor: Fluent.Enums.secondaryForeground
+    readonly property color mutedTextColor: Fluent.Enums.tertiaryForeground
+    readonly property color accentColor: Fluent.Enums.accentColor
+    readonly property color dangerColor: Fluent.Enums.statusLevel.errorColor
+    readonly property color shadowColor: Fluent.Enums.shadowColor
 
     // 明细卡片高度 = 卡片内容高度,窗口高度由它反推。
     readonly property int cardHeight: detailContentHeight
@@ -103,26 +115,18 @@ Item {
         width: panel.panelWidth
         height: panel.cardHeight
 
-        // 柔和投影:同尺寸矩形下移 3px 垫底
-        Rectangle {
-            anchors.fill: card
-            anchors.topMargin: 3
-            radius: card.radius
-            color: panel.shadowColor
-        }
-
-        Rectangle {
+        Fluent.Card {
             id: card
             objectName: "petCard"
             anchors.fill: parent
-            radius: 16
-            color: panel.panelColor
-            border.color: panel.borderColor
-            border.width: 1
+            // 内边距归零:卡片内部是固定行高栅格,由 cardColumn 自己控制留白。
+            // 行高清单(改动时同步 PetWindow.detailContentHeight):
+            // 32(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照) + 34(Token 条)
+            // + 14(状态行) + 14(最近调用标题) + 90(三行日志) + 14(脚注)
+            // + 8*8(行间距) + 12*2(卡片内边距) ≈ 352
+            contentPadding: 0
             clip: true
 
-            // 行高清单(改动时同步 PetWindow.detailContentHeight):
-            // 24 + 1 + 52 + 34 + 14 + 14 + 90 + 14 + 8*7(间距)+ 12*2(内边距)= 321
             Column {
                 id: cardColumn
                 anchors.fill: parent
@@ -136,7 +140,7 @@ Item {
                 Item {
                     id: headerRow
                     width: parent.width
-                    height: 24
+                    height: 32
 
                     Text {
                         id: titleLabel
@@ -169,26 +173,26 @@ Item {
                             horizontalAlignment: Text.AlignRight
                         }
 
-                        PetChipButton {
-                            emphasized: true
-                            label: "刷新"
-                            normalTextColor: panel.secondaryTextColor
-                            emphasizedTextColor: "#3E5BD8"
-                            onActivated: if (panel.petReady) NewApiPet.refresh()
+                        Fluent.Button {
+                            objectName: "petRefreshButton"
+                            style: Fluent.Enums.button.style_primary
+                            shape: Fluent.Enums.button.shape_pill
+                            text: "刷新"
+                            onClicked: if (panel.petReady) NewApiPet.refresh()
                         }
 
-                        PetChipButton {
-                            label: "收起"
-                            normalTextColor: panel.secondaryTextColor
-                            onActivated: petWindow.toggleDetail()
+                        Fluent.Button {
+                            objectName: "petCollapseButton"
+                            style: Fluent.Enums.button.style_default
+                            shape: Fluent.Enums.button.shape_pill
+                            text: "收起"
+                            onClicked: petWindow.toggleDetail()
                         }
                     }
                 }
 
-                Rectangle {
+                Fluent.Separator {
                     width: parent.width
-                    height: 1
-                    color: panel.separatorColor
                 }
 
                 // ---------------------------------------- 额度与今日用量
@@ -203,24 +207,12 @@ Item {
                         value: panel.primaryBalanceText
                         highlight: true
                         danger: panel.failed || panel.empty || panel.primaryNegative
-                        surfaceColor: panel.surfaceColor
-                        borderColor: panel.borderColor
-                        captionColor: panel.mutedTextColor
-                        valueColor: panel.primaryTextColor
-                        highlightColor: panel.accentColor
-                        dangerColor: panel.dangerColor
                     }
 
                     PetStatCard {
                         width: (parent.width - 10) / 2
                         caption: "今日已用"
                         value: panel.todayAmount
-                        surfaceColor: panel.surfaceColor
-                        borderColor: panel.borderColor
-                        captionColor: panel.mutedTextColor
-                        valueColor: panel.primaryTextColor
-                        highlightColor: panel.accentColor
-                        dangerColor: panel.dangerColor
                     }
                 }
 
@@ -392,6 +384,7 @@ Item {
     }
 
     // ============================================================ 余额气泡
+    // 见文件头说明:与悬浮窗共表面的自绘气泡,是栅格的一部分而非独立弹层。
     Item {
         id: bubble
         visible: panel.mode === "bubble"
@@ -413,7 +406,10 @@ Item {
             anchors.fill: parent
             radius: 14
             color: panel.surfaceColor
-            border.color: panel.alertState ? "#F0B9B9" : panel.borderColor
+            // 告警态:边框用主题语义红 diluted,仍随主题切换。
+            border.color: panel.alertState
+                          ? Qt.alpha(Fluent.Enums.statusLevel.errorColor, 0.5)
+                          : panel.borderColor
             border.width: 1
 
             // 指向桌宠的小尖角:横向对齐桌宠中心,气泡中心与桌宠不同轴时也不会"指错"
@@ -557,7 +553,8 @@ Item {
         onClicked: function (mouse) {
             if (moved) return
             if (mouse.button === Qt.RightButton) {
-                contextMenu.openAt()
+                // 框架菜单:在指针处弹出;屏幕避让/点外关闭由 PopupWindowCore 接管。
+                contextMenu.popup(mouse.x, mouse.y, petMouse)
             } else {
                 petWindow.toggleDetail()
             }
@@ -566,83 +563,28 @@ Item {
     }
 
     // ============================================================ 右键菜单
-    // 菜单打开时,点击其他任意位置先关闭菜单
-    MouseArea {
-        anchors.fill: parent
-        visible: contextMenu.visible
-        z: 40
-        onClicked: contextMenu.visible = false
-    }
-
-    Rectangle {
+    // Fluent.ContextMenu(PopupWindowCore 封装):自动处理点外关闭、屏幕避让。
+    // autoBindRightClick 关掉 —— 右键由上方 petMouse 统一接管(它还要管拖动)。
+    Fluent.ContextMenu {
         id: contextMenu
         objectName: "petContextMenu"
-        visible: false
-        width: 156
-        height: menuColumn.height + 12
-        radius: 12
-        color: panel.surfaceColor
-        border.color: panel.borderColor
-        border.width: 1
-        z: 50
+        autoBindRightClick: false
 
-        function openAt() {
-            x = Math.max(0, petSprite.x + petSprite.width / 2 - width / 2)
-            y = Math.max(0, petSprite.y - height - 4)
-            visible = true
-        }
-
-        Column {
-            id: menuColumn
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 6
-            spacing: 2
-
-            Repeater {
-                model: [
-                    { "label": "立即刷新", "action": "refresh" },
-                    { "label": "明细面板", "action": "detail" },
-                    { "label": "设置…", "action": "settings" },
-                    { "label": "退出桌宠", "action": "quit" }
-                ]
-
-                delegate: Rectangle {
-                    width: 144
-                    height: 30
-                    radius: 8
-                    color: itemMouse.containsMouse || itemMouse.pressed ? "#EDF2FF" : "transparent"
-
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.label
-                        font.pixelSize: 12
-                        color: modelData.action === "quit"
-                               ? "#C2483F" : panel.primaryTextColor
-                    }
-
-                    MouseArea {
-                        id: itemMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            contextMenu.visible = false
-                            if (modelData.action === "refresh" && panel.petReady) {
-                                NewApiPet.refresh()
-                            } else if (modelData.action === "detail") {
-                                petWindow.toggleDetail()
-                            } else if (modelData.action === "settings") {
-                                if (panel.managerReady) PetManager.openSettings()
-                            } else if (modelData.action === "quit") {
-                                petWindow.close()
-                            }
-                        }
-                    }
-                }
+        onActionTriggered: function (actionId) {
+            if (actionId === "refresh") {
+                if (panel.petReady) NewApiPet.refresh()
+            } else if (actionId === "detail") {
+                petWindow.toggleDetail()
+            } else if (actionId === "settings") {
+                if (panel.managerReady) PetManager.openSettings()
+            } else if (actionId === "quit") {
+                petWindow.close()
             }
         }
+
+        Fluent.Action { actionId: "refresh"; text: "立即刷新"; enabled: panel.petReady }
+        Fluent.Action { actionId: "detail"; text: "明细面板" }
+        Fluent.Action { actionId: "settings"; text: "设置…" }
+        Fluent.Action { actionId: "quit"; text: "退出桌宠" }
     }
 }

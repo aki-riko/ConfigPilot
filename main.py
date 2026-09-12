@@ -144,58 +144,21 @@ def main() -> int:
 
     # 余额监控桌宠:始终注册控制器与开关管理器(主界面设置页需要),
     # 悬浮窗与设置窗口按需懒创建;未配置 Key 时开关默认关,不影响原有行为。
+    # 装配细节(凭证来源/窗口工厂/PetManager)统一在 pet_bootstrap 里。
     try:
-        from PySide6.QtQml import QQmlComponent
+        from backend.pet_bootstrap import install_pet
 
-        from backend.newapi_pet import NewApiPet
-        from backend.pet_config import (
-            load_pet_config_safe,
-            resolve_effective_config,
-            resolve_pet_config_path,
-        )
-        from backend.pet_manager import PetManager
-        from backend.pet_sources import PetSourceResolver
-
-        pet_config_path = resolve_pet_config_path()
-        pet_loaded, pet_error = load_pet_config_safe(pet_config_path)
-        if pet_error:
-            print(f"[WARN] 桌宠配置损坏,已回退默认值: {pet_error}", file=sys.stderr)
-        pet_effective = resolve_effective_config(pet_loaded)
-        pet_resolver = PetSourceResolver(codex.store, claude_desktop.read_gateway_credentials)
-        pet_controller = NewApiPet(
-            str(pet_config_path), pet_effective, source_resolver=pet_resolver
-        )
-        engine.rootContext().setContextProperty("PetStandalone", False)
-        engine.rootContext().setContextProperty("NewApiPet", pet_controller)
-
-        def _make_qml_window(qml_name):
-            component = QQmlComponent(engine)
-            component.loadUrl(QUrl.fromLocalFile(os.path.join(app_dir, "qml", "pet", qml_name)))
-            if component.isError():
-                for err in component.errors():
-                    print(f"[WARN] {qml_name}: {err.toString()}", file=sys.stderr)
-                return None
-            window = component.create()
-            if window is None:
-                for err in component.errors():
-                    print(f"[WARN] {qml_name} 创建失败: {err.toString()}", file=sys.stderr)
-                return None
-            # 保活 component:否则其被回收时会连带销毁 create() 出的窗口。
-            window._pet_component = component
-            return window
-
-        pet_manager = PetManager(
-            pet_controller,
-            lambda: _make_qml_window("PetWindow.qml"),
-            lambda: _make_qml_window("PetSettingsDialog.qml"),
+        pet_manager, _pet_controller = install_pet(
+            engine,
+            app_dir=app_dir,
             standalone=False,
+            codex_store=codex.store,
+            claude_reader=claude_desktop.read_gateway_credentials,
             # 桌宠寿命跟随主窗口:主窗口隐藏(关闭到托盘)时一并隐藏。
             main_window=window_instance,
+            show_at_startup=not os.environ.get("SELFTEST"),
         )
-        engine.rootContext().setContextProperty("PetManager", pet_manager)
-        if not os.environ.get("SELFTEST"):
-            pet_manager.show_at_startup()
-        else:
+        if os.environ.get("SELFTEST"):
             print(
                 "[SELFTEST] 桌宠:开关 =", pet_manager.petEnabled,
                 "/ 悬浮窗可见 =", pet_manager.petVisible,

@@ -122,11 +122,17 @@ class AboutSettingsUiTests(unittest.TestCase):
 
     def test_main_registers_pet_manager_and_window_factories(self):
         main = (ROOT / "main.py").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "backend" / "pet_bootstrap.py").read_text(encoding="utf-8")
 
-        self.assertIn('"PetManager", pet_manager', main)
-        self.assertIn('"NewApiPet", pet_controller', main)
-        self.assertIn("PetManager(", main)
-        self.assertIn("show_at_startup()", main)
+        # 装配(上下文注册/窗口工厂/启动展示)统一在 pet_bootstrap;
+        # main.py 只负责以集成模式接入并跟随主窗口寿命。
+        self.assertIn("install_pet(", main)
+        self.assertIn("standalone=False", main)
+        self.assertIn("main_window=window_instance", main)
+        self.assertIn('"PetManager", manager', bootstrap)
+        self.assertIn('"NewApiPet", controller', bootstrap)
+        self.assertIn("PetManager(", bootstrap)
+        self.assertIn("show_at_startup()", bootstrap)
 
 
 if __name__ == "__main__":

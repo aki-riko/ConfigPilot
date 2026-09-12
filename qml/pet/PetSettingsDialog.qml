@@ -1,6 +1,11 @@
 // 余额监控桌宠的设置窗口:优先复用 Codex/Claude 已配好的接口与 Key。
+// 窗口壳保持无边框独立窗(桌宠在独立进程也要能弹出),表单控件全部用
+// PrismQML 封装:Fluent.Chip 选择芯片 / Fluent.LineEdit 输入框 /
+// Fluent.Button 操作按钮 / Fluent.CloseButton 关闭钮,深浅色跟随主题。
 import QtQuick
 import QtQuick.Window
+
+import PrismQML as Fluent
 
 Window {
     id: dialog
@@ -25,6 +30,12 @@ Window {
         { "id": "token", "label": "令牌额度" },
         { "id": "account", "label": "账户余额" }
     ]
+
+    // 对话框底色与边框:复用框架对话框的取色公式(皮肤感知)。
+    readonly property color dialogBg: Fluent.Enums.hasOutlinedSurfaces
+                                      ? Fluent.Enums.dialogColor
+                                      : Fluent.Enums.dialogColors.containerBg
+    readonly property color dialogBorder: Fluent.Enums.dialogColors.border
 
     readonly property bool manualMode: source === "manual"
     // 当前所选来源解析出的站点根(用于展示"复用 XX")。
@@ -86,8 +97,8 @@ Window {
         id: card
         anchors.fill: parent
         radius: 16
-        color: "#F7F9FF"
-        border.color: "#D9E1F5"
+        color: dialog.dialogBg
+        border.color: dialog.dialogBorder
 
         Column {
             id: formColumn
@@ -106,23 +117,12 @@ Window {
                     text: "余额监控设置"
                     font.pixelSize: 15
                     font.bold: true
-                    color: "#2B3252"
+                    color: Fluent.Enums.foregroundColor
                 }
-                Rectangle {
-                    width: 24
-                    height: 24
-                    radius: 12
-                    color: closeBtnArea.containsMouse ? "#E4E7EF" : "#EDF0F7"
+                Fluent.CloseButton {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    Text { anchors.centerIn: parent; text: "×"; font.pixelSize: 16; color: "#5B6478" }
-                    MouseArea {
-                        id: closeBtnArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: dialog.visible = false
-                    }
+                    onClicked: dialog.visible = false
                 }
             }
 
@@ -130,7 +130,7 @@ Window {
             Text {
                 text: "凭证来源"
                 font.pixelSize: 11
-                color: "#8A93A6"
+                color: Fluent.Enums.tertiaryForeground
             }
             Flow {
                 width: parent.width
@@ -144,41 +144,20 @@ Window {
                         { "id": "manual", "label": "手动", "hasKey": false }
                     ]
 
-                    delegate: Rectangle {
+                    delegate: Fluent.Chip {
                         id: chip
                         readonly property bool available: modelData.id === "auto"
                                                           || modelData.id === "manual"
                                                           || _sourceAvailable(modelData.id)
-                        width: chipRow.implicitWidth + 24
-                        height: 30
-                        radius: 15
-                        color: dialog.source === modelData.id ? "#3E5BD8" : "#FFFFFF"
-                        border.color: dialog.source === modelData.id ? "#3E5BD8" : "#C9D3EC"
-                        opacity: available ? 1.0 : 0.5
-
-                        Row {
-                            id: chipRow
-                            anchors.centerIn: parent
-                            spacing: 5
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.label
-                                font.pixelSize: 12
-                                color: dialog.source === modelData.id ? "#FFFFFF" : "#5B6478"
-                            }
-                            Rectangle {
-                                visible: modelData.id !== "auto" && modelData.id !== "manual"
-                                width: 7; height: 7; radius: 4
-                                color: _sourceHasKey(modelData.id) ? "#3FB950" : "#C9D3EC"
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            enabled: chip.available
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: dialog.source = modelData.id
-                        }
+                        text: modelData.label
+                        // 单选语义:选中态由 source 派生,不让芯片内部翻转(checkable:false),
+                        // 否则点已选中项会把它翻成未选并打断 checked 绑定。
+                        checkable: false
+                        closable: false
+                        checked: dialog.source === modelData.id
+                        enabled: chip.available
+                        opacity: chip.available ? 1.0 : 0.5
+                        onClicked: dialog.source = modelData.id
                     }
                 }
             }
@@ -189,8 +168,8 @@ Window {
                 height: 34
                 radius: 8
                 visible: !dialog.manualMode
-                color: "#EDF2FF"
-                border.color: "#D9E1F5"
+                color: Qt.alpha(Fluent.Enums.accentColor, 0.10)
+                border.color: Qt.alpha(Fluent.Enums.accentColor, 0.25)
                 Text {
                     anchors.left: parent.left
                     anchors.leftMargin: 10
@@ -201,7 +180,7 @@ Window {
                           ? "复用 " + dialog.selectedLabel + "：" + dialog.selectedSite
                           : "复用 " + dialog.selectedLabel + "：未检测到可用配置，可切换到手动"
                     font.pixelSize: 11
-                    color: "#3E5BD8"
+                    color: Fluent.Enums.accentColor
                     elide: Text.ElideRight
                 }
             }
@@ -241,7 +220,7 @@ Window {
                     Text {
                         text: "额度展示类型"
                         font.pixelSize: 11
-                        color: "#8A93A6"
+                        color: Fluent.Enums.tertiaryForeground
                     }
                     Row {
                         spacing: 6
@@ -254,26 +233,13 @@ Window {
                                 { "id": "TOKENS", "label": "TOKENS" }
                             ]
 
-                            delegate: Rectangle {
-                                width: chipInner.implicitWidth + 24
-                                height: 28
-                                radius: 14
-                                color: dialog.currency === modelData.id ? "#3E5BD8" : "#FFFFFF"
-                                border.color: dialog.currency === modelData.id ? "#3E5BD8" : "#C9D3EC"
-
-                                Text {
-                                    id: chipInner
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    color: dialog.currency === modelData.id ? "#FFFFFF" : "#5B6478"
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: dialog.currency = modelData.id
-                                }
+                            delegate: Fluent.Chip {
+                                text: modelData.label
+                                // 单选语义,同凭证来源芯片
+                                checkable: false
+                                closable: false
+                                checked: dialog.currency === modelData.id
+                                onClicked: dialog.currency = modelData.id
                             }
                         }
                     }
@@ -281,7 +247,7 @@ Window {
                         text: dialog.currency === "auto" && petReady
                               ? "当前跟随站点：" + NewApiPet.resolvedCurrency : ""
                         font.pixelSize: 10
-                        color: "#8A93A6"
+                        color: Fluent.Enums.tertiaryForeground
                         visible: text !== ""
                     }
                 }
@@ -295,7 +261,7 @@ Window {
                 Text {
                     text: "余额口径（大数字显示哪一套额度）"
                     font.pixelSize: 11
-                    color: "#8A93A6"
+                    color: Fluent.Enums.tertiaryForeground
                 }
                 Row {
                     spacing: 6
@@ -303,36 +269,13 @@ Window {
                     Repeater {
                         model: dialog.balanceOptions
 
-                        delegate: Rectangle {
-                            width: balanceChipRow.implicitWidth + 24
-                            height: 28
-                            radius: 14
-                            color: dialog.balanceSource === modelData.id ? "#3E5BD8" : "#FFFFFF"
-                            border.color: dialog.balanceSource === modelData.id ? "#3E5BD8" : "#C9D3EC"
-
-                            Row {
-                                id: balanceChipRow
-                                anchors.centerIn: parent
-                                spacing: 5
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    color: dialog.balanceSource === modelData.id ? "#FFFFFF" : "#5B6478"
-                                }
-                                Rectangle {
-                                    visible: modelData.id === "account"
-                                    width: 7; height: 7; radius: 4
-                                    color: petReady && NewApiPet.accountReady ? "#3FB950" : "#C9D3EC"
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: dialog.balanceSource = modelData.id
-                            }
+                        delegate: Fluent.Chip {
+                            text: modelData.label
+                            // 单选语义,同凭证来源芯片;账户是否就绪由下方提示行说明
+                            checkable: false
+                            closable: false
+                            checked: dialog.balanceSource === modelData.id
+                            onClicked: dialog.balanceSource = modelData.id
                         }
                     }
                 }
@@ -343,7 +286,9 @@ Window {
                              + NewApiPet.primaryBalanceText + " · 账户已用 " + NewApiPet.accountUsedText)
                           : "账户余额未就绪：需站点关闭「显示 Token 统计信息」后才会返回钱包余额"
                     font.pixelSize: 10
-                    color: petReady && NewApiPet.accountReady ? "#5B6478" : "#B0762B"
+                    color: petReady && NewApiPet.accountReady
+                           ? Fluent.Enums.secondaryForeground
+                           : Fluent.Enums.statusLevel.warningColor
                     wrapMode: Text.Wrap
                 }
             }
@@ -390,7 +335,7 @@ Window {
                 width: parent.width
                 text: ""
                 font.pixelSize: 11
-                color: "#D5484A"
+                color: Fluent.Enums.statusLevel.errorColor
                 wrapMode: Text.WrapAnywhere
                 visible: text !== ""
             }
@@ -401,46 +346,18 @@ Window {
                 anchors.right: parent.right
                 spacing: 10
 
-                Rectangle {
+                Fluent.Button {
                     width: 88
-                    height: 32
-                    radius: 16
-                    color: cancelArea.containsMouse || cancelArea.pressed ? "#E8ECF5" : "#EEF1F8"
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "取消"
-                        font.pixelSize: 13
-                        color: "#5B6478"
-                    }
-                    MouseArea {
-                        id: cancelArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: dialog.visible = false
-                    }
+                    style: Fluent.Enums.button.style_default
+                    text: "取消"
+                    onClicked: dialog.visible = false
                 }
 
-                Rectangle {
-                    width: 88
-                    height: 32
-                    radius: 16
-                    color: saveArea.pressed ? "#3249B8" : (saveArea.containsMouse ? "#4465E4" : "#3E5BD8")
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "保存并刷新"
-                        font.pixelSize: 13
-                        color: "#FFFFFF"
-                    }
-                    MouseArea {
-                        id: saveArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: dialog.save()
-                    }
+                Fluent.Button {
+                    width: 112
+                    style: Fluent.Enums.button.style_primary
+                    text: "保存并刷新"
+                    onClicked: dialog.save()
                 }
             }
         }
@@ -453,25 +370,19 @@ Window {
         return false
     }
 
-    function _sourceHasKey(id) {
-        for (var i = 0; i < sources.length; ++i) {
-            if (sources[i].id === id) return sources[i].hasKey
-        }
-        return false
-    }
-
     // ---------------------------------------------------------------- 输入框组件
+    // 标签自绘(行高与原布局一致),输入框用框架的 Fluent.LineEdit:
+    // 焦点描边/占位符/禁用态都由框架接管,回车即保存。
     component LabeledField: Column {
         id: fieldRoot
 
         property alias label: labelText.text
-        property alias text: input.text
-        property alias placeholder: hint.text
-        property alias validator: input.validator
-        property bool invalid: false
+        property alias text: field.text
+        property alias placeholder: field.placeholderText
+        property alias validator: field.validator
         property bool fieldEnabled: true
 
-        function focusInput() { if (fieldEnabled) input.forceActiveFocus() }
+        function focusInput() { if (fieldEnabled) field.forceActiveFocus() }
 
         spacing: 4
         opacity: fieldEnabled ? 1.0 : 0.55
@@ -479,43 +390,15 @@ Window {
         Text {
             id: labelText
             font.pixelSize: 11
-            color: "#8A93A6"
+            color: Fluent.Enums.tertiaryForeground
         }
 
-        Rectangle {
-            id: fieldBg
+        Fluent.LineEdit {
+            id: field
             width: parent.width
-            height: 32
-            radius: 8
-            color: fieldRoot.fieldEnabled ? "#FFFFFF" : "#EEF1F8"
-            border.color: input.activeFocus ? "#3E5BD8" : (fieldRoot.invalid ? "#D5484A" : "#C9D3EC")
-            border.width: input.activeFocus ? 2 : 1
-
-            TextInput {
-                id: input
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                anchors.verticalCenter: parent.verticalCenter
-                font.pixelSize: 12
-                color: "#2B3252"
-                clip: true
-                selectByMouse: true
-                enabled: fieldRoot.fieldEnabled
-                verticalAlignment: TextInput.AlignVCenter
-
-                Keys.onReturnPressed: dialog.save()
-                Keys.onEnterPressed: dialog.save()
-
-                Text {
-                    id: hint
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    font.pixelSize: 12
-                    color: "#B4BAC9"
-                    visible: input.text === "" && !input.activeFocus
-                }
-            }
+            enabled: fieldRoot.fieldEnabled
+            clearButtonEnabled: false
+            onAccepted: dialog.save()
         }
     }
 }

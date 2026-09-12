@@ -1,7 +1,10 @@
 // "最近调用"单行:时间 / 模型 / Token(已简写) / 消耗金额,四列定宽对齐。
 // 中间模型列占满剩余宽度,长模型名自动省略,不会把 Token 列挤变形。
+// 配色走 PrismQML 主题令牌,深浅色自动跟随,与主程序同源。
 import QtQuick
 import QtQuick.Layouts
+
+import PrismQML as Fluent
 
 Rectangle {
     id: row
@@ -20,7 +23,7 @@ Rectangle {
 
     height: 28
     radius: 8
-    color: striped ? "#F4F7FF" : "transparent"
+    color: striped ? Fluent.Enums.alternateRowColor : "transparent"
 
     RowLayout {
         anchors.fill: parent
@@ -33,7 +36,7 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             text: row.timeText
             font.pixelSize: row.fontSize
-            color: "#98A0B5"
+            color: Fluent.Enums.tertiaryForeground
             elide: Text.ElideRight
         }
 
@@ -43,7 +46,7 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             text: row.modelText
             font.pixelSize: row.fontSize + 1
-            color: "#3A4258"
+            color: Fluent.Enums.secondaryForeground
             elide: Text.ElideRight
         }
 
@@ -52,7 +55,7 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             text: row.tokensText
             font.pixelSize: row.fontSize
-            color: "#8A93A6"
+            color: Fluent.Enums.tertiaryForeground
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
         }
@@ -63,7 +66,7 @@ Rectangle {
             text: row.costText
             font.pixelSize: row.fontSize + 1
             font.bold: true
-            color: "#B0762B"
+            color: Fluent.Enums.statusLevel.warningColor
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
         }

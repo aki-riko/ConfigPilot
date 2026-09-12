@@ -5,8 +5,11 @@
 //   detail 桌宠 + 明细面板(点击展开:额度、今日用量、Token、最近调用)
 // 布局全部在 PetPanel 里,本文件只管窗口生命周期、位置、以及把数据喂给面板。
 // 数据由 Python 端 NewApiPet 轮询 new-api 只读接口提供。
+// 配色全部走 PrismQML 主题令牌(Fluent.Enums),深浅色与主程序保持一致。
 import QtQuick
 import QtQuick.Window
+
+import PrismQML as Fluent
 
 Window {
     id: petWindow
@@ -28,15 +31,15 @@ Window {
 
     // ---------------------------------------------------------------- 布局常量
     // 与 PetPanel 内部的固定行高一一对应,改动任一侧都要同步。
-    // 明细卡片内容:24(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照)
+    // 明细卡片内容:32(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照)
     //             + 34(Token 条) + 14(状态行) + 14(最近调用标题)
     //             + 90(三行日志) + 14(脚注)
-    //             + 8*8(行间距) + 12*2(卡片内边距) = 343 → 取 344
+    //             + 8*8(行间距) + 12*2(卡片内边距) ≈ 352
     readonly property int panelPadding: 8
     readonly property int panelWidth: 324
     readonly property int spriteSize: 120
     readonly property int spriteRightMargin: 14
-    readonly property int detailContentHeight: 344
+    readonly property int detailContentHeight: 352
     readonly property int bubbleAreaHeight: 76
 
     readonly property int cardTop: panelPadding
@@ -59,18 +62,6 @@ Window {
     property string lastToday: ""
     // 真正关闭(进程退出)时才置位,避免退出流程被 onClosing 拦下。
     property bool forceClose: false
-
-    // ---------------------------------------------------------------- 设计标记
-    readonly property color surfaceColor: "#FFFFFF"
-    readonly property color panelColor: "#F5F7FE"
-    readonly property color borderColor: "#DFE5F4"
-    readonly property color separatorColor: "#E9EDF8"
-    readonly property color primaryTextColor: "#2B3252"
-    readonly property color secondaryTextColor: "#5B6478"
-    readonly property color mutedTextColor: "#98A0B5"
-    readonly property color accentColor: "#2F66F4"
-    readonly property color dangerColor: "#D5484A"
-    readonly property color shadowColor: "#141A2E5C"
 
     // ---------------------------------------------------------------- 数据
     readonly property bool ready: petReady && NewApiPet.sourceReady
@@ -229,20 +220,12 @@ Window {
         spriteGap: petWindow.spriteGap
         spriteSize: petWindow.spriteSize
         spriteRightMargin: petWindow.spriteRightMargin
-        surfaceColor: petWindow.surfaceColor
-        panelColor: petWindow.panelColor
-        borderColor: petWindow.borderColor
-        separatorColor: petWindow.separatorColor
-        primaryTextColor: petWindow.primaryTextColor
-        secondaryTextColor: petWindow.secondaryTextColor
-        mutedTextColor: petWindow.mutedTextColor
-        accentColor: petWindow.accentColor
-        dangerColor: petWindow.dangerColor
-        shadowColor: petWindow.shadowColor
         ready: petWindow.ready
         failed: petWindow.failed
         empty: petWindow.empty
         alertState: petWindow.alertState
+        petReady: petWindow.petReady
+        managerReady: petWindow.managerReady
         tokenName: petWindow.tokenName
         balanceText: petWindow.balanceText
         todaySummary: petWindow.todaySummary

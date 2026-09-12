@@ -11,65 +11,60 @@ import os
 import sys
 
 os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
+os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
+
+# 正式打包程序沿用主程序的稳定身份;源码运行时让 PrismQML
+# 按脚本路径生成独立身份,避免与主程序共用任务栏图标。
+if "__compiled__" in globals():
+    os.environ.setdefault("PRISMQML_APP_USER_MODEL_ID", "PrismQML.ConfigPilotPet")
 
 
 def main() -> int:
-    from PySide6.QtCore import QTimer, QUrl
-    from PySide6.QtGui import QGuiApplication
-    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+    from PySide6.QtGui import QGuiApplication, QIcon
+    from PySide6.QtQml import QQmlApplicationEngine
 
     app = QGuiApplication(sys.argv)
     app.setApplicationName("ConfigPilotPet")
     app.setApplicationDisplayName("ConfigPilot 余额桌宠")
 
-    from backend.newapi_pet import NewApiPet
-    from backend.pet_config import resolve_pet_config_path
-    from backend.pet_manager import PetManager
-    from backend.pet_sources import PetSourceResolver
+    # 与主程序同一份外观配置(prismqml.json):register_types 装配
+    # ThemeManager/ConfigManager 并启用外观持久化,桌宠的主题/皮肤/主题色
+    # 与主窗口保持一致,深浅色跟随 Enums 令牌自动切换。
+    from prismqml import register_types
+
+    from backend.app_settings import resolve_prismqml_config_path
+    from backend.pet_bootstrap import install_pet
 
     engine = QQmlApplicationEngine()
-    engine.rootContext().setContextProperty("PetStandalone", True)
-    try:
-        from backend.codex_config_store import CodexConfigStore
-        from backend.claude_desktop_config import read_gateway_credentials
+    register_types(
+        engine,
+        config_path=resolve_prismqml_config_path(),
+        persist_appearance=True,
+    )
 
-        codex_home = os.path.join(os.path.expanduser("~"), ".codex")
-        resolver = PetSourceResolver(
-            CodexConfigStore(codex_home), read_gateway_credentials
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    taskbar_icon_path = os.path.join(
+        app_dir,
+        "resources",
+        "app_icon.ico" if sys.platform == "win32" else "app_icon.png",
+    )
+    taskbar_icon = QIcon(taskbar_icon_path)
+    if not taskbar_icon.isNull():
+        app.setWindowIcon(taskbar_icon)
+
+    try:
+        # 返回值同时充当保活引用;bootstrap 还会把装配对象挂到 engine 上。
+        _pet_manager, _pet_controller = install_pet(
+            engine, app_dir=app_dir, standalone=True
         )
-        pet = NewApiPet(str(resolve_pet_config_path()), source_resolver=resolver)
     except RuntimeError as exc:
         print(f"[ERROR] 桌宠初始化失败: {exc}", file=sys.stderr)
         return -1
-    engine.rootContext().setContextProperty("NewApiPet", pet)
-
-    pet_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "pet")
-
-    def _make_qml_window(qml_name):
-        component = QQmlComponent(engine)
-        component.loadUrl(QUrl.fromLocalFile(os.path.join(pet_dir, qml_name)))
-        if component.isError():
-            for err in component.errors():
-                print(f"[ERROR] {qml_name}: {err.toString()}", file=sys.stderr)
-            return None
-        window = component.create()
-        if window is None:
-            return None
-        # 保活 component,避免其回收时销毁窗口。
-        window._pet_component = component
-        return window
-
-    manager = PetManager(
-        pet,
-        lambda: _make_qml_window("PetWindow.qml"),
-        lambda: _make_qml_window("PetSettingsDialog.qml"),
-        standalone=True,
-    )
-    engine.rootContext().setContextProperty("PetManager", manager)
-    manager.show_at_startup()
 
     if os.environ.get("SELFTEST"):
         print("[SELFTEST] 桌宠独立入口初始化完成")
+        from PySide6.QtCore import QTimer
+
         QTimer.singleShot(3000, app.quit)
 
     return app.exec()

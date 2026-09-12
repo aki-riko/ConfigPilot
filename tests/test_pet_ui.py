@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PET_DIR = ROOT / "qml" / "pet"
 
-from PySide6.QtCore import Property, QObject, QPoint, Qt, QUrl, Signal, Slot  # noqa: E402
+from PySide6.QtCore import Property, QObject, QMetaObject, QPoint, Qt, QUrl, Signal, Slot  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent, QQmlEngine  # noqa: E402
 from PySide6.QtQuick import QQuickItem  # noqa: E402
@@ -26,12 +26,38 @@ from PySide6.QtTest import QTest  # noqa: E402
 APP = QGuiApplication.instance()
 
 
+def register_prismqml_on_engine(engine):
+    """让桌宠 QML 能 `import PrismQML`:补模块路径并注册 ThemeManager。
+
+    与 pet_main.py 的 register_types 对齐:桌宠 QML 的配色全部走
+    Fluent.Enums 主题令牌,测试引擎必须能解析 PrismQML 模块。
+    """
+    import prismqml
+
+    engine.addImportPath(os.path.dirname(prismqml.__file__))
+    from prismqml import getThemeManager
+
+    # 保活:QObject 被 Python 回收后 QML 单例会读到 null。
+    register_prismqml_on_engine._keepalive = getThemeManager()
+    engine.rootContext().setContextProperty(
+        "ThemeManager", register_prismqml_on_engine._keepalive
+    )
+    return engine
+
+
 def _collect(root, predicate, out):
     """递归收集 QQuickItem 子树中满足条件的节点。"""
     if predicate(root):
         out.append(root)
     for child in root.childItems():
         _collect(child, predicate, out)
+
+
+def _collect_texts(root):
+    """收集子树里所有可见文本(原生 Text 和 Fluent.Label 等复合文本都算)。"""
+    items = []
+    _collect(root, lambda i: i.metaObject().indexOfProperty("text") >= 0, items)
+    return [str(item.property("text")) for item in items]
 
 
 class _QmlWarningCapture:
@@ -70,13 +96,30 @@ def _capture_qml_warnings():
     return _QmlWarningCapture()
 
 
+def _wait_for(predicate, timeout_ms=1200):
+    """轮询等待异步完成的 QML 状态(框架弹层是开窗+动画的异步路径)。
+
+    与 PrismQML tests/qml/test_menu_conventions.py 的同名助手同款。
+    """
+    from PySide6.QtCore import QCoreApplication, QElapsedTimer
+
+    timer = QElapsedTimer()
+    timer.start()
+    while timer.elapsed() < timeout_ms:
+        if predicate():
+            return True
+        QCoreApplication.processEvents()
+        QTest.qWait(30)
+    return predicate()
+
+
 # 与 PetWindow.qml / PetPanel.qml 里的布局常量保持一致
 PANEL_PADDING = 8
 SPRITE_SIZE = 120
 SPRITE_BOTTOM_MARGIN = PANEL_PADDING
 SPRITE_GAP = PANEL_PADDING * 2
 CARD_TOP = PANEL_PADDING
-DETAIL_CONTENT_HEIGHT = 344
+DETAIL_CONTENT_HEIGHT = 352
 BUBBLE_HEIGHT = 76
 BUBBLE_TOP = PANEL_PADDING
 EXPECTED_HEIGHTS = {
@@ -103,6 +146,11 @@ class StubPet(QObject):
     usageBumped = Signal()
     sourcesChanged = Signal()
     accountChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.refresh_calls = 0
+        self.saved_positions = []
 
     @Property(bool, notify=statusChanged)
     def sourceReady(self): return True
@@ -180,18 +228,43 @@ class StubPet(QObject):
     def primaryBalanceNegative(self): return False
 
     @Slot()
-    def refresh(self): pass
+    def refresh(self):
+        self.refresh_calls += 1
+
     @Slot(int, int)
-    def savePosition(self, x, y): pass
+    def savePosition(self, x, y):
+        self.saved_positions.append((int(x), int(y)))
+
+
+class StubManager(QObject):
+    """PetManager 替身:记录「设置…」入口是否真的被调到。"""
+
+    openSettingsRequested = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.open_settings_calls = 0
+        self.window_closed_calls = 0
+
+    @Slot()
+    def openSettings(self):
+        self.open_settings_calls += 1
+
+    @Slot()
+    def petWindowClosed(self):
+        self.window_closed_calls += 1
 
 
 class PetQmlLoadTests(unittest.TestCase):
-    def _engine(self):
-        engine = QQmlEngine()
+    def _engine(self, with_manager=False):
+        engine = register_prismqml_on_engine(QQmlEngine())
         # 必须保留替身引用:被 Python 回收后 QML 侧会读到 null
         self._stub = StubPet()
         engine.rootContext().setContextProperty("PetStandalone", True)
         engine.rootContext().setContextProperty("NewApiPet", self._stub)
+        if with_manager:
+            self._manager = StubManager()
+            engine.rootContext().setContextProperty("PetManager", self._manager)
         return engine
 
     def setUp(self):
@@ -261,9 +334,7 @@ class PetQmlLoadTests(unittest.TestCase):
 
         root = dialog.findChild(QQuickItem, "settingsFormColumn")
         self.assertIsNotNone(root)
-        texts = []
-        _collect(root, lambda i: i.metaObject().className().startswith("QQuickText"), texts)
-        rendered = [str(item.property("text")) for item in texts]
+        rendered = _collect_texts(root)
         for label in ("余额口径（大数字显示哪一套额度）", "自动", "令牌额度", "账户余额"):
             self.assertIn(label, rendered)
         # 替身的账户余额已就绪 → 提示行应显示"当前生效",而不是警告色文案
@@ -282,7 +353,7 @@ class PetQmlLoadTests(unittest.TestCase):
             account_ok = False
             account_error = "HTTP 404（站点未提供 new-api 查询接口，可能不是 new-api 站点）"
 
-        engine = QQmlEngine()
+        engine = register_prismqml_on_engine(QQmlEngine())
         stub = NotReadyStub()
         engine.rootContext().setContextProperty("PetStandalone", True)
         engine.rootContext().setContextProperty("NewApiPet", stub)
@@ -300,6 +371,74 @@ class PetQmlLoadTests(unittest.TestCase):
         # 未就绪 → 大数字退回令牌口径,不能显示空值
         self.assertEqual(window.property("primaryBalanceCaption"), "剩余额度")
         self.assertEqual(window.property("primaryBalanceText"), "∞")
+
+    def test_panel_receives_readiness_flags(self):
+        """面板必须拿到 petReady/managerReady。
+
+        这两个标志漏注入时是 undefined(假),会让「刷新」「设置…」「立即刷新」
+        和拖动后的存位置四处入口静默失效,而且不报任何 QML 错误 —— 曾经因此
+        表现为「设置窗口弹不出来」。
+        """
+        engine = self._engine(with_manager=True)
+        window = self._create(engine, "PetWindow.qml")
+        APP.processEvents()
+        panel = window.findChild(QQuickItem, "petPanel")
+        self.assertTrue(bool(panel.property("petReady")), "petReady 没注入面板")
+        self.assertTrue(bool(panel.property("managerReady")), "managerReady 没注入面板")
+
+    def test_refresh_button_and_settings_menu_reach_backend(self):
+        """明细卡「刷新」和右键菜单「设置…」必须真的打到后端。"""
+        engine = self._engine(with_manager=True)
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("mode", "detail")
+        window.setProperty("visible", True)
+        APP.processEvents()
+        panel = window.findChild(QQuickItem, "petPanel")
+
+        refresh_btn = window.findChild(QQuickItem, "petRefreshButton")
+        self.assertIsNotNone(refresh_btn, "刷新按钮没有 objectName")
+        self._click(window, refresh_btn)
+        self.assertEqual(self._stub.refresh_calls, 1, "刷新按钮没打到 NewApiPet.refresh()")
+
+        # 右键 → 框架 ContextMenu 弹出 → 触发「设置…」动作
+        pet_area = next(i for i in panel.childItems()
+                        if i.metaObject().className().startswith("QQuickMouseArea") and i.z() == 10)
+        point = self._center_of(window, pet_area)
+        QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier, point)
+        APP.processEvents()
+        menu = panel.findChild(QObject, "petContextMenu")
+        self.assertIsNotNone(menu, "右键菜单没有 objectName")
+        self.assertTrue(_wait_for(lambda: menu.property("isOpen")), "右键菜单没打开")
+        settings_action = menu.getAction("settings")
+        self.assertIsNotNone(settings_action, "菜单缺少「设置…」动作")
+        # QML 声明的信号在 Python 侧要用 invokeMethod 触发
+        QMetaObject.invokeMethod(settings_action, "triggered")
+        self.assertTrue(
+            _wait_for(lambda: not menu.property("isOpen")
+                      and not menu.property("isClosing")),
+            "触发动作后菜单应自动关闭")
+        self.assertEqual(self._manager.open_settings_calls, 1,
+                         "「设置…」没打到 PetManager.openSettings()")
+
+    def test_dragging_pet_saves_position(self):
+        """拖动桌宠后要落盘位置,否则下次启动/收起展开会跳回原位。"""
+        engine = self._engine(with_manager=True)
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+        panel = window.findChild(QQuickItem, "petPanel")
+        pet_area = next(i for i in panel.childItems()
+                        if i.metaObject().className().startswith("QQuickMouseArea") and i.z() == 10)
+        start = self._center_of(window, pet_area)
+        QTest.mousePress(window, Qt.LeftButton, Qt.NoModifier, start)
+        APP.processEvents()
+        QTest.mouseMove(window, QPoint(start.x() - 24, start.y() - 14))
+        APP.processEvents()
+        QTest.mouseRelease(window, Qt.LeftButton, Qt.NoModifier,
+                           QPoint(start.x() - 24, start.y() - 14))
+        APP.processEvents()
+        self.assertEqual(len(self._stub.saved_positions), 1,
+                         "拖动后没有调用 savePosition")
 
     def test_pet_window_and_settings_dialog_instantiate(self):
         engine = self._engine()
@@ -427,10 +566,9 @@ class PetQmlLoadTests(unittest.TestCase):
             self.assertEqual(window.property("mode"), "detail")
 
             # 收起 → 离开明细形态(桌宠 hover 会顺带把气泡弹出来)
-            buttons = []
-            _collect(panel, lambda i: i.metaObject().className().startswith("PetChipButton"), buttons)
-            self.assertEqual(len(buttons), 2, "明细卡应该有刷新/收起两个按钮")
-            self._click(window, buttons[1])
+            collapse_btn = window.findChild(QQuickItem, "petCollapseButton")
+            self.assertIsNotNone(collapse_btn, "明细卡应该有「收起」按钮")
+            self._click(window, collapse_btn)
             self.assertNotEqual(window.property("mode"), "detail")
             self.assertIn(window.property("mode"), ("pet", "bubble"))
 
@@ -454,11 +592,16 @@ class PetQmlLoadTests(unittest.TestCase):
             QTest.mouseClick(window, Qt.RightButton, Qt.NoModifier,
                              self._center_of(window, pet_area))
             APP.processEvents()
-            menu = panel.findChild(QQuickItem, "petContextMenu")
+            menu = panel.findChild(QObject, "petContextMenu")
             self.assertIsNotNone(menu, "右键菜单没有 objectName")
-            self.assertTrue(menu.isVisible(), "右键菜单没打开")
-            column = menu.childItems()[0]
-            self._click(window, column.childItems()[1])
+            self.assertTrue(_wait_for(lambda: menu.property("isOpen")), "右键菜单没打开")
+            detail_action = menu.getAction("detail")
+            self.assertIsNotNone(detail_action, "菜单缺少「明细面板」动作")
+            QMetaObject.invokeMethod(detail_action, "triggered")
+            self.assertTrue(
+                _wait_for(lambda: not menu.property("isOpen")
+                          and not menu.property("isClosing")),
+                "触发动作后菜单应自动关闭")
             self.assertEqual(window.property("mode"), "detail")
         finally:
             warnings = captured.stop()

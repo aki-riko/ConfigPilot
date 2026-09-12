@@ -97,13 +97,35 @@ Item {
     // 明细卡片高度 = 卡片内容高度,窗口高度由它反推。
     readonly property int cardHeight: detailContentHeight
 
-    readonly property int panelHeight: {
-        // detail:上边距 + 卡片 + 空档 + 桌宠 + 下边距
-        if (mode === "detail") return cardTop + cardHeight + spriteGap + spriteSize + spriteBottomMargin
-        // bubble:气泡顶边 + 气泡 + 空档 + 桌宠 + 下边距
-        if (mode === "bubble") return bubbleTop + bubbleAreaHeight + spriteGap + spriteSize + spriteBottomMargin
-        // pet:只放下桌宠
-        return petAreaHeight
+    // 各形态的面板高度:上边距 + 内容 + 空档 + 桌宠 + 下边距
+    readonly property int detailPanelHeight: cardTop + cardHeight + spriteGap + spriteSize + spriteBottomMargin
+    readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
+                                             + spriteSize + spriteBottomMargin
+    readonly property int petPanelHeight: petAreaHeight
+    readonly property int targetPanelHeight: mode === "detail" ? detailPanelHeight
+                                            : (mode === "bubble" ? bubblePanelHeight : petPanelHeight)
+
+    // 高度不做逐帧动画:窗口 resize 是同步系统调用,200ms 内 resize 几十次会把
+    // 主线程整个拖住(实测一次 processEvents 被拖到 170ms+,比"瞬变"更糟)。
+    // 所以高度一次到位,过渡感全部交给内容层的 opacity + 位移。
+    //
+    // 收缩必须等淡出跑完:明细卡比气泡高,窗口若立刻缩矮,正在淡出的卡片会被
+    // 窗口下沿一路裁掉(看起来像"卡片被抽走")。展开则立即生效 —— 那部分区域
+    // 是透明的,先变高不影响观感,还能给上浮动作留出落点。
+    //
+    // 这里存"滞后的高度值"而不是"滞后的 mode":mode 一旦变化,任何 `= mode`
+    // 的绑定都会立刻把高度一起带过去,延后收缩就白写了。0 表示还没锁定,
+    // 此时直接用目标高度。
+    property int settledPanelHeight: 0
+    readonly property int panelHeight: settledPanelHeight > 0 ? settledPanelHeight
+                                                              : targetPanelHeight
+    onTargetPanelHeightChanged: {
+        if (targetPanelHeight >= panelHeight) {
+            heightSettleTimer.stop()
+            settledPanelHeight = targetPanelHeight
+        } else {
+            heightSettleTimer.restart()
+        }
     }
 
     // 桌宠永远贴着窗口底边 —— 这样三种形态下桌宠的屏幕位置恒定(窗口只向上长高),
@@ -125,11 +147,41 @@ Item {
         petWindow.showBubble()
     }
 
+    // 收缩时把高度切换延后到淡出结束(见上面 panelHeight 处的说明)。
+    Timer {
+        id: heightSettleTimer
+        interval: Fluent.Enums.duration.medium
+        onTriggered: panel.settledPanelHeight = panel.targetPanelHeight
+    }
+
     // ============================================================ 明细面板
     // 位置必须在 childItems()[0]:测试按 childItems()[1] 取气泡。
     Item {
         id: detailPanel
-        visible: panel.mode === "detail"
+        // 形态切换过渡:淡入淡出 + 从下方轻轻升起,不再瞬变。
+        // 用 transform 做位移而不是改 y:本节点是 anchors 定位(topMargin),
+        // 同时写 y 会和锚点打架。
+        // visible 挂在 opacity 上,淡出结束后才真正隐藏,否则 opacity 动画还没跑
+        // 就被 visible=false 掐掉。enabled 必须跟着模式走:opacity=0 的节点照样
+        // 吃鼠标事件,不关掉的话气泡形态下会点到隐形的明细卡按钮。
+        property real shiftY: panel.mode === "detail" ? 0 : Fluent.Enums.spacing.xl
+        Behavior on shiftY {
+            NumberAnimation {
+                duration: Fluent.Enums.duration.medium
+                easing.type: Easing.OutCubic
+            }
+        }
+        transform: Translate { y: detailPanel.shiftY }
+        opacity: panel.mode === "detail" ? Fluent.Enums.opacityLevel.visible
+                                          : Fluent.Enums.opacityLevel.invisible
+        visible: opacity > 0.01
+        enabled: panel.mode === "detail"
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Fluent.Enums.duration.medium
+                easing.type: Easing.OutCubic
+            }
+        }
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: panel.cardTop
@@ -431,7 +483,25 @@ Item {
     // 尖角仍自绘 —— 见文件头"三处保留自绘"第 1 条。
     Item {
         id: bubble
-        visible: panel.mode === "bubble"
+        // 与明细面板同一套过渡语义(见 detailPanel 处的说明)。
+        property real shiftY: panel.mode === "bubble" ? 0 : Fluent.Enums.spacing.l
+        Behavior on shiftY {
+            NumberAnimation {
+                duration: Fluent.Enums.duration.medium
+                easing.type: Easing.OutCubic
+            }
+        }
+        transform: Translate { y: bubble.shiftY }
+        opacity: panel.mode === "bubble" ? Fluent.Enums.opacityLevel.visible
+                                         : Fluent.Enums.opacityLevel.invisible
+        visible: opacity > 0.01
+        enabled: panel.mode === "bubble"
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Fluent.Enums.duration.medium
+                easing.type: Easing.OutCubic
+            }
+        }
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: panel.bubbleTop

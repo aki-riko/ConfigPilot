@@ -408,7 +408,8 @@ class PetQmlLoadTests(unittest.TestCase):
         window = self._create(engine, "PetWindow.qml")
         window.setProperty("mode", "detail")
         window.setProperty("visible", True)
-        APP.processEvents()
+        # 过渡动画要跑完再点:期间按钮还在淡入上浮,点击会落空
+        self.assertTrue(self._settle(window, "detail"), "明细卡过渡没有收敛,无法稳定点击")
         panel = window.findChild(QQuickItem, "petPanel")
 
         refresh_btn = window.findChild(QQuickItem, "petRefreshButton")
@@ -463,13 +464,94 @@ class PetQmlLoadTests(unittest.TestCase):
                 self._create(engine, name)
 
     def test_pet_window_height_matches_panel_for_every_mode(self):
+        """窗口高度最终等于各形态的面板高度。
+
+        高度本身不做逐帧动画(逐帧 resize 会拖死主线程),但**收缩**要等内容
+        淡出跑完才收窗口,所以这里断言的是最终收敛值。
+        """
         engine = self._engine()
         window = self._create(engine, "PetWindow.qml")
         for mode, expected in EXPECTED_HEIGHTS.items():
             with self.subTest(mode=mode):
                 window.setProperty("mode", mode)
-                APP.processEvents()
-                self.assertEqual(window.property("height"), expected)
+                self.assertTrue(
+                    _wait_for(lambda: window.property("height") == expected),
+                    f"{mode} 形态窗口高度没有收敛到 {expected} "
+                    f"(当前 {window.property('height')})",
+                )
+
+    def test_shrink_waits_for_fade_out(self):
+        """收缩时窗口高度必须等明细卡淡出结束再收。
+
+        防回流门禁 —— 明细卡比气泡高,窗口若立刻缩矮,正在淡出的卡片会被窗口
+        下沿一路裁掉,看起来像"卡片被抽走"。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("mode", "detail")
+        APP.processEvents()
+        self.assertEqual(window.property("height"), EXPECTED_HEIGHTS["detail"])
+
+        window.setProperty("mode", "bubble")
+        APP.processEvents()
+        self.assertEqual(
+            window.property("height"), EXPECTED_HEIGHTS["detail"],
+            "窗口在明细卡淡出前就缩矮了,卡片会被下沿裁掉",
+        )
+        self.assertTrue(
+            _wait_for(lambda: window.property("height") == EXPECTED_HEIGHTS["bubble"]),
+            "窗口高度最终没有收缩到气泡形态",
+        )
+
+    def test_mode_switch_animates_content_instead_of_jumping(self):
+        """形态切换必须有内容过渡:新内容淡入上浮、旧内容淡出下沉,不能瞬变。
+
+        防回流门禁 —— 旧做法是 visible 直接切 mode,内容"啪"地出现/消失(0 过渡)。
+        这里用轮询采样中间态,而不是断言某一帧的具体数值:动画推进速度随平台
+        (offscreen / 真实窗口)不同,只有"确实出现过中间态"才是稳定合同。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        window.setProperty("mode", "bubble")
+        APP.processEvents()
+
+        panel = window.findChild(QQuickItem, "petPanel")
+        self.assertIsNotNone(panel)
+        detail = panel.childItems()[0]
+        bubble = panel.childItems()[1]
+
+        window.setProperty("mode", "detail")
+        detail_mid = bubble_mid = shift_mid = False
+        for _ in range(30):
+            # 必须用 QTest.qWait 而不是裸 processEvents:后者在 offscreen 平台
+            # 不会驱动 QML 动画,采样到的永远是两端状态。
+            QTest.qWait(20)
+            if 0.01 < float(detail.property("opacity")) < 0.99:
+                detail_mid = True
+            if 0.01 < float(bubble.property("opacity")) < 0.99:
+                bubble_mid = True
+            if float(detail.property("shiftY")) > 0.01:
+                shift_mid = True
+            if detail_mid and bubble_mid and shift_mid:
+                break
+
+        self.assertTrue(detail_mid, "明细卡没有淡入中间态,过渡是瞬变")
+        self.assertTrue(bubble_mid, "气泡没有淡出中间态,过渡是瞬变")
+        self.assertTrue(shift_mid, "明细卡没有上浮位移,过渡只有透明度没有动作")
+
+        self.assertTrue(
+            _wait_for(lambda: float(detail.property("opacity")) >= 0.999),
+            "明细卡淡入没有收敛",
+        )
+        self.assertTrue(
+            _wait_for(lambda: float(detail.property("shiftY")) <= 0.01),
+            "明细卡位移没有收敛",
+        )
+        self.assertTrue(
+            _wait_for(lambda: int(bubble.property("visible")) == 0),
+            "淡出结束后气泡应真正隐藏(否则它会继续吃鼠标事件)",
+        )
 
     def test_pet_sprite_stays_inside_window_in_every_mode(self):
         """桌宠本体必须完整落在窗口内。
@@ -481,10 +563,11 @@ class PetQmlLoadTests(unittest.TestCase):
         window = self._create(engine, "PetWindow.qml")
         window.setProperty("visible", True)
         APP.processEvents()
-        for mode in EXPECTED_HEIGHTS:
+        for mode, expected in EXPECTED_HEIGHTS.items():
             with self.subTest(mode=mode):
                 window.setProperty("mode", mode)
-                APP.processEvents()
+                # 高度带过渡动画,不先收敛的话 sprite.y 还在动,断言会假失败
+                _wait_for(lambda: window.property("height") == expected)
                 panel = window.findChild(QQuickItem, "petPanel")
                 sprite = panel.findChild(QQuickItem, "petSprite")
                 self.assertIsNotNone(sprite, "桌宠没有 objectName")
@@ -505,6 +588,20 @@ class PetQmlLoadTests(unittest.TestCase):
         hits = []
         _collect(parent, lambda i: i.metaObject().className().startswith("QQuickMouseArea"), hits)
         return hits
+
+    def _settle(self, window, mode):
+        """等形态过渡动画收敛。
+
+        切换后 200ms 内新内容还在淡入 + 上浮,控件中心坐标一直在变,这时点击
+        会落空;所以凡是要点明细卡里按钮的用例,都必须先等它停稳。
+        """
+        panel = window.findChild(QQuickItem, "petPanel")
+        item = panel.childItems()[0 if mode == "detail" else 1]
+        return _wait_for(
+            lambda: float(item.property("opacity")) >= 0.999
+                    and float(item.property("shiftY")) <= 0.01,
+            timeout_ms=1500,
+        )
 
     def _click(self, window, item, button=Qt.LeftButton):
         QTest.mouseClick(window, button, Qt.NoModifier, self._center_of(window, item))
@@ -580,6 +677,8 @@ class PetQmlLoadTests(unittest.TestCase):
             self.assertTrue(bubble_areas, "气泡里没有 MouseArea")
             self._click(window, bubble_areas[0])
             self.assertEqual(window.property("mode"), "detail")
+            # 过渡跑完再点收起,否则按钮还在淡入上浮,点击会落空
+            self.assertTrue(self._settle(window, "detail"), "明细卡过渡没有收敛,无法稳定点击")
 
             # 收起 → 离开明细形态(桌宠 hover 会顺带把气泡弹出来)
             collapse_btn = window.findChild(QQuickItem, "petCollapseButton")

@@ -39,6 +39,11 @@ LOGGER = logging.getLogger(__name__)
 _REQUEST_TIMEOUT_MS = 15000
 _MAX_LOG_ROWS = 50
 
+# 必须自带可识别的 User-Agent:Cloudflare 的 Error 1010 会按浏览器特征直接拒绝
+# 空 UA 与 "Python-urllib" 这类客户端 UA(HTTP 403),桌宠就会"看起来余额 0"。
+# 实测该 UA 能通过 CF 到达源站,且不需要冒充浏览器。
+USER_AGENT = "ConfigPilot (Qt QNetworkAccessManager)"
+
 
 class NewApiPet(QObject):
     """轮询余额/日志并向 QML 暴露只读状态与设置入口。"""
@@ -654,6 +659,15 @@ class NewApiPet(QObject):
 
     # ------------------------------------------------------------------ 网络
 
+    def _build_request(self, base_url: str, path: str, api_key: str, auth: bool) -> QNetworkRequest:
+        """构造请求:统一带上 User-Agent(否则 Cloudflare 会以 1010/403 直接拒掉)。"""
+        request = QNetworkRequest(QUrl(base_url + path))
+        request.setHeader(QNetworkRequest.KnownHeaders.UserAgentHeader, USER_AGENT)
+        request.setRawHeader(b"Accept", b"application/json")
+        if auth:
+            request.setRawHeader(b"Authorization", f"Bearer {api_key}".encode("utf-8"))
+        return request
+
     def _get(
         self,
         base_url: str,
@@ -665,11 +679,7 @@ class NewApiPet(QObject):
         auth: bool = True,
         counter: str = "main",
     ) -> None:
-        url = QUrl(base_url + path)
-        request = QNetworkRequest(url)
-        if auth:
-            request.setRawHeader(b"Authorization", f"Bearer {api_key}".encode("utf-8"))
-        request.setRawHeader(b"Accept", b"application/json")
+        request = self._build_request(base_url, path, api_key, auth)
         reply = self._nam.get(request)
         reply.finished.connect(
             lambda rep=reply, gen=generation, req_key=key, cb=handler, cnt=counter:
@@ -736,9 +746,20 @@ class NewApiPet(QObject):
     # 明确"来源不对"的状态码:换下一个候选才有意义。
     _WRONG_SOURCE_STATUS = {400, 401, 403, 404, 405}
 
+    @staticmethod
+    def _friendly_failure(status, message: str) -> str:
+        """把裸状态码翻译成用户看得懂的原因,避免只显示"HTTP 404"让人以为没消费。"""
+        if status == 404:
+            return f"{message}（站点未提供 new-api 查询接口，可能不是 new-api 站点）"
+        if status == 403:
+            return f"{message}（被拒绝：可能是密钥无效，或被站点前置防护拦截）"
+        if status is None:
+            return f"{message}（请求未发出或未收到 HTTP 响应）"
+        return message
+
     def _handle_failure(self, status, retry_after: int, message: str, key: str) -> None:
         self._pending.clear()  # 一次失败即中止本轮合并
-        self._last_error = message
+        self._last_error = self._friendly_failure(status, message)
         self._inflight = False
         LOGGER.info("桌宠请求失败(%s): %s", key, message)
         if status in (429, 503):

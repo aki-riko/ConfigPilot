@@ -464,5 +464,41 @@ class PetDisplayCurrencyTests(unittest.TestCase):
         self.assertEqual(pet._fmt(quota), "$914,320.57")  # noqa: SLF001
 
 
+class PetRequestHeadersTests(unittest.TestCase):
+    """请求必须自带 User-Agent:Cloudflare 的 1010 规则会直接拒掉空 UA。"""
+
+    def _pet(self):
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import PetConfig
+
+        return NewApiPet("__no_such_config_path_for_test__.json",
+                         PetConfig(base_url="", api_key=""))
+
+    def test_request_carries_user_agent_and_no_auth_when_public(self):
+        from PySide6.QtNetwork import QNetworkRequest
+
+        from backend.newapi_pet import USER_AGENT
+
+        pet = self._pet()
+        public = pet._build_request("https://example.com", "/api/status", "", False)  # noqa: SLF001
+        self.assertEqual(str(public.header(QNetworkRequest.KnownHeaders.UserAgentHeader)),
+                         USER_AGENT)
+        # PySide6 的 hasRawHeader/rawHeader 收 str;rawHeader 返回 QByteArray,要 decode
+        self.assertFalse(public.hasRawHeader("Authorization"))
+
+        private = pet._build_request("https://example.com", "/api/usage/token/",  # noqa: SLF001
+                                     "sk-test", True)
+        self.assertEqual(bytes(private.rawHeader("Authorization")).decode(), "Bearer sk-test")
+
+    def test_failure_messages_explain_common_statuses(self):
+        from backend.newapi_pet import NewApiPet
+
+        friendly = NewApiPet._friendly_failure
+        self.assertIn("不是 new-api 站点", friendly(404, "HTTP 404"))
+        self.assertIn("前置防护", friendly(403, "HTTP 403"))
+        self.assertIn("未收到 HTTP 响应", friendly(None, "ConnectionRefused"))
+        self.assertEqual(friendly(429, "HTTP 429"), "HTTP 429")
+
+
 if __name__ == "__main__":
     unittest.main()

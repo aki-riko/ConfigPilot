@@ -32,6 +32,22 @@ Fluent.Card {
         keyInput.text = ""
     }
 
+    // 失焦/回车即把地址补成实际会写入 config.toml 的形式（末尾缺 /v1 时补 /v1）。
+    // 规范化交给后端 CodexConfig.normalizedBaseUrl，避免界面和写入各算一套。
+    function commitBaseUrl() {
+        var draft = baseUrlEdit.text.trim()
+        var normalized = typeof CodexConfig === "undefined"
+                         ? draft : CodexConfig.normalizedBaseUrl(draft)
+        if (normalized !== baseUrlEdit.text) {
+            // 改 text 会经 onTextChanged 把补全后的地址回传给草稿，不再重复发一次
+            baseUrlEdit.text = normalized
+            return
+        }
+        if (normalized.length > 0 && normalized !== root.baseUrlValue) {
+            root.baseUrlEdited(normalized)
+        }
+    }
+
     function commitAuthJson() {
         var value = authJsonInput.text.trim()
         if (value.length === 0) return
@@ -105,7 +121,7 @@ Fluent.Card {
                 font.family: Fluent.Enums.fontFamily
             }
             Text {
-                text: "base_url · 未包含 /v1 时自动补全"
+                text: "base_url · 未包含 /v1 时自动补全（失焦或回车即回填）"
                 color: Fluent.Enums.textColor.tertiary
                 font.pixelSize: Fluent.Enums.typography.caption
                 font.family: Fluent.Enums.fontFamily
@@ -121,6 +137,7 @@ Fluent.Card {
                 onTextChanged: {
                     if (text !== root.baseUrlValue) root.baseUrlEdited(text)
                 }
+                onEditingFinished: root.commitBaseUrl()
                 Connections {
                     target: root
                     function onBaseUrlValueChanged() {

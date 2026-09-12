@@ -405,6 +405,16 @@ class CodexConfig(QObject):
         else:
             self.notify.emit(3, "写入失败", str(exc))
 
+    @Slot(str, result=str)
+    def normalizedBaseUrl(self, value):
+        """把输入框里的地址规范化成实际会写入 config.toml 的形式。
+
+        末尾缺少 ``/v1`` 时补全，已带 ``/v1`` 时原样返回；与 applyConfig、
+        fetchModels 共用同一个 ``normalize_v1_base_url``，界面显示与写入
+        结果不会分叉。
+        """
+        return normalize_v1_base_url(str(value or ""))
+
     @Slot("QVariantMap")
     def applyConfig(self, cfg):
         """把指定的连接配置写入 config.toml(通用, 不写死任何中转)。

@@ -24,9 +24,12 @@ Window {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
     color: Fluent.Enums.transparent
     width: 340
-    height: panel.panelHeight
-    // 底边固定在 bottomY,面板向上展开。声明式绑定让 height→y 在同一求值
-    // 周期内原子更新,避免命令式改 y 读到旧 height 造成的跳动。
+    // 窗口尺寸恒定,取所有形态里的最大高度:形态切换只改可见内容与窗口遮罩
+    // (遮罩由 pet_bootstrap 在 Python 侧 setMask),窗口本身**永不 resize**。
+    // 原因:透明无边框窗口 resize 时,系统要重建整块渲染表面,表现为整个悬浮窗
+    // (含桌宠)闪 1~2 帧 —— 这正是"点一下闪一下"的来源。
+    height: panel.maxPanelHeight
+    // 底边固定在 bottomY。高度恒定后 y 也恒定,桌宠屏幕位置严格不动。
     y: bottomY >= 0 ? bottomY - height : 0
     title: "ConfigPilot 余额桌宠"
     visible: false
@@ -34,6 +37,9 @@ Window {
     readonly property bool standalone: typeof PetStandalone !== "undefined" ? PetStandalone : false
     readonly property bool managerReady: typeof PetManager !== "undefined" && PetManager !== null
     readonly property bool petReady: typeof NewApiPet !== "undefined" && NewApiPet !== null
+    // 当前形态真正需要露出的高度:Python 侧据此设置窗口遮罩,其余部分对系统来说
+    // 等于不存在(既不参与合成,也不接收鼠标)。
+    readonly property int visibleContentHeight: panel.panelHeight
 
     // ---------------------------------------------------------------- 布局常量
     // 与 PetPanel 内部的固定行高一一对应,改动任一侧都要同步。
@@ -216,7 +222,12 @@ Window {
     // ---------------------------------------------------------------- 面板
     PetPanel {
         id: panel
-        anchors.fill: parent
+        // 锚定窗口底部:窗口高度是"最大形态"的常量,面板只占当前形态需要的高度,
+        // 上方那块是透明区域,由窗口遮罩裁掉(不参与合成、不接收鼠标)。
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width
+        height: panel.panelHeight
         mode: petWindow.mode
         panelPadding: petWindow.panelPadding
         panelWidth: petWindow.panelWidth

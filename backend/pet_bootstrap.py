@@ -14,7 +14,8 @@ import logging
 import os
 from typing import Callable, Optional
 
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QObject, QRect, QUrl
+from PySide6.QtGui import QRegion
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 
 from backend.newapi_pet import NewApiPet
@@ -33,6 +34,35 @@ def _default_codex_store():
     from backend.codex_config_store import CodexConfigStore
 
     return CodexConfigStore(os.path.join(os.path.expanduser("~"), ".codex"))
+
+
+def _attach_pet_window_mask(window: QObject) -> None:
+    """把悬浮窗的可见区限制在底部"当前形态需要的高度"。
+
+    窗口尺寸恒定取最大形态高度,形态切换只改内容与遮罩,窗口永不 resize。
+    原因:透明无边框窗口 resize 时系统要重建整块渲染表面,表现为整个悬浮窗
+    (含桌宠)闪 1~2 帧。setMask 走的是系统窗口区域(SetWindowRgn),只改窗口
+    形状、不重建表面,代价约 1ms。
+
+    遮罩之外的区域对操作系统来说等于不存在:既不参与合成,也不接收鼠标,
+    所以桌宠上方的空白区不会挡住桌面操作。
+    """
+    if not hasattr(window, "setMask"):
+        return
+
+    def apply_mask() -> None:
+        height = int(window.height())
+        width = int(window.width())
+        visible = window.property("visibleContentHeight")
+        if not isinstance(visible, (int, float)) or visible <= 0:
+            visible = height
+        visible = max(1, min(int(visible), height))
+        window.setMask(QRegion(QRect(0, height - visible, width, visible)))
+
+    signal = getattr(window, "visibleContentHeightChanged", None)
+    if signal is not None:
+        signal.connect(apply_mask)
+    apply_mask()
 
 
 def install_pet(
@@ -78,6 +108,10 @@ def install_pet(
             return None
         # 保活 component:否则其被回收时会连带销毁 create() 出的窗口。
         window._pet_component = component
+        if qml_name == "PetWindow.qml":
+            # 悬浮窗尺寸恒定,靠遮罩切换可见区;设置窗是普通窗口,不需要遮罩
+            # (加遮罩反而会把它自己的投影裁掉)。
+            _attach_pet_window_mask(window)
         return window
 
     manager = PetManager(

@@ -102,6 +102,11 @@ Item {
     readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
                                              + spriteSize + spriteBottomMargin
     readonly property int petPanelHeight: petAreaHeight
+    // 形态上限高度:窗口尺寸恒定取它,于是窗口永远不做 resize —— 透明无边框窗口
+    // 一旦 resize,系统会重建整块渲染表面,用户看到的是整个悬浮窗(含桌宠)
+    // 闪 1~2 帧。形态切换改为只改"可见内容 + 窗口遮罩"。
+    readonly property int maxPanelHeight: Math.max(detailPanelHeight,
+                                                   Math.max(bubblePanelHeight, petPanelHeight))
     readonly property int targetPanelHeight: mode === "detail" ? detailPanelHeight
                                             : (mode === "bubble" ? bubblePanelHeight : petPanelHeight)
 

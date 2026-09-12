@@ -467,40 +467,52 @@ class PetQmlLoadTests(unittest.TestCase):
         """窗口高度最终等于各形态的面板高度。
 
         高度本身不做逐帧动画(逐帧 resize 会拖死主线程),但**收缩**要等内容
-        淡出跑完才收窗口,所以这里断言的是最终收敛值。
+        淡出跑完才收,所以这里断言的是最终收敛值。
         """
         engine = self._engine()
         window = self._create(engine, "PetWindow.qml")
+        sizes = set()
         for mode, expected in EXPECTED_HEIGHTS.items():
             with self.subTest(mode=mode):
                 window.setProperty("mode", mode)
                 self.assertTrue(
-                    _wait_for(lambda: window.property("height") == expected),
-                    f"{mode} 形态窗口高度没有收敛到 {expected} "
-                    f"(当前 {window.property('height')})",
+                    _wait_for(lambda: window.property("visibleContentHeight") == expected),
+                    f"{mode} 形态的可见高度没有收敛到 {expected} "
+                    f"(当前 {window.property('visibleContentHeight')})",
                 )
+                sizes.add((window.property("width"), window.property("height")))
+
+        # 窗口本身尺寸必须恒定:透明无边框窗口 resize 会让系统重建渲染表面,
+        # 表现为整个悬浮窗(含桌宠)闪 1~2 帧 —— 这就是"点一下闪一下"的来源。
+        self.assertEqual(len(sizes), 1, f"形态切换改了窗口尺寸: {sizes}")
+        width, height = sizes.pop()
+        self.assertEqual(width, 340)
+        self.assertEqual(height, max(EXPECTED_HEIGHTS.values()),
+                         "窗口高度应恒定为最大形态高度")
 
     def test_shrink_waits_for_fade_out(self):
-        """收缩时窗口高度必须等明细卡淡出结束再收。
+        """收缩时可见区必须等明细卡淡出结束再收。
 
-        防回流门禁 —— 明细卡比气泡高,窗口若立刻缩矮,正在淡出的卡片会被窗口
+        防回流门禁 —— 明细卡比气泡高,可见区若立刻缩矮,正在淡出的卡片会被
         下沿一路裁掉,看起来像"卡片被抽走"。
         """
         engine = self._engine()
         window = self._create(engine, "PetWindow.qml")
         window.setProperty("mode", "detail")
         APP.processEvents()
-        self.assertEqual(window.property("height"), EXPECTED_HEIGHTS["detail"])
+        self.assertEqual(
+            window.property("visibleContentHeight"), EXPECTED_HEIGHTS["detail"])
 
         window.setProperty("mode", "bubble")
         APP.processEvents()
         self.assertEqual(
-            window.property("height"), EXPECTED_HEIGHTS["detail"],
-            "窗口在明细卡淡出前就缩矮了,卡片会被下沿裁掉",
+            window.property("visibleContentHeight"), EXPECTED_HEIGHTS["detail"],
+            "可见区在明细卡淡出前就缩了,卡片会被下沿裁掉",
         )
         self.assertTrue(
-            _wait_for(lambda: window.property("height") == EXPECTED_HEIGHTS["bubble"]),
-            "窗口高度最终没有收缩到气泡形态",
+            _wait_for(lambda: window.property("visibleContentHeight")
+                      == EXPECTED_HEIGHTS["bubble"]),
+            "可见区最终没有收缩到气泡形态",
         )
 
     def test_mode_switch_animates_content_instead_of_jumping(self):
@@ -563,23 +575,28 @@ class PetQmlLoadTests(unittest.TestCase):
         window = self._create(engine, "PetWindow.qml")
         window.setProperty("visible", True)
         APP.processEvents()
-        for mode, expected in EXPECTED_HEIGHTS.items():
+        for mode, visible in EXPECTED_HEIGHTS.items():
             with self.subTest(mode=mode):
                 window.setProperty("mode", mode)
-                # 高度带过渡动画,不先收敛的话 sprite.y 还在动,断言会假失败
-                _wait_for(lambda: window.property("height") == expected)
+                # 可见区带过渡(收缩要等淡出),不先收敛的话 sprite.y 还在动
+                _wait_for(lambda: window.property("visibleContentHeight") == visible)
                 panel = window.findChild(QQuickItem, "petPanel")
                 sprite = panel.findChild(QQuickItem, "petSprite")
                 self.assertIsNotNone(sprite, "桌宠没有 objectName")
-                height = window.property("height")
-                self.assertGreaterEqual(sprite.y(), 0, "桌宠顶边跑到窗口上方了")
+                # 面板锚定窗口底部,面板高度就是可见区高度
+                self.assertEqual(
+                    panel.property("height"), visible,
+                    f"{mode} 形态下可见区高度与面板高度不一致",
+                )
+                self.assertGreaterEqual(sprite.y(), 0, "桌宠顶边跑到可见区上方了")
                 self.assertLessEqual(
-                    sprite.y() + sprite.height(), height,
-                    f"{mode} 形态下桌宠底边超出窗口({sprite.y() + sprite.height()} > {height})",
+                    sprite.y() + sprite.height(), visible,
+                    f"{mode} 形态下桌宠底边超出可见区"
+                    f"({sprite.y() + sprite.height()} > {visible})",
                 )
                 self.assertGreaterEqual(
-                    height, PET_MODE_MIN_HEIGHT,
-                    f"{mode} 形态窗口太矮,放不下桌宠",
+                    visible, PET_MODE_MIN_HEIGHT,
+                    f"{mode} 形态可见区太矮,放不下桌宠",
                 )
 
     # ---------------------------------------------------------------- 交互链路

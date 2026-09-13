@@ -87,6 +87,12 @@ Window {
     property string lastToday: ""
     // 真正关闭(进程退出)时才置位,避免退出流程被 onClosing 拦下。
     property bool forceClose: false
+    // 首帧是否真正上屏。悬浮窗的原生位置在窗口 map 时才生效,而弹层的位置
+    // 跟踪器只监听 target/窗口的 xChanged/yChanged —— 首次 map 不产生这些信号,
+    // 弹层若在首帧前 show() 就按 (0,0) 定格在屏幕左上角且永不纠正("首次启动
+    // 错位")。之后拖动窗口会有信号,所以只有第一次会错。气泡必须等这个标志。
+    property bool firstFrameShown: false
+    onFrameSwapped: firstFrameShown = true
 
     // ---------------------------------------------------------------- 数据
     readonly property bool ready: petReady && NewApiPet.sourceReady
@@ -256,6 +262,7 @@ Window {
         bubbleAreaHeight: petWindow.bubbleAreaHeight
         bubbleTipHeight: petWindow.bubbleTipHeight
         bubbleWidth: petWindow.bubbleWidth
+        windowFirstFrame: petWindow.firstFrameShown
         bubbleTop: petWindow.bubbleTop
         cardTop: petWindow.cardTop
         spriteBottomMargin: petWindow.spriteBottomMargin

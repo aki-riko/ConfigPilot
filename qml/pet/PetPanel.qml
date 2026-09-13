@@ -40,6 +40,9 @@ Item {
     // 气泡弹层宽度:独立常量,不跟随明细卡 panelWidth(卡片为 Token 行加宽后,
     // 气泡三行小字撑满 468 会显得过长)。
     property var bubbleWidth
+    // 窗口首帧是否已上屏(由 PetWindow 注入):弹层必须等它再 show,
+    // 否则按未 map 的窗口位置 (0,0) 定格,见 PetWindow.firstFrameShown 注释。
+    property var windowFirstFrame
     property var bubbleTop
     property var cardTop
     property var spriteBottomMargin
@@ -550,8 +553,12 @@ Item {
         // 还必须等面板高度切换完成再 show:收缩是延后 200ms 生效的,过渡期间锚点仍在
         // 旧位置,弹层会按旧锚点定格(实测偏 12px),而锚点这次移动来自祖先面板重排、
         // 不是自身几何变化,框架的位置跟踪器看不到,无法自动纠正。
+        // 同理还要等窗口首帧真正上屏(windowFirstFrame):悬浮窗的原生位置在 map
+        // 时才生效且不产生 xChanged/yChanged 信号,弹层若在首帧前 show,会按
+        // (0,0) 定格在屏幕左上角、永不纠正 —— 这正是"首次启动错位"的根因。
         readonly property bool bubbleShown: panel.mode === "bubble"
                                             && panel.panelHeight === panel.bubblePanelHeight
+                                            && panel.windowFirstFrame === true
         onBubbleShownChanged: bubbleShown ? bubbleTip.show() : bubbleTip.close()
         // 初始显示必须延后到事件循环:Component.onCompleted 阶段弹层窗口刚被创建,
         // 此时 show() 会被随后的初始化流程重置回隐藏(实测首帧 visible=False)。

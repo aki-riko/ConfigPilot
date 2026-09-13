@@ -779,8 +779,9 @@ class PetQmlLoadTests(unittest.TestCase):
         panel = window.findChild(QQuickItem, "petPanel")
         tip = panel.findChild(QObject, "petBubbleTip")
         self.assertIsNotNone(tip, "气泡锚点里没有 TeachingTip")
+        self.assertTrue(_wait_for(lambda: tip.property("_popupWindow") is not None),
+                        "窗口首帧上屏后气泡弹层应出现")
         popup = tip.property("_popupWindow")
-        self.assertIsNotNone(popup, "气泡弹层窗口没有创建")
 
         bubble_areas = self._mouse_area_in(popup.contentItem())
         self.assertTrue(bubble_areas, "气泡弹层里没有 MouseArea")
@@ -801,6 +802,24 @@ class PetQmlLoadTests(unittest.TestCase):
         finally:
             warnings = captured.stop()
         self.assertEqual(warnings, [], "气泡进出过程中出现 QML 运行期警告: " + " | ".join(warnings))
+
+    def test_bubble_waits_for_first_frame_before_show(self):
+        """首次启动错位回归:窗口首帧上屏前气泡绝不能弹。
+
+        悬浮窗的原生位置在 map 时才生效且不产生 xChanged/yChanged,弹层若在
+        首帧前 show() 会按 (0,0) 定格在屏幕左上角、永不纠正(用户截图实锤)。
+        """
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        APP.processEvents()
+        panel = window.findChild(QQuickItem, "petPanel")
+        tip = panel.findChild(QObject, "petBubbleTip")
+        self.assertIsNotNone(tip, "气泡锚点里没有 TeachingTip")
+        self.assertIsNone(tip.property("_popupWindow"),
+                          "窗口还没上屏就弹气泡,会按未映射的窗口位置定格左上角")
+        window.setProperty("visible", True)
+        self.assertTrue(_wait_for(lambda: tip.property("_popupWindow") is not None),
+                        "首帧上屏后气泡应自动弹出")
 
     def test_pet_interactions_switch_modes_without_qml_errors(self):
         """点击气泡 / 收起 / 右键菜单都要真的切形态,且不能有 QML 运行期报错。
@@ -825,8 +844,9 @@ class PetQmlLoadTests(unittest.TestCase):
             # 点击气泡 → 明细。气泡现在是独立原生窗口,交互层在弹层里。
             tip = panel.findChild(QObject, "petBubbleTip")
             self.assertIsNotNone(tip, "气泡锚点里没有 TeachingTip")
+            self.assertTrue(_wait_for(lambda: tip.property("_popupWindow") is not None),
+                            "窗口首帧上屏后气泡弹层应出现")
             popup = tip.property("_popupWindow")
-            self.assertIsNotNone(popup, "气泡弹层窗口没有创建")
             bubble_areas = self._mouse_area_in(popup.contentItem())
             self.assertTrue(bubble_areas, "气泡弹层里没有 MouseArea")
             QTest.mouseClick(popup, Qt.LeftButton, Qt.NoModifier,

@@ -1,12 +1,21 @@
 {
   "_说明": "桌宠内置立绘清单。file 相对于本目录;label 是设置窗里显示的中文名。",
   "_令牌": "用户配置 pet_image 里存 preset:<id>;留空 = 用 default;vector = 老的自绘矢量小飞宠;其余按绝对路径当用户自备图处理。",
+  "_姿势帧": "frames 是 姿势角色 -> 相对路径。角色名与 PetSprite.qml 的状态机对应:idle 站立 / blink 眨眼(空闲循环插播) / wave 挥手(点击) / cheer 举币欢呼(余额变动) / sleepy 打瞌睡(久无互动) / alert 钱袋空了(告警)。缺某个角色时桌宠自动退回 idle。",
   "default": "navigator",
   "presets": [
     {
       "id": "navigator",
       "label": "小领航 · 阿诺",
-      "file": "navigator.png"
+      "file": "navigator/idle.png",
+      "frames": {
+        "idle": "navigator/idle.png",
+        "blink": "navigator/blink.png",
+        "wave": "navigator/wave.png",
+        "cheer": "navigator/cheer.png",
+        "sleepy": "navigator/sleepy.png",
+        "alert": "navigator/alert.png"
+      }
     },
     {
       "id": "barista",

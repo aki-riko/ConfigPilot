@@ -17,7 +17,13 @@ def _make_resources(root: Path, presets: list[dict], default: str = "") -> Path:
     directory = root / "resources" / "pet"
     directory.mkdir(parents=True, exist_ok=True)
     for item in presets:
-        (directory / item["file"]).write_bytes(b"\x89PNG\r\n\x1a\n")
+        target = directory / item["file"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"\x89PNG\r\n\x1a\n")
+        for relative in (item.get("frames") or {}).values():
+            frame = directory / relative
+            frame.parent.mkdir(parents=True, exist_ok=True)
+            frame.write_bytes(b"\x89PNG\r\n\x1a\n")
     payload = {"presets": presets}
     if default:
         payload["default"] = default
@@ -99,13 +105,65 @@ class ManifestFallbackTests(unittest.TestCase):
                 self.assertEqual(pet_art.resolve_pet_image(evil, str(resources)), "")
 
     def test_manifest_file_name_cannot_escape_directory(self):
+        """清单里的 file/frames 只能是目录内的相对 .png,不能穿越出去。"""
         with tempfile.TemporaryDirectory() as tmp:
             resources = _make_resources(
-                Path(tmp), [{"id": "a", "label": "A", "file": "../../outside.png"}])
+                Path(tmp), [{"id": "a", "label": "A", "file": "a.png"}])
+            manifest = resources / "pet" / "presets.json"
+            manifest.write_text(json.dumps({"presets": [{
+                "id": "a", "label": "A", "file": "../../outside.png",
+                "frames": {"idle": "../../outside.png", "wave": "/etc/passwd.png",
+                           "cheer": "C:/windows/x.png", "blink": "a/../../up.png"},
+            }]}), encoding="utf-8")
             preset = pet_art.list_pet_presets(str(resources))[0]
-            self.assertEqual(Path(preset.path).name, "outside.png")
-            self.assertTrue(Path(preset.path).resolve().is_relative_to(resources.resolve()),
-                            "file 字段被 basename 收敛,不能写到立绘目录之外")
+            self.assertTrue(preset.exists, "file 非法时应退回 <id>.png")
+            self.assertTrue(Path(preset.path).resolve().is_relative_to(resources.resolve()))
+            self.assertEqual(sorted(preset.frames), ["idle"],
+                             f"非法路径的姿势帧必须被丢弃: {preset.frames}")
+            self.assertTrue(
+                Path(preset.frames["idle"]).resolve().is_relative_to(resources.resolve()))
+
+    def test_frames_may_live_in_a_subdirectory(self):
+        """立绘与姿势帧按约定放 <id>/ 子目录,不能像以前那样被 basename 压平。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            resources = _make_resources(Path(tmp), [{
+                "id": "nav", "label": "导航", "file": "nav/idle.png",
+                "frames": {"idle": "nav/idle.png", "wave": "nav/wave.png"},
+            }], default="nav")
+            preset = pet_art.list_pet_presets(str(resources))[0]
+            self.assertTrue(preset.exists, f"子目录立绘没解析到: {preset.path}")
+            self.assertEqual(preset.path, str(resources / "pet" / "nav" / "idle.png"))
+            self.assertEqual(sorted(preset.frames), ["idle", "wave"])
+            frames = pet_art.resolve_pet_frames("", str(resources))
+            self.assertEqual(sorted(frames), ["idle", "wave"])
+            self.assertTrue(Path(frames["wave"]).is_file())
+
+    def test_frames_auto_discovered_without_manifest_entry(self):
+        """清单不写 frames 也能动:约定 <id>/*.png,文件名即角色名。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            resources = _make_resources(
+                Path(tmp), [{"id": "nav", "label": "导航", "file": "nav.png"}])
+            folder = resources / "pet" / "nav"
+            folder.mkdir(parents=True, exist_ok=True)
+            for role in ("idle", "blink", "wave"):
+                (folder / f"{role}.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            (folder / "notes.txt").write_text("x", encoding="utf-8")
+            preset = pet_art.list_pet_presets(str(resources))[0]
+            self.assertEqual(sorted(preset.frames), ["blink", "idle", "wave"])
+
+    def test_static_preset_has_only_idle_frame(self):
+        """单图预设(无姿势帧)只给 idle,界面据此退回单图动画。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            resources = _make_resources(
+                Path(tmp), [{"id": "solo", "label": "单图", "file": "solo.png"}], default="solo")
+            preset = pet_art.list_pet_presets(str(resources))[0]
+            self.assertEqual(sorted(preset.frames), ["idle"])
+            self.assertEqual(preset.frames["idle"], preset.path)
+            self.assertEqual(pet_art.resolve_pet_frames("", str(resources)),
+                             {"idle": str(resources / "pet" / "solo.png")})
+            # 自绘形体与用户自备图没有姿势帧
+            self.assertEqual(pet_art.resolve_pet_frames("vector", str(resources)), {})
+            self.assertEqual(pet_art.resolve_pet_frames(r"D:\pics\a.png", str(resources)), {})
 
 
 if __name__ == "__main__":

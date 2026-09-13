@@ -24,7 +24,12 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from backend import quota_math
-from backend.pet_art import default_preset_token, list_pet_presets, resolve_pet_image
+from backend.pet_art import (
+    default_preset_token,
+    list_pet_presets,
+    resolve_pet_frames,
+    resolve_pet_image,
+)
 from backend.pet_config import (
     SOURCE_AUTO,
     SOURCE_MANUAL,
@@ -284,6 +289,11 @@ class NewApiPet(QObject):
     def petImageSource(self) -> str:
         """立绘令牌解析后的绝对路径;空串 = 用 PetSprite 自绘的矢量形体。"""
         return resolve_pet_image(self._effective_config().pet_image, self._resources_dir)
+
+    @Property("QVariantMap", notify=configSaved)
+    def petImageFrames(self) -> dict:
+        """当前预设的姿势帧表(角色 → 绝对路径);空表 = 只有单图或自绘形体。"""
+        return resolve_pet_frames(self._effective_config().pet_image, self._resources_dir)
 
     @Property("QVariantList", notify=configSaved)
     def petImagePresets(self) -> list:

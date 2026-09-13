@@ -636,6 +636,8 @@ Item {
         // 这里不再挂 panel.ready:立绘跟凭证就绪与否无关,挂上会让桌宠在启动瞬间
         // 先闪一下自绘形体再换成立绘。
         imagePath: NewApiPet && NewApiPet.petImageSource ? NewApiPet.petImageSource : ""
+        // 姿势帧表(角色 → 绝对路径);空表 = 只有单图或自绘形体,状态机自动降级
+        frames: NewApiPet && NewApiPet.petImageFrames ? NewApiPet.petImageFrames : ({})
         alert: panel.alertState
     }
 
@@ -661,6 +663,7 @@ Item {
             lastY = mouse.y
             moved = false
             if (mouse.button === Qt.LeftButton) cursorShape = Qt.ClosedHandCursor
+            petSprite.poke()
         }
         onPositionChanged: function (mouse) {
             if (!pressed || mouse.buttons !== Qt.LeftButton) return
@@ -670,23 +673,32 @@ Item {
             moved = true
             petWindow.x += dx
             petWindow.bottomY += dy
+            // 拖着走时按横向速度前倾,松手回正(纯观感,不影响落点位置)
+            petSprite.lean(dx * 2.5)
         }
         onReleased: function (mouse) {
             cursorShape = Qt.OpenHandCursor
+            petSprite.lean(0)
             if (moved && panel.petReady) {
                 NewApiPet.savePosition(Math.round(petWindow.x), Math.round(petWindow.bottomY))
             }
         }
         onClicked: function (mouse) {
             if (moved) return
+            petSprite.poke()
             if (mouse.button === Qt.RightButton) {
                 // 框架菜单:在指针处弹出;屏幕避让/点外关闭由 PopupWindowCore 接管。
                 contextMenu.popup(mouse.x, mouse.y, petMouse)
             } else {
+                // 点桌宠 = 打招呼,再展开明细
+                petSprite.playPose("wave", 900)
                 petWindow.toggleDetail()
             }
         }
-        onEntered: petWindow.showBubble()
+        onEntered: {
+            petSprite.poke()
+            petWindow.showBubble()
+        }
     }
 
     // ============================================================ 右键菜单

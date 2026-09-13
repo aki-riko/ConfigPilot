@@ -109,6 +109,95 @@ def build_prompt(style: str) -> str:
     return f"{STYLES[style]['brief']}, {STYLE_CORE}. {AVOID}."
 
 
+# ---------------------------------------------------------------- 姿势帧
+# 姿势不重新描述角色,而是拿已定稿的立绘走 /images/edits:同一张参考图改动作,
+# 五官/服饰/线宽/上色才不会逐帧漂移。idle 就是定稿图本身,不再二次生成。
+POSE_LOCK = (
+    "Keep the exact same character: identical face, hairstyle and hair color, eye color, "
+    "outfit, accessories, colors, thick dark-brown line art and flat cel shading, "
+    "identical body proportions, camera angle, framing and overall scale. "
+    "Full body standing on the same ground line, centered, transparent background, "
+    "no text, no watermark, no frame, no shadow on the ground."
+)
+
+POSES: dict[str, str] = {
+    "blink": "close both eyes in a soft gentle blink, keep the smile and the pose exactly the same",
+    "wave": "raise one hand up beside her head in a friendly wave, tuck the golden coin under the other arm",
+    "cheer": "lift the golden coin overhead with both hands, big open-mouth happy smile, tiny sparkle marks",
+    "sleepy": "eyes closed, head tilted slightly, calm sleepy smile, both arms hugging the coin, one small zzz bubble beside her head",
+    "alert": "worried startled expression with wide eyes and a sweat drop, holding a tiny empty coin purse in both hands",
+}
+
+
+def _edit(model: str, reference: bytes, prompt: str, size: str, quality: str,
+          timeout: int) -> bytes:
+    """调 /images/edits(multipart)以参考图改姿势,返回 PNG 字节。"""
+    key = api_key()
+    url = f"{api_base()}/images/edits"
+    last_error = ""
+    profiles = [
+        {"background": "transparent", "output_format": "png"},
+        {"background": "transparent", "response_format": "b64_json"},
+        {"output_format": "png"},
+        {},
+    ]
+    for extra in profiles:
+        fields = {"model": model, "prompt": prompt, "size": size}
+        if quality:
+            fields["quality"] = quality
+        fields.update(extra)
+        status, body = _post_multipart(url, fields, {"image": ("reference.png", reference)},
+                                       key, timeout)
+        if status == 200:
+            try:
+                payload = json.loads(body)
+            except ValueError:
+                last_error = f"响应不是 JSON: {body[:200]!r}"
+                continue
+            item = (payload.get("data") or [{}])[0]
+            blob = _decode_item(item, key, timeout)
+            if blob:
+                print(f"  [OK] edits 生效参数集 {sorted(extra)}")
+                return blob
+            last_error = f"响应无图片数据: {json.dumps(payload, ensure_ascii=False)[:240]}"
+        else:
+            last_error = f"HTTP {status}: {body.decode('utf-8', 'replace')[:240]}"
+        if status in (401, 403):
+            break
+    raise RuntimeError(f"edits 失败 -> {last_error}")
+
+
+def _post_multipart(url: str, fields: dict, files: dict, key: str,
+                    timeout: int) -> tuple[int, bytes]:
+    """手搓 multipart,不引入 requests。"""
+    import io
+    import uuid
+
+    boundary = uuid.uuid4().hex
+    buf = io.BytesIO()
+    for name, value in fields.items():
+        buf.write(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode())
+        buf.write(str(value).encode("utf-8"))
+        buf.write(b"\r\n")
+    for name, (filename, payload) in files.items():
+        buf.write(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; '
+                  f'filename="{filename}"\r\nContent-Type: image/png\r\n\r\n'.encode())
+        buf.write(payload)
+        buf.write(b"\r\n")
+    buf.write(f"--{boundary}--\r\n".encode())
+    request = urllib.request.Request(url, data=buf.getvalue(), headers={
+        "Authorization": f"Bearer {key}",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"接口不可达: {url} -> {exc.reason}") from exc
+
+
 # ---------------------------------------------------------------- HTTP 调用
 def api_base() -> str:
     base = os.environ.get("RELYX_API_BASE", "").strip().rstrip("/")
@@ -413,6 +502,178 @@ def write_preview(image_path: Path, preview_path: Path, size: int = 256) -> None
     canvas.save(str(preview_path), "PNG")
 
 
+def feet_center_x(image) -> float:
+    """脚部像素质心 x(取不透明区域最下面 10 行的 alpha 加权平均)。
+
+    横向对齐不能用整体包围盒中心:挥手 / 举金币时包围盒会朝一侧偏,按中心对齐
+    会让角色左右跳。脚是站立的支点,拿它对齐才稳。
+    """
+    width, height = image.width(), image.height()
+    view, bpl = _buffer(image)
+    band = max(1, min(10, height))
+    total = 0.0
+    weighted = 0.0
+    for y in range(height - band, height):
+        row = view[y * bpl + 3:y * bpl + width * 4:4]
+        for x in range(width):
+            alpha = row[x]
+            if alpha > 8:
+                total += alpha
+                weighted += alpha * x
+    if total <= 0:
+        return width / 2.0
+    return weighted / total
+
+
+def _decode_and_crop(QImage, raw: bytes):
+    """解码 → 必要时抠底 → 按 alpha 包围盒裁切,返回 (裁剪图, 包围盒高)。"""
+    image = QImage.fromData(raw, "PNG")
+    if image.isNull():
+        image = QImage.fromData(raw)
+    if image.isNull():
+        raise RuntimeError("返回内容不是可解码的 PNG")
+    image = image.convertToFormat(QImage.Format_ARGB32)
+    if not has_real_transparency(image):
+        remove_solid_background(image)
+    box = alpha_bbox(image)
+    if box:
+        image = image.copy(*box)
+    return image, (box[3] if box else image.height())
+
+
+def finalize_group(frames: list[tuple[str, bytes]], out_dir: Path, final_size: int,
+                   margin_ratio: float) -> list[dict]:
+    """把一组姿势帧对齐到同一基线并输出。
+
+    每帧各自按 alpha 包围盒高度归一化到同一个输出身高:各帧的接口原图分辨率可能不同
+    (idle 可能是上一轮已缩到 512 的成品,姿势帧是 1024 原图),跨分辨率比包围盒绝对值
+    没有意义,只能各自归一。实测同一参考图出来的各帧"角色占画面比例"几乎一致(约 90%),
+    所以归一后彼此不会跳。
+
+    横向用脚部像素质心对齐(不是包围盒中心):挥手 / 举金币会让包围盒朝一侧偏,
+    按中心对齐角色会左右抖,脚才是站立的支点。
+    """
+    QImage = _qt_image_class()
+    pad = int(final_size * margin_ratio)
+    body_height = final_size - 2 * pad
+    baseline_y = pad + body_height
+
+    results = []
+    for role, raw in frames:
+        cropped, height = _decode_and_crop(QImage, raw)
+        if height <= 0:
+            continue
+        scale = body_height / height
+        width = max(1, int(round(cropped.width() * scale)))
+        tall = max(1, int(round(height * scale)))
+        scaled = cropped.scaled(width, tall)
+        canvas = QImage(final_size, final_size, QImage.Format_ARGB32)
+        canvas.fill(0x00000000)
+        x = int(round(final_size / 2 - feet_center_x(scaled)))
+        _paste_clamped(canvas, scaled, x, baseline_y - tall)
+        out_path = out_dir / f"{role}.png"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if not canvas.save(str(out_path), "PNG"):
+            raise RuntimeError(f"PNG 写入失败: {out_path}")
+        results.append({"role": role, "path": str(out_path), "scale": round(scale, 4),
+                        "bbox": (cropped.width(), height), "size": (width, tall)})
+    return results
+
+
+def _paste_clamped(dst_image, src_image, x: int, y: int) -> None:
+    """带裁剪的像素块拷贝(姿势帧可能超出画布,越界部分丢弃而不是崩)。"""
+    src_view, src_bpl = _buffer(src_image)
+    dst_view, dst_bpl = _buffer(dst_image)
+    src_x0 = max(0, -x)
+    src_y0 = max(0, -y)
+    src_x1 = min(src_image.width(), dst_image.width() - x)
+    src_y1 = min(src_image.height(), dst_image.height() - y)
+    if src_x1 <= src_x0 or src_y1 <= src_y0:
+        return
+    payload = bytes(src_view[: src_bpl * src_image.height()])
+    for row in range(src_y0, src_y1):
+        src_start = row * src_bpl + src_x0 * 4
+        src_end = row * src_bpl + src_x1 * 4
+        start = (y + row) * dst_bpl + (x + src_x0) * 4
+        dst_view[start:start + (src_end - src_start)] = payload[src_start:src_end]
+
+
+def write_strip(paths: list[Path], strip_path: Path, tile: int = 256) -> None:
+    """把所有帧并排叠到深色底上,一眼检查一致性与基线对齐。"""
+    QImage = _qt_image_class()
+    canvas = QImage(tile * max(1, len(paths)), tile, QImage.Format_ARGB32)
+    canvas.fill(0xFF2A2F3A)
+    view, bpl = _buffer(canvas)
+    for index, path in enumerate(paths):
+        tile_image = QImage(str(path))
+        if tile_image.isNull():
+            continue
+        tile_image = tile_image.scaled(tile, tile).convertToFormat(QImage.Format_ARGB32)
+        src_view, src_bpl = _buffer(tile_image)
+        pixels = bytes(src_view[: src_bpl * tile])
+        for y in range(tile):
+            row_start = y * src_bpl
+            for x in range(tile):
+                so = row_start + x * 4
+                alpha = pixels[so + 3]
+                if alpha == 0:
+                    continue
+                o = y * bpl + (index * tile + x) * 4
+                for channel in range(3):
+                    view[o + channel] = (pixels[so + channel] * alpha
+                                         + view[o + channel] * (255 - alpha)) // 255
+                view[o + 3] = 0xFF
+    strip_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(str(strip_path), "PNG")
+
+
+def generate_poses(reference_path: Path, roles: list[str], model: str, size: str,
+                   quality: str, timeout: int, out_dir: Path, final_size: int,
+                   margin_ratio: float, keep_raw: bool, align_only: bool = False) -> int:
+    """以定稿立绘为参考逐帧改姿势,并对齐成一组动画帧。
+
+    ``align_only`` 用已存的 ``<role>__raw.png`` 重跑对齐,不再生图 —— 调对齐参数时
+    不必反复花额度。
+    """
+    frames: list[tuple[str, bytes]] = []
+    if align_only:
+        stored = out_dir / "idle__raw.png"
+        if not stored.is_file():
+            stored = reference_path
+        frames.append(("idle", stored.read_bytes()))
+        print(f"[IDLE] {stored}")
+    else:
+        frames.append(("idle", reference_path.read_bytes()))
+    for role in roles:
+        raw_path = out_dir / f"{role}__raw.png"
+        if align_only:
+            if raw_path.is_file():
+                frames.append((role, raw_path.read_bytes()))
+            else:
+                print(f"[SKIP] 没有 {raw_path.name}", file=sys.stderr)
+            continue
+        prompt = f"{POSES[role]}, {POSE_LOCK}. {AVOID}."
+        print(f"[POSE] {role} x {model}")
+        try:
+            blob = _edit(model, reference_path.read_bytes(), prompt, size, quality, timeout)
+        except RuntimeError as exc:
+            print(f"[FAIL] {role}: {exc}", file=sys.stderr)
+            continue
+        if keep_raw:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            raw_path.write_bytes(blob)
+        frames.append((role, blob))
+    results = finalize_group(frames, out_dir, final_size, margin_ratio)
+    paths = [Path(item["path"]) for item in results]
+    write_strip(paths, out_dir / "_strip.png", min(final_size, 256))
+    for item in results:
+        print(f"[OK] {item['path']} bbox={item['bbox']} scale={item['scale']} "
+              f"size={item['size']}")
+    print(f"[OK] 对照条: {out_dir / '_strip.png'}")
+    expected = len(roles) + 1
+    return 0 if len(results) == expected else 1
+
+
 # ---------------------------------------------------------------- 安装
 def install(artifact: Path, pet_name: str, update_config: bool) -> int:
     """把定稿立绘放进 resources/pet/,并可选写入桌宠配置的 pet_image。"""
@@ -438,6 +699,8 @@ def install(artifact: Path, pet_name: str, update_config: bool) -> int:
 # ---------------------------------------------------------------- 自检
 def self_test(out_dir: Path) -> int:
     """不联网:合成两种输入(纯色背景 / 已带透明底),验证后处理全链路。"""
+    from PySide6.QtCore import QBuffer, QIODevice
+
     QImage = _qt_image_class()
     size = 256
     image = QImage(size, size, QImage.Format_ARGB32)
@@ -466,6 +729,39 @@ def self_test(out_dir: Path) -> int:
     stats_t = finalize(raw_t.read_bytes(), out_dir / "_selftest_alpha_final.png",
                        DEFAULT_FINAL_SIZE, 0.06)
 
+    # 用例 C:姿势帧对齐 —— 不同分辨率/不同包围盒高的帧,必须归一成同一身高 + 同一基线。
+    # (这两条正是实际踩过的坑:跨分辨率比包围盒绝对值会把帧放大到裁切。)
+    def frame_image(side: int, x0: int, y0: int, x1: int, y1: int) -> bytes:
+        canvas = QImage(side, side, QImage.Format_ARGB32)
+        canvas.fill(0x00000000)
+        fview, fbpl = _buffer(canvas)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                o = y * fbpl + x * 4
+                fview[o], fview[o + 1], fview[o + 2], fview[o + 3] = 0x3A, 0x5C, 0xC8, 0xFF
+        buffer = QBuffer()
+        buffer.open(QIODevice.WriteOnly)
+        canvas.save(buffer, "PNG")
+        return bytes(buffer.data())
+
+    frames = [
+        ("idle", frame_image(256, 90, 60, 180, 210)),      # 小图,矮
+        ("wave", frame_image(512, 200, 300, 360, 500)),    # 大图,高
+        ("cheer", frame_image(256, 100, 20, 170, 210)),    # 头顶多一截道具
+    ]
+    group_dir = out_dir / "_selftest_frames"
+    group = finalize_group(frames, group_dir, DEFAULT_FINAL_SIZE, 0.06)
+    body_height = DEFAULT_FINAL_SIZE - 2 * int(DEFAULT_FINAL_SIZE * 0.06)
+    baseline = int(DEFAULT_FINAL_SIZE * 0.06) + body_height
+    heights = []
+    baselines = []
+    for item in group:
+        loaded = QImage(item["path"]).convertToFormat(QImage.Format_ARGB32)
+        box = alpha_bbox(loaded)
+        self_ok = box is not None and box[3] == body_height
+        heights.append(self_ok)
+        baselines.append(box is not None and box[1] + box[3] == baseline)
+
     checks = {
         "纯色背景已抠除": stats["removed_px"] > 20000,
         "输出尺寸 512": stats["out"] == (DEFAULT_FINAL_SIZE, DEFAULT_FINAL_SIZE),
@@ -474,6 +770,8 @@ def self_test(out_dir: Path) -> int:
         "透明底被识别": stats_t["had_alpha"] is True,
         "透明底未被二次抠图": stats_t["removed_px"] == 0,
         "透明底裁边(100x160)": stats_t["trimmed"] == (100, 160),
+        "姿势帧全部归一成同一身高": all(heights) and len(heights) == 3,
+        "姿势帧全部压在同一基线": all(baselines) and len(baselines) == 3,
     }
     for name, passed in checks.items():
         print(f"  {'PASS' if passed else 'FAIL'}  {name}")
@@ -502,6 +800,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--install", metavar="FILE", help="把指定立绘装进 resources/pet/")
     parser.add_argument("--pet-name", default="navigator")
     parser.add_argument("--no-config", action="store_true", help="安装时不改用户配置")
+    parser.add_argument("--poses", metavar="ROLES",
+                        help="逗号分隔的姿势帧:" + "/".join(POSES) + " 或 all")
+    parser.add_argument("--from-file", metavar="FILE",
+                        help="姿势参考图(默认 resources/pet/<style>.png)")
+    parser.add_argument("--frames-out", metavar="DIR", help="动画帧输出目录")
+    parser.add_argument("--align-only", action="store_true",
+                        help="只用已存的 <role>__raw.png 重跑对齐,不再生图")
     parser.add_argument("--list-styles", action="store_true", help="打印角色概念")
     args = parser.parse_args(argv)
 
@@ -517,6 +822,23 @@ def main(argv: list[str] | None = None) -> int:
         return install(Path(args.install), args.pet_name, not args.no_config)
     if args.ping:
         return ping()
+    if args.poses:
+        roles = list(POSES) if args.poses == "all" else [
+            r.strip() for r in args.poses.split(",") if r.strip()]
+        unknown = [r for r in roles if r not in POSES]
+        if unknown:
+            raise SystemExit(f"未知姿势 {unknown},可选 {list(POSES)} 或 all")
+        reference = Path(args.from_file) if args.from_file \
+            else REPO_ROOT / "resources" / "pet" / f"{args.style}.png"
+        if not reference.is_file():
+            raise SystemExit(f"找不到姿势参考图: {reference}")
+        frames_dir = Path(args.frames_out) if args.frames_out \
+            else out_dir / "frames" / reference.stem
+        print(f"[REF] {reference}")
+        return generate_poses(reference, roles, args.models.split(",")[0].strip(),
+                              args.size, args.quality, args.timeout, frames_dir,
+                              args.final_size, args.margin, args.keep_raw,
+                              args.align_only)
 
     if args.style != "all" and args.style not in STYLES:
         raise SystemExit(f"未知 --style {args.style},可选 {list(STYLES)} 或 all")

@@ -202,6 +202,11 @@ class StubPet(QObject):
         from backend.pet_art import resolve_pet_image
 
         return resolve_pet_image(self.configPetImage, self._resources_dir)
+    @Property("QVariantMap", notify=configSaved)
+    def petImageFrames(self):
+        from backend.pet_art import resolve_pet_frames
+
+        return resolve_pet_frames(self.configPetImage, self._resources_dir)
     @Property("QVariantList", notify=configSaved)
     def petImagePresets(self):
         from backend.pet_art import list_pet_presets
@@ -351,9 +356,17 @@ class PetQmlLoadTests(unittest.TestCase):
         sprite = window.findChild(QQuickItem, "petSprite")
         self.assertIsNotNone(sprite, "找不到桌宠本体节点")
         image_path = str(sprite.property("imagePath")).replace("\\", "/")
-        self.assertTrue(image_path.lower().endswith("resources/pet/navigator.png"),
+        self.assertTrue(image_path.lower().endswith("resources/pet/navigator/idle.png"),
                         f"桌宠没有用上默认内置立绘: {image_path!r}")
         self.assertTrue(Path(image_path).is_file(), f"立绘文件不存在: {image_path}")
+
+        # 姿势帧要真的传到 PetSprite,否则动画状态机静默降级成单图(界面看不出问题)
+        frames = sprite.property("frames")
+        frames = frames.toVariant() if hasattr(frames, "toVariant") else frames
+        self.assertEqual(sorted(frames), ["alert", "blink", "cheer", "idle", "sleepy", "wave"],
+                         f"姿势帧没传到 PetSprite: {frames!r}")
+        for role, path in frames.items():
+            self.assertTrue(Path(path).is_file(), f"{role} 帧文件不存在: {path}")
 
         dialog = self._create(engine, "PetSettingsDialog.qml")
         # QML 的 var 数组读回来是 QJSValue,要先 toVariant() 才是 Python 列表
@@ -365,6 +378,50 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertEqual(dialog.property("activeImageToken"), "preset:navigator",
                          "配置留空时芯片应高亮清单里的默认立绘")
         self.assertTrue(Path(str(dialog.property("petImagePreviewPath"))).is_file())
+
+    def test_pose_state_machine_priority_and_fallback(self):
+        """姿势优先级 alert > 一次性姿势 > 基础姿势;缺帧/无帧要能降级而不是空白。"""
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+        sprite = window.findChild(QQuickItem, "petSprite")
+        self.assertIsNotNone(sprite)
+
+        def shown():
+            return str(sprite.property("shownPath")).replace("\\", "/").lower()
+
+        self.assertTrue(shown().endswith("navigator/idle.png"), shown())
+
+        sprite.setProperty("basePose", "sleepy")
+        APP.processEvents()
+        self.assertTrue(shown().endswith("navigator/sleepy.png"), shown())
+
+        sprite.setProperty("activePose", "wave")
+        APP.processEvents()
+        self.assertTrue(shown().endswith("navigator/wave.png"), "一次性姿势应盖过基础姿势")
+
+        sprite.setProperty("alert", True)
+        APP.processEvents()
+        self.assertTrue(shown().endswith("navigator/alert.png"), "告警优先级必须最高")
+
+        # 收尾:告警解除 + 一次性姿势结束 → 回到基础姿势
+        sprite.setProperty("alert", False)
+        sprite.setProperty("activePose", "")
+        APP.processEvents()
+        self.assertTrue(shown().endswith("navigator/sleepy.png"), shown())
+
+        # 未知角色帧 → 退回 idle,不能变成空白(空白会让桌宠"隐身")
+        sprite.setProperty("activePose", "does_not_exist")
+        APP.processEvents()
+        self.assertTrue(shown().endswith("navigator/idle.png"), shown())
+
+        # 无帧形象(用户自备图) → 退回主立绘路径,而不是留下空白
+        sprite.setProperty("activePose", "")
+        sprite.setProperty("frames", {})
+        sprite.setProperty("imagePath", "D:/pics/custom_pet.png")
+        APP.processEvents()
+        self.assertTrue(shown().endswith("pics/custom_pet.png"), shown())
 
     def test_settings_form_scrolls_instead_of_overflowing(self):
         """设置表单由 Fluent.ScrollArea 承载:内容可以长过视口,但必须能滚动到。

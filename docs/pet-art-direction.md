@@ -73,6 +73,53 @@ $env:RELYX_API_KEY  = "<可用的 sk-...>"
 .venv\Scripts\python.exe scripts\generate_pet_art.py --self-test
 ```
 
+## 姿势帧与动画
+
+静态立绘哪怕再好看，放在桌面上也只是"贴纸"。所以定稿形象另外出了一组姿势帧，
+由 `qml/pet/PetSprite.qml` 的状态机驱动：
+
+| 角色 | 触发条件 | 表现 |
+| --- | --- | --- |
+| `idle` | 基准 | 抱金币站立 |
+| `blink` | 空闲时每 3.2~5.8s 随机插播 220ms | 闭眼，把"贴纸"变成活的 |
+| `wave` | 左键点击 / 从打瞌睡里被叫醒 | 抬手挥动 |
+| `cheer` | 余额变动（`usageBumped` → `bounce()`） | 双手举金币 + 闪光 |
+| `sleepy` | 90s 无任何交互 | 闭眼歪头 + zzz |
+| `alert` | 余额耗尽 / 请求失败（优先级最高） | 抱一个空钱袋 + 担忧脸 + 红色角标 |
+
+配套的程序化补间（不依赖素材，单图形象同样生效）：上下浮动、±2.2° 缓慢左右摇摆、
+以脚底为原点的挤压拉伸（压扁 → 拉长 → 回弹）、拖动时按横向速度前倾、松手回正。
+姿势之间用**两层交叉淡入 100ms** 而不是硬切：生图各帧不可能逐像素对齐，硬切会看到"跳"。
+
+### 姿势帧怎么来的
+
+不重新描述角色，而是拿定稿立绘走 `/images/edits`（multipart，`image=<定稿图>`）：
+同一张参考图只改动作，五官/发色/服饰/线宽/上色才不逐帧漂移。
+实测六个角色的帽徽、辫子、斗篷青边、腰带罗盘与钥匙、靴子全部一致。
+
+```powershell
+$env:RELYX_API_BASE = "https://api.relyx.cc/v1"; $env:RELYX_API_KEY = "<sk-...>"
+# 出一整套姿势帧(以 resources/pet/navigator/idle.png 为参考)
+.venv\Scripts\python.exe scripts\generate_pet_art.py --poses all --style navigator `
+    --models gpt-image-2.5-flare --keep-raw
+# 只调对齐参数时用已存的 __raw.png 重排,不花额度
+.venv\Scripts\python.exe scripts\generate_pet_art.py --poses all --align-only --keep-raw `
+    --from-file .artifacts\pet\frames\navigator\idle__raw.png `
+    --frames-out .artifacts\pet\frames\navigator
+```
+
+### 对齐规则（两个真实的坑）
+
+1. **每帧各自按 alpha 包围盒高度归一**，不能共用同一个缩放系数：idle 参考图可能是上一轮
+   已缩到 512 的成品，姿势帧是 1024 原图，跨分辨率比包围盒绝对值没有意义。第一版按
+   anchor 帧算统一比例再夹 ±12%，结果后 5 帧被放大到裁切（只剩躯干）。实测同一参考图
+   出来的各帧"角色占画面比例"都在 90% 上下，各自归一后彼此不跳。
+2. **横向按脚部像素质心对齐**，不是包围盒中心：挥手 / 举金币会让包围盒朝一侧偏，
+   按中心对齐角色会左右抖，脚才是站立的支点。脚底则统一压到同一基线。
+
+`--self-test` 里有对应断言：三张不同分辨率、不同包围盒高度（含头顶多一截道具）的合成帧，
+输出必须身高一致且压在同一基线上。
+
 ## 已落地的接线
 
 立绘随程序发布在 `resources/pet/`（Nuitka 的 `--include-data-dir=resources=resources`
@@ -80,10 +127,14 @@ $env:RELYX_API_KEY  = "<可用的 sk-...>"
 
 | `pet_image` 取值 | 生效形象 |
 | --- | --- |
-| `""`（留空） | `resources/pet/presets.json` 里 `default` 指向的立绘，当前是 `preset:navigator` |
-| `preset:<id>` | 指定某个内置立绘 |
+| `""`（留空） | `resources/pet/presets.json` 里 `default` 指向的立绘，当前是 `preset:navigator`（带六帧动画） |
+| `preset:<id>` | 指定某个内置立绘（`navigator` 带动画；`barista` / `archivist` 目前是单图） |
 | `vector` | 老的自绘矢量小飞宠，仍然保留、仍然可选 |
 | `D:\pics\pet.png` | 用户自备图片（原行为，完全兼容） |
+
+姿势帧在清单里是 `frames: {角色: 相对路径}`；**不写 frames 也能动** —— 约定
+`resources/pet/<id>/<角色名>.png` 会自动发现，缺某个角色或整个 frames 为空时
+桌宠逐级退回 `idle` → 主立绘 → 自绘形体，不会出现空白隐身。
 
 - `backend/pet_art.py`：令牌 ↔ 绝对路径的唯一解析处（清单缺失时退化为扫描目录；
   id 过白名单正则，`file` 字段过 `basename`，不能穿越出立绘目录）。
@@ -94,9 +145,10 @@ $env:RELYX_API_KEY  = "<可用的 sk-...>"
 - `qml/pet/PetSettingsDialog.qml`：「桌宠外观」卡片加了 64px 实时预览 + 内置形象芯片行，
   点芯片只是把令牌写回原来的路径框，路径框仍是唯一提交值。
 
-验证：`tests/test_pet_art.py`（令牌解析 10 例）与 `tests/test_pet_ui.py`
-（`test_built_in_pet_art_reaches_sprite_and_chips` 串起"配置 → 解析 → QML 绑定"整条链，
-离屏抓图确认立绘真的画进了悬浮窗）。
+验证：`tests/test_pet_art.py`（令牌与姿势帧解析 13 例）与 `tests/test_pet_ui.py`
+（`test_built_in_pet_art_reaches_sprite_and_chips` 串起"配置 → 解析 → QML 绑定"整条链；
+`test_pose_state_machine_priority_and_fallback` 锁住姿势优先级与降级路径），
+另外离屏抓真实 `PetWindow` 窗口确认立绘与每种姿势都真的画进了悬浮窗。
 
 ## 定稿记录
 

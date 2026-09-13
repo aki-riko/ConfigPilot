@@ -4,7 +4,8 @@
 主界面设置页的开关、桌宠右键菜单的「设置…」都经过这里:
 - 开关只控制 auto_show 配置与悬浮窗显隐,窗口对象按需创建并复用;
 - 设置窗口同样懒创建,通过 openSettingsRequested 信号让 QML 自己弹出;
-- 用户从菜单「退出桌宠」关闭窗口时,同步把开关置为关闭并落盘。
+- 用户从菜单「退出程序」离开时走 Qt.quit()，不经过这里：退出意图不该顺手改掉开关。
+  只有窗口被单独关闭（例如设置页把桌宠关掉）才同步把开关置为关闭并落盘。
 """
 
 from __future__ import annotations
@@ -132,7 +133,7 @@ class PetManager(QObject):
 
     @Slot()
     def petWindowClosed(self) -> None:
-        """QML 侧关闭悬浮窗(右键菜单「退出桌宠」)时同步开关状态。"""
+        """QML 侧单独关闭悬浮窗时同步开关状态（右键「退出程序」不走这里）。"""
         if self._standalone:
             return
         if self._enabled:

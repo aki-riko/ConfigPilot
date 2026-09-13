@@ -2,6 +2,7 @@
 import QtQuick
 
 import PrismQML as Fluent
+import "dialogs"
 
 QtObject {
     id: root
@@ -97,6 +98,33 @@ QtObject {
                     repeat: false
                     onTriggered: autoUpdater.checkSilently()
                 }
+            }
+
+            // ==================== 关闭主窗口：先问，不静默缩托盘 ====================
+            // WindowsCore 在 closeRequested() 前把 closeRequestAccepted 复位为 true，
+            // 这里置 false 就让它走 _cancelCloseRequest()：窗口原样留着，什么都不发生。
+            // 真正的退出由对话框的 quitRequested 触发；quitApproved 用来放行退出时
+            // 系统补发的第二次关闭请求（否则 Qt.quit() 之后窗口还会再问一遍）。
+            property bool quitApproved: false
+
+            onCloseRequested: {
+                if (appWindow.quitApproved) {
+                    closeRequestAccepted = true
+                    return
+                }
+                closeRequestAccepted = false
+                if (!closeChoiceDialog.isOpen) closeChoiceDialog.open()
+            }
+
+            CloseChoiceDialog {
+                id: closeChoiceDialog
+                onQuitRequested: {
+                    appWindow.quitApproved = true
+                    Qt.quit()
+                }
+                // 缩到托盘只是隐藏窗口：桌宠由 PetManager 跟着主窗口一起隐藏，
+                // 托盘菜单「显示主界面」再把它叫回来。
+                onTrayRequested: appWindow.hide()
             }
         }
     }

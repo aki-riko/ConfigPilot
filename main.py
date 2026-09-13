@@ -142,6 +142,17 @@ def main() -> int:
         if not window_instance.isVisible():
             window_instance.show()
 
+    # 系统托盘:主窗口被收进托盘后还能叫回来,并提供「退出程序」入口。
+    # 关闭主窗口本身不在这里做决定 —— 由 qml/dialogs/CloseChoiceDialog.qml
+    # 问用户「退出程序 / 最小化到托盘 / 取消」,这里只接退出信号。
+    from backend.app_tray import install_app_tray
+
+    app_tray = install_app_tray(window_instance, taskbar_icon_path, "ConfigPilot")
+    if app_tray is not None:
+        app_tray.quitRequested.connect(app.quit)
+        # 保活:托盘控制器没有 Qt 父对象之外的引用,被 GC 掉图标就没了。
+        engine._app_tray_keepalive = app_tray
+
     # 余额监控桌宠:始终注册控制器与开关管理器(主界面设置页需要),
     # 悬浮窗与设置窗口按需懒创建;未配置 Key 时开关默认关,不影响原有行为。
     # 装配细节(凭证来源/窗口工厂/PetManager)统一在 pet_bootstrap 里。

@@ -772,14 +772,16 @@ Item {
                 petWindow.toggleDetail()
             } else if (actionId === "settings") {
                 if (panel.managerReady) PetManager.openSettings()
-            } else if (actionId === "quit") {
-                petWindow.close()
+            } else if (actionId === "quitApp") {
+                // 「退出程序」退出整个应用(独立入口就是桌宠进程),
+                // 不再只是关掉悬浮窗并把开关置为关闭。
+                petWindow.quitApplication()
             }
         }
 
         Fluent.Action { actionId: "refresh"; text: "立即刷新"; enabled: panel.petReady }
         Fluent.Action { actionId: "detail"; text: "明细面板" }
         Fluent.Action { actionId: "settings"; text: "设置…" }
-        Fluent.Action { actionId: "quit"; text: "退出桌宠" }
+        Fluent.Action { actionId: "quitApp"; text: "退出程序" }
     }
 }

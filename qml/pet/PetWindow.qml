@@ -136,16 +136,23 @@ Window {
 
     // ---------------------------------------------------------------- 生命周期
     onClosing: function (close) {
-        // 独立模式:真正退出进程。
-        if (standalone) {
+        // forceClose 由 quitApplication() / 独立模式置位:这次关闭是"进程要走了",
+        // 绝不能顺手把 auto_show 开关关掉(否则退出程序=下次启动桌宠不出现)。
+        if (forceClose || standalone) {
             forceClose = true
-            Qt.quit()
             return
         }
         // 集成模式:只隐藏窗口(实例保留,以便再次开启)并同步关掉开关。
         close.accepted = false
         hide()
         if (managerReady) PetManager.petWindowClosed()
+    }
+
+    // 右键菜单「退出程序」:退出整个应用(独立入口即桌宠进程本身)。
+    // 走 Qt.quit() 而不是 close():关窗会把开关改掉,退出意图不该有副作用。
+    function quitApplication() {
+        forceClose = true
+        Qt.quit()
     }
 
     function clampX(value) {

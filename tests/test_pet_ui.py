@@ -862,6 +862,35 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertEqual(warnings, [], "交互过程中出现 QML 运行期警告: " + " | ".join(warnings))
 
 
+    def test_context_menu_quit_action_exits_program(self):
+        """右键菜单里只剩「退出程序」:退出整个应用，不该顺手把桌宠开关关掉。"""
+        engine = self._engine(with_manager=True)
+        window = self._create(engine, "PetWindow.qml")
+        window.setProperty("visible", True)
+        APP.processEvents()
+
+        panel = window.findChild(QQuickItem, "petPanel")
+        menu = panel.findChild(QObject, "petContextMenu")
+        self.assertIsNotNone(menu, "右键菜单没有 objectName")
+
+        quit_action = menu.getAction("quitApp")
+        self.assertIsNotNone(quit_action, "菜单缺少「退出程序」动作")
+        self.assertEqual(str(quit_action.property("text")), "退出程序")
+        self.assertIsNone(menu.getAction("quit"), "旧的「退出桌宠」动作还留着")
+        self.assertNotIn("退出桌宠", _collect_texts(panel))
+
+        QMetaObject.invokeMethod(quit_action, "triggered")
+        APP.processEvents()
+
+        # forceClose 置位后，退出流程里补发的关闭不会再走 petWindowClosed()
+        self.assertTrue(bool(window.property("forceClose")),
+                        "退出程序必须置位 forceClose")
+        self.assertEqual(self._manager.window_closed_calls, 0,
+                         "退出程序不该把 auto_show 开关改掉")
+        self.assertTrue(bool(window.property("visible")),
+                        "退出动作不该自己把桌宠窗口关掉")
+
+
 class PetDisplayCurrencyTests(unittest.TestCase):
     """currency=auto 必须跟随站点展示口径,而不是固定乘 7.3。"""
 

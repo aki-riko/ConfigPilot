@@ -100,6 +100,8 @@ def install_pet(
         source_resolver=resolver,
         # 内置桌宠立绘随程序目录发布(resources/pet),不写进用户配置目录。
         resources_dir=os.path.join(app_dir, "resources"),
+        # 今日日志本地累计缓存:与配置文件同目录,重启后"今日已用"不清零。
+        log_store_path=str(pet_config_path.parent / "pet_logs.json"),
     )
 
     engine.rootContext().setContextProperty("PetStandalone", standalone)

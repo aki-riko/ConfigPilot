@@ -104,7 +104,7 @@ ISCC ConfigPilot.iss
 数据只凭 API Key 轮询 new-api 的只读接口（无需登录，令牌耗尽 / 过期 / 禁用也能查余额）：
 
 - `GET {base}/api/usage/token/` —— 令牌的总额度 / 已用 / 剩余
-- `GET {base}/api/log/token` —— 该令牌最近 1000 条日志，用于计算「今日已用」与明细列表
+- `GET {base}/api/log/token` —— 该令牌最近 1000 条日志，用于计算「今日已用」与明细列表。该接口**只回最近 1000 条且无分页**，单日调用超过 1000 次时窗口会滑掉更早的记录；桌宠因此把每轮窗口按稳定唯一键 `request_id` 增量并入本地缓存（`%LOCALAPPDATA%/ConfigPilot/pet_logs.json`，重启不丢），让「今日已用」覆盖全天。若离线期间今天新增超过 1000 条、缺口无法补齐，金额与次数会加 `≥` 前缀，诚实标注这是下限（注意：响应里的 `id` 是每次请求重排的相对序号，不能作去重键）。
 - `GET {base}/v1/dashboard/billing/{subscription,usage}` —— 账户钱包余额（走严格 `TokenAuth`，令牌被禁用/过期会 401，此时只影响该口径）
 - `GET {base}/api/status` —— 公开接口，读站点的额度展示口径与换算参数
 
@@ -129,7 +129,7 @@ ISCC ConfigPilot.iss
 
 > **限流友好**：new-api 的 `CriticalRateLimit` 是每 IP 每路由 20 次 / 20 分钟（约 1 次/分钟）。桌宠默认 120s 轮询、单飞不叠加请求；一旦收到 429/503 会按 `Retry-After` 自动退避（气泡显示「已限流，Ns 后自动重试」，期间不再发请求），退避不算错误。若你的站点限流更严，把 `poll_interval_seconds` 调大即可。
 
-> 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。`currency` 可选 **`auto`（默认，跟随站点）** / `CNY` / `USD` / `TOKENS`：站点在「系统设置 → 计费与支付 → 货币与展示」里选的是哪种展示口径，桌宠就出哪种（站点显示 `$` 就不会被擅自换算成 `¥`）；跟随模式下连 `quota_per_unit` 与汇率都取站点自己的值（来自公开的 `/api/status`）。显式写 `CNY` / `USD` 时才用本地 `quota_per_unit` / `cny_rate`。「今日已用」按本机时区零点统计 `type=2` 的消费日志。
+> 金额换算说明：new-api 的额度是整数计分，默认 `500000 = $1`（`QuotaPerUnit`）。`currency` 可选 **`auto`（默认，跟随站点）** / `CNY` / `USD` / `TOKENS`：站点在「系统设置 → 计费与支付 → 货币与展示」里选的是哪种展示口径，桌宠就出哪种（站点显示 `$` 就不会被擅自换算成 `¥`）；跟随模式下连 `quota_per_unit` 与汇率都取站点自己的值（来自公开的 `/api/status`）。显式写 `CNY` / `USD` 时才用本地 `quota_per_unit` / `cny_rate`。「今日已用」按本机时区零点统计 `type=2` 的消费日志，并把每轮接口窗口并入本地累计缓存（见上），因此超过 1000 次/天也不会「越用越少」；仅当离线缺口无法补齐时以 `≥` 标注下限。
 
 ## 配置 providers.json
 

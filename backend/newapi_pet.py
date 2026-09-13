@@ -24,6 +24,8 @@ from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from backend import quota_math
+from backend.async_tasks import SerialTaskRunner
+from backend.log_store import DailyLogStore, read_store, write_store
 from backend.pet_art import (
     default_preset_token,
     list_pet_presets,
@@ -77,6 +79,7 @@ class NewApiPet(QObject):
         config: PetConfig | None = None,
         source_resolver=None,
         resources_dir: str = "",
+        log_store_path: str = "",
         parent: QObject | None = None,
     ):
         super().__init__(parent)
@@ -121,6 +124,17 @@ class NewApiPet(QObject):
         }
         self._log_rows: list[dict[str, str]] = []
         self._raw_logs: list[Any] = []
+        # 今日日志本地累计缓存:接口窗口只有最近 1000 条,靠 request_id 增量合并
+        # 才能覆盖全天;log_store_path 为空(测试/独立入口)时退化为纯内存。
+        self._log_store_path = str(log_store_path or "")
+        self._log_store = DailyLogStore()
+        if self._log_store_path:
+            loaded = read_store(self._log_store_path)
+            if loaded is not None and self._log_store.load_payload(loaded):
+                LOGGER.info("桌宠今日日志缓存已从磁盘恢复(%d 条)。", len(self._log_store))
+        self._log_store_tasks: Optional[SerialTaskRunner] = None
+        self._log_store_saving = False
+        self._today_complete = True
         self._last_error = ""
         self._save_error = ""
         self._last_updated = 0.0
@@ -518,6 +532,36 @@ class NewApiPet(QObject):
         currency, per_unit, rate = self._display_params()
         return quota_math.format_quota_compact(quota, currency, per_unit, rate)
 
+    def _schedule_log_store_save(self, identity: str) -> None:
+        """把今日日志缓存落盘;序列化与写文件都在后台线程,主线程零阻塞。"""
+        if not self._log_store_path or not self._log_store.dirty or self._log_store_saving:
+            return
+        if self._log_store_tasks is None:
+            self._log_store_tasks = SerialTaskRunner(
+                self, thread_name="ConfigPilotPetLogStore", drain_on_close=True
+            )
+        payload = self._log_store.to_payload(identity)
+        revision = self._log_store.revision
+        path = self._log_store_path
+        self._log_store_saving = True
+        try:
+            self._log_store_tasks.submit(
+                lambda: write_store(path, payload),
+                lambda _result: self._log_store_saved(revision),
+                self._log_store_save_failed,
+            )
+        except RuntimeError as exc:  # 队列已关闭(退出中)
+            self._log_store_saving = False
+            LOGGER.info("桌宠日志落盘被跳过: %s", exc)
+
+    def _log_store_saved(self, revision: int) -> None:
+        self._log_store_saving = False
+        self._log_store.mark_saved(revision)
+
+    def _log_store_save_failed(self, exc: Exception) -> None:
+        self._log_store_saving = False
+        LOGGER.info("桌宠日志落盘失败(下轮重试): %s", exc)
+
     def _reformat_rows(self) -> None:
         """按当前生效口径重建"最近调用"行。
 
@@ -557,18 +601,26 @@ class NewApiPet(QObject):
     def lowBalance(self) -> bool:
         return not self._unlimited and self._total_available <= 0
 
+    @Property(bool, notify=usageChanged)
+    def todayLowerBound(self) -> bool:
+        """True = 今日日志存在本地无法补齐的缺口(离线期间新增超过接口 1000 条窗口),
+        此时金额/次数只是下限,UI 加"≥"前缀。"""
+        return not self._today_complete
+
     @Property(str, notify=usageChanged)
     def todayText(self) -> str:
         currency, per_unit, rate = self._display_params()
         amount = quota_math.format_quota(
             self._today["quota"], currency, per_unit, rate
         )
-        return f"今日已用 {amount} · {self._today['count']} 次"
+        prefix = "" if self._today_complete else "≥"
+        return f"今日已用 {prefix}{amount} · {prefix}{self._today['count']} 次"
 
     @Property(str, notify=usageChanged)
     def todayAmountText(self) -> str:
         """今日消费金额(不带前缀),供卡片拆行展示。"""
-        return self._fmt_compact(self._today["quota"])
+        prefix = "" if self._today_complete else "≥"
+        return prefix + self._fmt_compact(self._today["quota"])
 
     @Property(int, notify=usageChanged)
     def todayCount(self) -> int:
@@ -1049,8 +1101,13 @@ class NewApiPet(QObject):
             if previous_used is not None and self._total_used > previous_used:
                 self.usageBumped.emit()
         if isinstance(logs, list):
-            self._raw_logs = logs
-            self._today = quota_math.summarize_today(logs)
+            identity = f"{self._resolved_base}|{self._token_name}"
+            self._log_store.merge(logs, identity=identity)
+            merged = self._log_store.entries
+            self._raw_logs = merged
+            self._today = quota_math.summarize_today(merged)
+            self._today_complete = self._log_store.complete
+            self._schedule_log_store_save(identity)
             self._reformat_rows()
         self._last_updated = time.time()
         if self._config.source == SOURCE_AUTO and not self._last_error:

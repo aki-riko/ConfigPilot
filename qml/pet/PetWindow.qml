@@ -95,7 +95,10 @@ Window {
                                           : (failed ? "连接失败" : NewApiPet.balanceText)
     readonly property string todaySummary: ready ? NewApiPet.todayText : "—"
     readonly property string todayAmount: ready ? NewApiPet.todayAmountText : "—"
-    readonly property string todayCountText: ready ? (NewApiPet.todayCount + " 次") : "—"
+    readonly property string todayCountText: ready
+                                             ? ((NewApiPet.todayLowerBound ? "≥" : "")
+                                                + NewApiPet.todayCount + " 次")
+                                             : "—"
     readonly property string promptTokensText: ready ? NewApiPet.todayPromptTokensText : "—"
     readonly property string completionTokensText: ready ? NewApiPet.todayCompletionTokensText : "—"
     readonly property string grantedText: ready ? NewApiPet.grantedText : "—"

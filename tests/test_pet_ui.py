@@ -981,5 +981,101 @@ class PetRequestHeadersTests(unittest.TestCase):
                 self.assertEqual(pet.accountErrorBrief, expected)
 
 
+class PetTodayLogStoreTests(unittest.TestCase):
+    """控制器接线:接口窗口按 request_id 并入本地缓存,「今日已用」覆盖全天;
+    离线缺口加"≥"下限;落盘后重启不清零。"""
+
+    def setUp(self):
+        from datetime import datetime
+        now = datetime.now()
+        if now.hour == 0 and now.minute < 40:
+            self.skipTest("临近本地零点,窗口时间戳会跨天,跳过以免假失败")
+
+    def _pet(self, log_store_path=""):
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import PetConfig
+
+        config = PetConfig(currency="USD", base_url="", api_key="")
+        return NewApiPet("__no_such_config_path_for_test__.json", config,
+                         log_store_path=log_store_path)
+
+    @staticmethod
+    def _rows(start, count, step=1):
+        import time as _t
+        now_ts = int(_t.time())
+        return [
+            {
+                "id": i % 1000 + 1,  # 相对序号:真实站点每次请求重排,不可作键
+                "request_id": f"req-{i}",
+                "created_at": now_ts - i * step,
+                "type": 2,
+                "quota": 100 + i,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "model_name": "gpt-test",
+            }
+            for i in range(start, start + count)
+        ]
+
+    def _poll(self, pet, rows):
+        pet._pending = {"logs": True}  # noqa: SLF001
+        pet._staged = {}  # noqa: SLF001
+        pet._handle_logs({"success": True, "data": rows})  # noqa: SLF001
+        APP.processEvents()
+
+    @staticmethod
+    def _wait_saved(pet):
+        """等后台落盘线程把这一轮写完,避免临时目录清理竞态。"""
+        for _ in range(100):
+            APP.processEvents()
+            if not pet._log_store_saving and not pet._log_store.dirty:  # noqa: SLF001
+                return
+            QTest.qWait(20)
+
+    def test_accumulates_beyond_1000_window_with_lower_bound(self):
+        pet = self._pet()
+        self._poll(pet, self._rows(0, 1000))          # 启动即满窗 → 更早的今天没拿到
+        self.assertEqual(pet.todayCount, 1000)
+        self.assertTrue(pet.todayLowerBound)
+        self._poll(pet, self._rows(200, 1000))        # 窗口滑掉前 200 条,本地仍保留
+        self.assertEqual(pet.todayCount, 1200)
+        self.assertIn("≥", pet.todayText)
+        self.assertTrue(pet.todayAmountText.startswith("≥"))
+
+    def test_continuous_polling_stays_exact(self):
+        pet = self._pet()
+        self._poll(pet, self._rows(0, 500))           # 窗口不满 → 覆盖到零点,数字可信
+        self.assertFalse(pet.todayLowerBound)
+        self._poll(pet, self._rows(100, 1000))        # 满窗但与本地重叠 → 仍完整
+        self.assertEqual(pet.todayCount, 1100)
+        self.assertFalse(pet.todayLowerBound)
+
+    def test_logs_failure_keeps_accumulated_store(self):
+        pet = self._pet()
+        self._poll(pet, self._rows(0, 10))
+        before = pet.todayCount
+        pet._pending = {"logs": True}  # noqa: SLF001
+        pet._handle_logs({"success": False, "message": "boom"})  # noqa: SLF001
+        APP.processEvents()
+        self.assertEqual(pet.todayCount, before)
+
+    def test_restart_restores_from_disk(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "pet_logs.json")
+            pet1 = self._pet(path)
+            self._poll(pet1, self._rows(0, 10))
+            self._wait_saved(pet1)
+            self.assertTrue(Path(path).is_file(), "日志缓存必须已落盘")
+
+            pet2 = self._pet(path)                    # 模拟重启
+            self._poll(pet2, self._rows(5, 10))       # 重叠 req-5..9,新增 req-10..14
+            self.assertEqual(pet2.todayCount, 15)
+            self.assertFalse(pet2.todayLowerBound)
+            self._wait_saved(pet2)                    # 等写完再退出,避免清理竞态
+
+
 if __name__ == "__main__":
     unittest.main()

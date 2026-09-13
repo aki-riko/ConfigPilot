@@ -682,6 +682,18 @@ class CodexConfig(QObject):
                 "请完全重启 Codex；该项可用「恢复初始设置」还原",
             ),
             self._config_write_failed,
+    @Slot()
+    def repairSubagentDefaults(self):
+        """写入稳定的子代理默认模型与推理强度。"""
+        self._config_tasks.submit(
+            self._store.apply_subagent_defaults,
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "降智修复已写入",
+                '子代理默认已设为 gpt-5.6-sol / high；请完全重启 Codex 生效',
+            ),
+            self._config_write_failed,
+        )
         )
 
     @Slot()

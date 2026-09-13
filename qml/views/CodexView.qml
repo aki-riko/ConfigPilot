@@ -475,6 +475,18 @@ Item {
                          && CodexConfig
                          && CodexConfig.hasRestorableChanges
                 onClicked: restoreInitialDialog.open()
+            Fluent.Button {
+                objectName: "repairSubagentDefaultsButton"
+                Layout.minimumWidth: 112
+                Layout.preferredWidth: 112
+                Layout.maximumWidth: 112
+                style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.wrench
+                text: "修复降智"
+                enabled: !root.configBusy && CodexConfig
+                onClicked: CodexConfig.repairSubagentDefaults()
+            }
+
             }
 
             Fluent.Button {

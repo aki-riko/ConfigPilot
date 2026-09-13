@@ -228,8 +228,12 @@ Item {
             radius: Fluent.Enums.surfaceRadius(Fluent.Enums.radius.card)
             border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
             border.color: Fluent.Enums.stateColor.borderLight
-            // 不用 shadowLevel 令牌:各档的 blur 是像素量纲(4/8/16/32)、配的 alpha 只有
-            // 0.08~0.22,在 20px 余量下实测外侧 alpha 只有个位数,肉眼看不见。
+            // 不用 shadowLevel 令牌:各档的 blur 是像素量纲(RectangularShadow 收像素值,
+            // Card 正确读到 level2.blur = 4),配的 alpha 只有 0.08~0.22 —— 这是**已编码的
+            // 视觉取舍,不是框架缺陷**(blurNormalized 是给 MultiEffect 的另一套入口,
+            // 与这里无关,别把它当成同一字段的第二种解释)。只是在"卡片离窗口边只有
+            // 8px~20px"这个条件下,这几档实测外侧 alpha 只有个位数、看不出,所以这里
+            // 显式给一组实测扫出来的值。
             // 下面这组是实测扫出来的(真实窗口开/关阴影比像素):外侧剖面
             // 39/36/32/26/18/10/5/2(1/2/3/5/8/12/16/19px),20px 内自然衰减到 0。
             // color 的 alpha 给到 0.8 是因为 RectangularShadow 的 SDF 边缘衰减很陡,

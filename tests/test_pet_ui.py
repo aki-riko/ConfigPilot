@@ -177,6 +177,8 @@ class StubPet(QObject):
     def todayAmountText(self): return "¥267.86"
     @Property(int, notify=usageChanged)
     def todayCount(self): return 608
+    @Property(bool, notify=usageChanged)
+    def todayLowerBound(self): return False
     @Property(str, notify=usageChanged)
     def todayPromptTokensText(self): return "1.16B"
     @Property(str, notify=usageChanged)
@@ -600,6 +602,21 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertEqual(width, 340)
         self.assertEqual(height, max(EXPECTED_HEIGHTS.values()),
                          "窗口高度应恒定为最大形态高度")
+
+    def test_attach_pet_window_mask_smoke(self):
+        """像素遮罩装配冒烟:计时器挂上、离屏窗口不抛异常、保底矩形先铺。"""
+        from backend.pet_bootstrap import _attach_pet_window_mask
+
+        engine = self._engine()
+        window = self._create(engine, "PetWindow.qml")
+        _attach_pet_window_mask(window)
+        APP.processEvents()
+        self.assertTrue(hasattr(window, "_pet_mask_debounce"))
+        self.assertTrue(hasattr(window, "_pet_mask_followup"))
+        self.assertTrue(hasattr(window, "_pet_mask_sprite"),
+                        "姿势钩子必须挂到 petSprite,否则换姿势遮罩会失配")
+        self.assertFalse(window.mask().isEmpty(),
+                         "装配后必须先铺保底矩形,桌宠不能点不到")
 
     def test_shrink_waits_for_fade_out(self):
         """收缩时可见区必须等明细卡淡出结束再收。
@@ -1075,6 +1092,52 @@ class PetTodayLogStoreTests(unittest.TestCase):
             self.assertEqual(pet2.todayCount, 15)
             self.assertFalse(pet2.todayLowerBound)
             self._wait_saved(pet2)                    # 等写完再退出,避免清理竞态
+
+
+class PetMaskRegionBuilderTests(unittest.TestCase):
+    """_build_mask_region 纯函数:只有 alpha≥16 的像素进区域,DPR 映射正确。"""
+
+    @staticmethod
+    def _image(width, height, rects, alpha=255):
+        from PySide6.QtGui import QColor, QImage, QPainter
+
+        img = QImage(width, height, QImage.Format_ARGB32_Premultiplied)
+        img.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(img)
+        color = QColor(255, 0, 0, alpha)
+        for x, y, w, h in rects:
+            painter.fillRect(x, y, w, h, color)
+        painter.end()
+        return img
+
+    def _build(self, img, dpr=1.0):
+        from backend.pet_bootstrap import _build_mask_region
+
+        return _build_mask_region(bytes(img.constBits()), img.bytesPerLine(),
+                                  img.width(), img.height(), dpr)
+
+    def test_only_opaque_runs_are_kept(self):
+        region = self._build(self._image(40, 20, [(5, 3, 10, 7), (25, 12, 5, 5)]))
+        self.assertTrue(region.contains(QPoint(10, 6)))
+        self.assertTrue(region.contains(QPoint(27, 14)))
+        self.assertFalse(region.contains(QPoint(20, 6)))    # 两块之间的横向空白
+        self.assertFalse(region.contains(QPoint(10, 15)))   # 纵向空白
+        self.assertFalse(region.contains(QPoint(1, 1)))     # 全透明角落
+
+    def test_low_alpha_noise_excluded(self):
+        region = self._build(self._image(30, 10, [(5, 2, 10, 6)], alpha=8))
+        self.assertTrue(region.isEmpty(), "alpha 8 < 阈值 16,不该进遮罩")
+
+    def test_high_dpi_maps_to_logical_coords(self):
+        # dpr=2:设备图 80×40,设备矩形 (20,10,20,10) → 逻辑 (10,5,10,5)
+        region = self._build(self._image(80, 40, [(20, 10, 20, 10)]), dpr=2.0)
+        self.assertTrue(region.contains(QPoint(12, 7)))
+        self.assertTrue(region.contains(QPoint(19, 9)))
+        self.assertFalse(region.contains(QPoint(8, 3)))
+        self.assertFalse(region.contains(QPoint(21, 11)))
+
+    def test_transparent_image_gives_empty_region(self):
+        self.assertTrue(self._build(self._image(20, 20, [])).isEmpty())
 
 
 if __name__ == "__main__":

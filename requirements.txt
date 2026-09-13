@@ -1,5 +1,13 @@
 # ConfigPilot 运行依赖
 # 安装: pip install -r requirements.txt
 
+# 桌宠气泡需要 PrismQML 的这三项能力,缺任何一项都会退回"发布版文本气泡"或定位偏移:
+#   1. TipPopup 公开可配的 viewWidth / viewHeight(发布版本里尺寸是内部写死的 220×90)
+#   2. TipPopupWindow 的 customContentHost(气泡的三行富排版靠它承载)
+#   3. Qt.Tool 窗口上 target.mapToGlobal 的坐标退化修复(否则弹层整体偏 −170/−504px)
+# 这三项目前只在本地修复分支(prismqml 0.4.2.26,提交 3e026b94 附近),尚未发布;
+# 而且 PyPI 上已发布的 0.4.2.26 与本地 0.4.2.26 同名不同内容 —— 按版本号锁会拿到坏的那份。
+# 因此当前用 prismqml_local.pth 指向本地检出(site-packages 里不能同时装 prismqml wheel,
+# 否则会遮住 .pth)。等框架把这些修复以新版本号发布后,把下面这行改成那个版本并删掉 .pth。
 prismqml==0.4.2.25
 PySide6>=6.9.0

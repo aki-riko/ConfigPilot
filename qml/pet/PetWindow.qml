@@ -56,10 +56,11 @@ Window {
     readonly property int spriteRightMargin: 14
     readonly property int detailContentHeight: 352
     // 气泡改成独立原生窗口(Fluent.TeachingTip)后不再占悬浮窗高度:
-    // bubbleAreaHeight 归零、bubbleTop 归零,气泡形态与 pet 形态同高,
-    // 气泡弹层自己的高度由 bubbleTipHeight 决定。
+    // bubbleAreaHeight 归零、bubbleTop 归零,气泡形态与 pet 形态同高。
+    // 弹层本体的尺寸由框架内部固定(发布版无操作按钮时 220×90),这里只是把该值
+    // 记在几何常量里便于对照;面板的锚点夹取用的是它自己的 bubbleTipWidth。
     readonly property int bubbleAreaHeight: 0
-    readonly property int bubbleTipHeight: 84
+    readonly property int bubbleTipHeight: 90
 
     readonly property int cardTop: panelPadding
     // 桌宠区:必须放下 下边距 + 桌宠 + 与上方内容之间的空档

@@ -36,13 +36,11 @@ Item {
     // 基础姿势(可被 sleepy 占据)与一次性姿势(wave/cheer/blink 临时插播)
     property string basePose: "idle"
     property string activePose: ""
-    // 交叉淡入用的双缓冲:当前显示的是哪一层
-    property int topLayer: 0
-    property string shownUrl: ""
     // 打瞌睡阈值与下一次眨眼的间隔
     readonly property int drowsyAfterMs: 90000
     property int blinkEvery: 3200 + Math.round(Math.random() * 2600)
 
+    readonly property var frameRoles: ["idle", "blink", "wave", "cheer", "sleepy", "alert"]
     readonly property bool hasFrames: !!(frames && frames.idle)
     readonly property string poseRole: {
         if (sprite.alert) return "alert"
@@ -56,6 +54,27 @@ Item {
         if (path === "" && table && table.idle) path = table.idle
         return path !== "" ? path : sprite.imagePath
     }
+    // 每一帧一个 Image,source 在创建时就全部设好,切换只改 opacity。
+    // 换 source 会触发重新解码,首帧空一拍,表现就是"切姿势时闪一下"。
+    readonly property var frameList: {
+        var table = sprite.frames || ({})
+        var list = []
+        var seen = ({})
+        var i, role
+        for (i = 0; i < sprite.frameRoles.length; ++i) {
+            role = sprite.frameRoles[i]
+            if (table[role]) {
+                list.push({ "role": role, "path": table[role] })
+                seen[role] = true
+            }
+        }
+        for (var key in table) {   // 约定发现的额外角色一并预载
+            if (!seen[key] && table[key]) list.push({ "role": key, "path": table[key] })
+        }
+        if (list.length === 0 && sprite.imagePath !== "")
+            list.push({ "role": "idle", "path": sprite.imagePath })
+        return list
+    }
 
     implicitWidth: 120
     implicitHeight: 128
@@ -66,18 +85,6 @@ Item {
 
     function _hasFrame(role) {
         return !!(sprite.frames && sprite.frames[role])
-    }
-
-    function _applyFrame(path) {
-        var url = sprite._urlOf(path)
-        if (url === sprite.shownUrl) return
-        sprite.shownUrl = url
-        var next = sprite.topLayer === 0 ? poseB : poseA
-        var current = sprite.topLayer === 0 ? poseA : poseB
-        next.source = url
-        next.opacity = 1
-        current.opacity = 0
-        sprite.topLayer = 1 - sprite.topLayer
     }
 
     // 播放一次性姿势;没有对应帧就什么都不做(单图形象同样能正常互动)。
@@ -116,67 +123,36 @@ Item {
         sprite.playPose("cheer", 1200)
     }
 
-    onShownPathChanged: sprite._applyFrame(sprite.shownPath)
-    // 初始那次求值不会发 changed 信号,必须显式落一次,否则第一帧永远不显示。
-    Component.onCompleted: {
-        sprite.lastInteraction = Date.now()
-        sprite._applyFrame(sprite.shownPath)
-    }
+    // 交互/告警都重置"多久没动过"的计时,避免刚交互完就进入打瞌睡。
+    Component.onCompleted: sprite.lastInteraction = Date.now()
     onAlertChanged: sprite.lastInteraction = Date.now()
     onActivePoseChanged: {
         if (sprite.activePose === "") sprite.lastInteraction = Date.now()
     }
 
-    // 地面阴影(呼吸幅度与本体相反,增强"离地飘浮"的感觉)
-    Rectangle {
-        id: groundShadow
-        width: 72
-        height: 11
-        radius: 6
-        color: "#22171C3A"
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 1
-
-        SequentialAnimation on opacity {
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.55; duration: 1800; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 0.95; duration: 1800; easing.type: Easing.InOutSine }
-        }
-    }
-
-    ParallelAnimation {
+    // 点击/余额变动的回弹反馈:等比缩放(以脚底为原点),不做挤压拉伸 ——
+    // 非等比偶发太强会被当成"切换动画时闪了一下/缩了一下"。
+    SequentialAnimation {
         id: bounceAnim
-
-        // target/property 只能写在 NumberAnimation 上(SequentialAnimation 不是
-        // PropertyAnimation,没有这两个属性)。
-        SequentialAnimation {
-            NumberAnimation {
-                target: bodyTransform; property: "xScale"
-                to: 1.16; duration: 90; easing.type: Easing.OutQuad
-            }
-            NumberAnimation {
-                target: bodyTransform; property: "xScale"
-                to: 0.93; duration: 120; easing.type: Easing.InOutQuad
-            }
-            NumberAnimation {
-                target: bodyTransform; property: "xScale"
-                to: 1.0; duration: 150; easing.type: Easing.OutBack
-            }
+        NumberAnimation {
+            target: bodyTransform
+            property: "xScale"
+            to: 1.06; duration: 110; easing.type: Easing.OutQuad
         }
-        SequentialAnimation {
-            NumberAnimation {
-                target: bodyTransform; property: "yScale"
-                to: 0.86; duration: 90; easing.type: Easing.OutQuad
-            }
-            NumberAnimation {
-                target: bodyTransform; property: "yScale"
-                to: 1.11; duration: 120; easing.type: Easing.InOutQuad
-            }
-            NumberAnimation {
-                target: bodyTransform; property: "yScale"
-                to: 1.0; duration: 150; easing.type: Easing.OutBack
-            }
+        NumberAnimation {
+            target: bodyTransform
+            property: "yScale"
+            to: 1.06; duration: 110; easing.type: Easing.OutQuad
+        }
+        NumberAnimation {
+            target: bodyTransform
+            property: "xScale"
+            to: 1.0; duration: 170; easing.type: Easing.OutBack
+        }
+        NumberAnimation {
+            target: bodyTransform
+            property: "yScale"
+            to: 1.0; duration: 170; easing.type: Easing.OutBack
         }
     }
 
@@ -240,32 +216,31 @@ Item {
             NumberAnimation { from: -5; to: 2; duration: 1900; easing.type: Easing.InOutSine }
         }
 
-        // ------------------------------------------------ 立绘(双缓冲交叉淡入)
-        Image {
-            id: poseA
-            objectName: "petImageLayerA"
-            anchors.fill: parent
-            opacity: 0
-            fillMode: Image.PreserveAspectFit
-            smooth: true
-            mipmap: true
-            Behavior on opacity { NumberAnimation { duration: 100 } }
-        }
-        Image {
-            id: poseB
-            objectName: "petImageLayerB"
-            anchors.fill: parent
-            opacity: 0
-            fillMode: Image.PreserveAspectFit
-            smooth: true
-            mipmap: true
-            Behavior on opacity { NumberAnimation { duration: 100 } }
+        // ------------------------------------------------ 立绘(全帧预载 + 交叉淡入)
+        // 每一帧一个 Image:创建时就把 source 全部设好(Qt 对本地文件同步解码,
+        // 相当于预载),切姿势只改 opacity —— 换 source 会重新解码,首帧空一拍,
+        // 那正是"切动画时闪一下"的来源。qml/pet 的帧数是个位数,常驻纹理代价可忽略。
+        Repeater {
+            model: sprite.frameList
+
+            delegate: Image {
+                required property var modelData
+                objectName: "petFrame_" + modelData.role
+                anchors.fill: parent
+                source: sprite._urlOf(modelData.path)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                asynchronous: false
+                opacity: modelData.path === sprite.shownPath ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 90 } }
+            }
         }
 
         // ------------------------------------------------ 内置矢量形象
         Item {
             anchors.fill: parent
-            visible: sprite.shownUrl === ""
+            visible: sprite.frameList.length === 0
 
             // 信标天线
             Rectangle {

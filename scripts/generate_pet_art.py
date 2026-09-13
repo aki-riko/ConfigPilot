@@ -123,7 +123,10 @@ POSE_LOCK = (
 POSES: dict[str, str] = {
     "blink": "close both eyes in a soft gentle blink, keep the smile and the pose exactly the same",
     "wave": "raise one hand up beside her head in a friendly wave, tuck the golden coin under the other arm",
-    "cheer": "lift the golden coin overhead with both hands, big open-mouth happy smile, tiny sparkle marks",
+    "cheer": "hold the golden coin up in front of her chin with both hands and give a big "
+             "open-mouth happy cheer, two tiny sparkles beside her head at hat height; "
+             "keep the whole hat visible and put nothing above the top of her hat, "
+             "silhouette no taller than the standing pose",
     "sleepy": "eyes closed, head tilted slightly, calm sleepy smile, both arms hugging the coin, one small zzz bubble beside her head",
     "alert": "worried startled expression with wide eyes and a sweat drop, holding a tiny empty coin purse in both hands",
 }
@@ -669,6 +672,14 @@ def generate_poses(reference_path: Path, roles: list[str], model: str, size: str
     for item in results:
         print(f"[OK] {item['path']} bbox={item['bbox']} scale={item['scale']} "
               f"size={item['size']}")
+    # 帧间尺寸体检:包围盒里多出"头顶道具"的帧会被归一化缩小本体,
+    # 表现为切姿势时角色"缩一下"。这里直接报出来,别等肉眼发现。
+    anchor = next((item for item in results if item["role"] == "idle"), results[0])
+    for item in results:
+        drift = item["bbox"][1] / anchor["bbox"][1] - 1.0
+        if abs(drift) > 0.05:
+            print(f"[WARN] {item['role']} 包围盒高与 idle 差 {drift:+.1%},"
+                  f"本体尺寸会跟着变 —— 建议重出该姿势(别让道具高过帽顶)")
     print(f"[OK] 对照条: {out_dir / '_strip.png'}")
     expected = len(roles) + 1
     return 0 if len(results) == expected else 1

@@ -10,9 +10,8 @@
 //   配色走 Fluent.Enums 主题令牌,字号走 Fluent.Enums.typography。
 //
 // 三处保留自绘,理由写死在这里,不允许"顺手"换掉:
-//   1. 气泡尖角:ShadowedRectangle 画不出指向桌宠的三角,整块气泡仍属悬浮窗
-//      共用透明表面,框架的 TipPopup/TeachingTip 是独立原生弹窗 + 纯文本模型,
-//      没有悬停暂停/自动收起钩子,塞不进这套固定栅格。
+//   1. 气泡尖角:ShadowedRectangle 画不出指向桌宠的三角(气泡现已改用框架的
+//      Fluent.TeachingTip 原生弹层,尖角由框架画;锚点与屏幕夹取仍在这里)。
 //   2. 桌宠拖动层:拖动要按 bottomY 坐标系移动窗口,并在松手时
 //      NewApiPet.savePosition();Flutter 侧 WindowDragHandle 只发 dragStarted,
 //      没有拖动结束信号,换掉会丢"记住位置"行为。
@@ -43,6 +42,19 @@ Item {
     property var spriteGap
     property var spriteSize
     property var spriteRightMargin
+    // 立绘帧四周的留白比例(与 scripts/generate_pet_art.py 的 --margin 一致):
+    // 帽顶离桌宠框顶还有这么多,气泡锚点补上它才落在帽顶而不是脑袋上方。
+    readonly property real spriteHeadInset: spriteSize * 0.06
+    // 发布版弹层的真实尺寸:框架内部固定(无操作按钮时 220×90),没有公开参数可改。
+    // 气泡锚点的屏幕夹取必须按这个宽度算,否则夹了个假宽度。
+    readonly property int bubbleTipWidth: 220
+    // 发布版弹层只渲染 title/content 文本模型(不承载自定义内容),所以余额与今日
+    // 用量两行都塞进 content。
+    readonly property string bubbleSummaryText: {
+        if (!panel.ready) return ""
+        return panel.primaryBalanceCaption + " " + panel.primaryBalanceText
+               + "\n" + panel.todaySummary
+    }
 
     // 数据(全部来自 NewApiPet 的只读属性,窗口负责取值与降级)
     property var ready
@@ -521,10 +533,26 @@ Item {
                 easing.type: Easing.OutCubic
             }
         }
-        // 锚点贴着桌宠上方留一点间隙:气泡底边落在桌宠头顶,
-        // 与原自绘气泡"紧贴桌宠"的观感一致。
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: petSprite.y - Fluent.Enums.spacing.l
+        // 框架契约(已在 prismqml 0.4.2.26 wheel 里复核):弹层按 target 的水平中心摆放,
+        // 箭头又永远画在弹层的水平中心,且没有屏幕避让 —— 所以"箭头对准脑袋"等价于
+        // "target 的中心落在脑袋上",而"弹层不出屏"必须自己夹。
+        // 原先锚点钉在窗口正中(桌宠中心 250 vs 窗口中心 162),箭头整整偏左 88px。
+        readonly property real headCenterX: petSprite.x + petSprite.width * 0.5
+        // 窗口/屏幕几何都在 Qt 侧取(单位一致),QML 里的 screen 对象没有
+        // availableGeometry,自己算会直接抛 TypeError。
+        readonly property real tipCenterX: {
+            // 夹取要用弹层的真实宽度:开发态是面板宽,发布版是框架固定的 220
+            var tipWidth = bubbleTip.tipSupportsCustomContent
+                    ? panel.panelWidth : panel.bubbleTipWidth
+            var desired = panel.x + headCenterX
+            if (managerReady)
+                return PetManager.clampTipCenterX(desired, tipWidth) - panel.x
+            return headCenterX
+        }
+        // 锚点贴桌宠上方留一点间隙:气泡箭头落在帽顶
+        // (立绘帧四周有 6% 留白,所以下移 spriteHeadInset 才不是指着脑袋上方)
+        x: tipCenterX - width * 0.5
+        y: petSprite.y + panel.spriteHeadInset - Fluent.Enums.spacing.xs
         width: panel.panelWidth
         // 锚点保留 1px 高度:零高度 Item 在弹层定位里会被当成零尺寸目标。
         // 它不参与悬浮窗高度计算(bubbleAreaHeight 为 0)。
@@ -536,17 +564,35 @@ Item {
             target: bubbleAnchor
             // 气泡在桌宠上方:anchor_bottom 把弹层摆在 target 上方
             anchorPosition: Fluent.Enums.teachingTip.anchor_bottom
-            viewWidth: panel.panelWidth
-            viewHeight: panel.bubbleTipHeight
+            // 弹层在两代框架上能力不同,这里做兼容分流:
+            //   开发态:有公开 viewWidth/viewHeight,并承载调用方自定义内容
+            //           → 走下面的三行富排版,正文留空;
+            //   发布版(requirements.txt 固定的 0.4.2.25):尺寸由框架内部固定
+            //           (无操作按钮时 220×90),只渲染 title/content,不承载自定义内容
+            //           → 把同样的信息塞进文本模型。
+            // 探测而不是直接赋值:发布版没有这两个属性,直接写会让 QML 加载就报错。
+            readonly property bool tipSupportsCustomContent: bubbleTip.viewWidth !== undefined
+            readonly property string textTitle: panel.ready
+                    ? panel.tokenName + " · " + panel.expiresText : panel.statusText
+            title: bubbleTip.tipSupportsCustomContent ? "" : bubbleTip.textTitle
+            content: bubbleTip.tipSupportsCustomContent ? "" : panel.bubbleSummaryText
             // 自动收起交给 PetWindow 的 hideTimer(它要支持悬停暂停),
             // 所以这里用 persistent,不让框架自己计时关掉。
             duration: Fluent.Enums.duration.persistent
             closable: false
             modal: false
 
+            Component.onCompleted: {
+                if (bubbleTip.tipSupportsCustomContent) {
+                    bubbleTip.viewWidth = panel.panelWidth
+                    bubbleTip.viewHeight = panel.bubbleTipHeight
+                }
+            }
+
             // 内容层:三行富排版 + 接回悬停暂停/点击展开的交互层。
             // 弹层窗口自带 padding,这里再给一层对称留白,避免贴边。
             Item {
+                objectName: "petBubbleRichContent"
                 width: panel.panelWidth - Fluent.Enums.spacing.xl * 2
                 implicitHeight: bubbleColumn.height
 
@@ -557,9 +603,7 @@ Item {
 
                     Fluent.Label {
                         width: parent.width
-                        text: panel.ready
-                              ? panel.tokenName + " · " + panel.expiresText
-                              : panel.statusText
+                        text: bubbleTip.textTitle
                         type: Fluent.Enums.label.type_caption
                         font.pixelSize: Fluent.Enums.typography.micro
                         customTextColor: panel.mutedTextColor

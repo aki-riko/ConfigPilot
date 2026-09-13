@@ -82,6 +82,30 @@ class PetManager(QObject):
 
     # ------------------------------------------------------------------ 槽
 
+    @Slot(float, float, result=float)
+    def clampTipCenterX(self, desired_window_x: float, tip_width: float) -> float:
+        """把气泡弹层的水平中心夹进屏幕可用区,返回窗口坐标下的中心 x。
+
+        框架的 TipPopup 只按 target 中心摆放、且不做屏幕避让(见 prismqml 的
+        TipPositionHelper::calculatePosition),所以"箭头对准桌宠脑袋"和"弹层不出屏"
+        只能由调用方一起满足。窗口与屏幕几何都在 Qt 侧取,单位一致(设备无关像素)。
+        """
+        window = self._window
+        if window is None or tip_width <= 0:
+            return desired_window_x
+        screen = window.screen()
+        if screen is None:
+            return desired_window_x
+        area = screen.availableGeometry()
+        margin = 4.0
+        half = tip_width / 2.0
+        # 换算到窗口坐标:窗口左上角在屏幕坐标 window.x()/window.y()
+        low = area.left() + margin + half - window.x()
+        high = area.left() + area.width() - margin - half - window.x()
+        if low > high:
+            return desired_window_x
+        return max(low, min(high, desired_window_x))
+
     @Slot(bool)
     def setEnabled(self, enabled: bool) -> None:
         """主界面开关:持久化 auto_show 并显示/隐藏悬浮窗。"""

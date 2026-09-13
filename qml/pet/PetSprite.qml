@@ -216,10 +216,14 @@ Item {
             NumberAnimation { from: -5; to: 2; duration: 1900; easing.type: Easing.InOutSine }
         }
 
-        // ------------------------------------------------ 立绘(全帧预载 + 交叉淡入)
+        // ------------------------------------------------ 立绘(全帧预载 + 硬切)
         // 每一帧一个 Image:创建时就把 source 全部设好(Qt 对本地文件同步解码,
         // 相当于预载),切姿势只改 opacity —— 换 source 会重新解码,首帧空一拍,
         // 那正是"切动画时闪一下"的来源。qml/pet 的帧数是个位数,常驻纹理代价可忽略。
+        // 这里**故意不做不透明度交叉淡入**:两层同时半透明时合成 alpha 只有
+        // a + (1-a)·a = 0.75,角色会整体"淡一下"(实测 alpha 掉到 75%),每 3.8s 一次的
+        // 眨眼就变成肉眼可见的闪烁。各帧已对齐同一身高与同一基线(生成侧归一),
+        // 硬切不会跳,而眨眼/换姿势本来就是瞬时动作。
         Repeater {
             model: sprite.frameList
 
@@ -233,7 +237,6 @@ Item {
                 mipmap: true
                 asynchronous: false
                 opacity: modelData.path === sprite.shownPath ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 90 } }
             }
         }
 

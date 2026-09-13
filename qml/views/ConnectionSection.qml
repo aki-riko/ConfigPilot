@@ -210,12 +210,10 @@ Fluent.Card {
                     font.family: Fluent.Enums.fontFamily
                 }
                 Text {
-                    Layout.fillWidth: true
-                    text: "wire_api · responses = /v1/responses · chat = /v1/chat/completions"
+                    text: "wire_api"
                     color: Fluent.Enums.textColor.tertiary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
                 }
                 Fluent.ComboBoxDefault {
                     id: wireApiBox
@@ -223,25 +221,31 @@ Fluent.Card {
                     Layout.fillWidth: true
                     property var protocolOptions: []
 
-                    // Codex 的 wire_api 只接受 OpenAI 两种线协议标识：
-                    // responses（Responses API）与 chat（Chat Completions API）。
-                    // 配置里若存在其它历史值，追加成一项原样显示，避免被静默改写。
+                    // 候选与显示名都来自后端 CodexConfig.wireApiOptions()：
+                    // 界面只出现协议名，写入 config.toml 的 wire_api 标识由后端
+                    // 映射（backend/wire_api.py）。配置里若留着认不出的历史值，
+                    // 后端原样透传，这里也照原样多列一项，避免被静默改写。
                     function reloadOptions() {
-                        var options = [
-                            { "text": "responses · Responses API",
-                              "value": "responses" },
-                            { "text": "chat · Chat Completions API",
-                              "value": "chat" }
-                        ]
+                        var source = CodexConfig
+                                     ? CodexConfig.wireApiOptions() : []
+                        var options = []
+                        for (var i = 0; i < source.length; i++) {
+                            options.push({
+                                "value": source[i].value,
+                                "text": source[i].text
+                            })
+                        }
                         var current = root.wireApiValue
                         var known = false
-                        for (var i = 0; i < options.length; i++) {
-                            if (options[i].value === current) known = true
+                        for (var j = 0; j < options.length; j++) {
+                            if (options[j].value === current) known = true
                         }
                         if (!known && current.length > 0) {
                             options.push({
-                                "text": current + " · 现有配置值",
-                                "value": current
+                                "value": current,
+                                "text": CodexConfig
+                                        ? CodexConfig.wireApiLabel(current)
+                                        : current
                             })
                         }
                         protocolOptions = options
@@ -262,7 +266,8 @@ Fluent.Card {
                     Component.onCompleted: Qt.callLater(reloadOptions)
                     onActivated: function(index) {
                         if (index >= 0 && index < protocolOptions.length) {
-                            root.wireApiEdited(protocolOptions[index].value)
+                            // 回传显示名，由 CodexView 交给后端映射成标识
+                            root.wireApiEdited(protocolOptions[index].text)
                         }
                     }
                     Connections {

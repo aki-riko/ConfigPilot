@@ -345,7 +345,13 @@ Item {
                 configBusy: root.configBusy
                 onBaseUrlEdited: function(value) { root.fBaseUrl = value }
                 onProviderEdited: function(value) { root.fProvider = value }
-                onWireApiEdited: function(value) { root.fWireApi = value }
+                onWireApiEdited: function(value) {
+                    // 下拉框回传的是协议显示名，写进草稿的必须是 wire_api 标识，
+                    // 映射只有一份，在后端 backend/wire_api.py 里。
+                    root.fWireApi = CodexConfig
+                                    ? CodexConfig.wireApiValueFor(value)
+                                    : value
+                }
                 onSaveKeyRequested: function(value) {
                     if (CodexConfig) CodexConfig.setKey(value)
                 }
@@ -469,6 +475,18 @@ Item {
                          && CodexConfig
                          && CodexConfig.hasRestorableChanges
                 onClicked: restoreInitialDialog.open()
+            }
+
+            Fluent.Button {
+                objectName: "repairSubagentDefaultsButton"
+                Layout.minimumWidth: 112
+                Layout.preferredWidth: 112
+                Layout.maximumWidth: 112
+                style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.wrench
+                text: "修复降智"
+                enabled: !root.configBusy && CodexConfig
+                onClicked: CodexConfig.repairSubagentDefaults()
             }
 
             Fluent.Button {

@@ -38,6 +38,10 @@ PROVIDER_FIELD_TYPES = {
     "env_key": "string",
     "requires_openai_auth": "bool",
 }
+AGENT_FIELD_TYPES = {
+    "default_subagent_model": "string",
+    "default_subagent_reasoning_effort": "string",
+}
 _PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -92,12 +96,18 @@ def capture_fields(data: dict, field_names) -> dict:
     """从已解析 TOML 中捕获管理字段，未知字段直接拒绝。"""
     captured = {}
     providers = data.get("model_providers", {})
+    agents = data.get("agents", {})
     for field_name in field_names:
         parts = field_name.split(".")
         if len(parts) == 2 and parts[0] == "top":
             if parts[1] not in TOP_FIELD_TYPES:
                 raise ValueError(f"恢复记录包含未知配置字段 {field_name}")
             captured[field_name] = _value_state(data, parts[1])
+            continue
+        if len(parts) == 2 and parts[0] == "agents":
+            if parts[1] not in AGENT_FIELD_TYPES:
+                raise ValueError(f"恢复记录包含未知代理配置字段 {field_name}")
+            captured[field_name] = _value_state(agents, parts[1])
             continue
         if len(parts) == 3 and parts[0] == "provider":
             provider, key = parts[1], parts[2]

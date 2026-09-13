@@ -24,6 +24,11 @@ from backend.codex_oauth import (
 )
 from backend.endpoint_urls import normalize_v1_base_url
 from backend.model_profiles import ModelProfiles
+from backend.wire_api import (
+    canonical_value as canonical_wire_api,
+    display_label as wire_api_label,
+    option_list as wire_api_options,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -415,10 +420,30 @@ class CodexConfig(QObject):
         """
         return normalize_v1_base_url(str(value or ""))
 
+    @Slot(result="QVariantList")
+    def wireApiOptions(self):
+        """通信协议下拉框候选：``text`` 是显示名，``value`` 是写入标识。
+
+        界面只认显示名（Responses API / Chat Completions API（已废弃）），
+        ``wire_api`` 的最终标识由 ``backend.wire_api`` 统一映射。
+        """
+        return wire_api_options()
+
+    @Slot(str, result=str)
+    def wireApiLabel(self, value):
+        """把配置里的 ``wire_api`` 标识换成显示名，供下拉框回显。"""
+        return wire_api_label(value)
+
+    @Slot(str, result=str)
+    def wireApiValueFor(self, name):
+        """显示名/端点 → 写入 ``wire_api`` 的标识；认不出的值原样透传。"""
+        return canonical_wire_api(name)
+
     @Slot("QVariantMap")
     def applyConfig(self, cfg):
         """把指定的连接配置写入 config.toml(通用, 不写死任何中转)。
-        cfg 字段: baseUrl(必填), provider, wireApi, model,
+        cfg 字段: baseUrl(必填), provider, wireApi(显示名或标识, 统一映射成
+                 responses/chat), model,
                  requiresAuth(bool), reasoningEffort(str), disableStorage(bool)
         """
         raw_base_url = str(cfg.get("baseUrl", "")).strip()
@@ -427,7 +452,7 @@ class CodexConfig(QObject):
             return
         base_url = normalize_v1_base_url(raw_base_url)
         provider = (str(cfg.get("provider", "")) or "relay").strip()
-        wire_api = str(cfg.get("wireApi", "")).strip()
+        wire_api = canonical_wire_api(cfg.get("wireApi", ""))
         model = str(cfg.get("model", "")).strip()
         # 高级项: 缺省键 -> None(不写); 显式给值才写
         auth_source = cfg.get("authSource", None)
@@ -655,6 +680,19 @@ class CodexConfig(QObject):
                 "沙盒止血已写入",
                 'config.toml 已写入 sandbox_mode = "danger-full-access"，'
                 "请完全重启 Codex；该项可用「恢复初始设置」还原",
+            ),
+            self._config_write_failed,
+        )
+
+    @Slot()
+    def repairSubagentDefaults(self):
+        """写入稳定的子代理默认模型与推理强度。"""
+        self._config_tasks.submit(
+            self._store.apply_subagent_defaults,
+            lambda snapshot: self._complete_config_change(
+                snapshot,
+                "降智修复已写入",
+                '子代理默认已设为 gpt-5.6-sol / high；请完全重启 Codex 生效',
             ),
             self._config_write_failed,
         )

@@ -20,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover
 from backend.fs_repair import ensure_directory
 from backend.codex_restore_state import (
     ManagedChangeJournal,
+    AGENT_FIELD_TYPES,
     PROVIDER_FIELD_TYPES,
     TOP_FIELD_TYPES,
     capture_fields,
@@ -412,8 +413,29 @@ class CodexConfigStore:
         )
         return text[: match.start()] + block + text[match.end() :]
 
+    @staticmethod
+    def _agents_block_pattern():
+        return re.compile(r"(?ms)^\s*\[agents\]\s*.*?(?=^\s*\[|\Z)")
+
+    def _set_agents_field_state(self, text: str, key: str, state: dict) -> str:
+        if key not in AGENT_FIELD_TYPES:
+            raise ValueError(f"恢复记录包含未知代理配置字段 agents.{key}")
+        pattern = self._agents_block_pattern()
+        match = pattern.search(text)
+        if not match and not state["present"]:
+            return text
+        if not match:
+            text = text.rstrip() + "\n\n[agents]\n"
+            match = pattern.search(text)
+        block = match.group(0)
+        value = state.get("value") if state["present"] else None
+        block = self._set_block_scalar(block, key, value, is_str=True)
+        return text[: match.start()] + block + text[match.end() :]
+
     def _restore_field_state(self, text: str, field_name: str, state: dict) -> str:
         parts = field_name.split(".")
+        if len(parts) == 2 and parts[0] == "agents":
+            return self._set_agents_field_state(text, parts[1], state)
         if len(parts) == 2:
             key = parts[1]
             field_type = TOP_FIELD_TYPES[key]
@@ -440,6 +462,18 @@ class CodexConfigStore:
             if header and not match.group(0)[header.end() :].strip():
                 text = text[: match.start()] + text[match.end() :]
         return text
+
+    def _remove_empty_agents_block(self, text: str, should_remove: bool) -> str:
+        if not should_remove:
+            return text
+        match = self._agents_block_pattern().search(text)
+        if not match:
+            return text
+        block = match.group(0)
+        body = block.lstrip().splitlines()[1:]
+        if any(line.strip() and not line.lstrip().startswith("#") for line in body):
+            return text
+        return text[: match.start()] + text[match.end() :]
 
     def _write_provider_block(self, text, values):
         provider = values["provider"] or "relay"
@@ -610,6 +644,44 @@ class CodexConfigStore:
         self._atomic_write_text(self.config_path, new_text)
         return self.read_snapshot()
 
+    def apply_subagent_defaults(self) -> dict:
+        """设置子代理默认模型与推理强度，保留其它 Codex 配置。"""
+        text = ""
+        if os.path.isfile(self.config_path):
+            with open(self.config_path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        current_data = parse_config_text(text)
+        agents = current_data.get("agents", {})
+        if agents and not isinstance(agents, dict):
+            raise ValueError("config.toml 中的 [agents] 必须是配置表")
+        if "agents" in current_data and not self._agents_block_pattern().search(text):
+            raise ValueError("config.toml 中的 agents 必须使用 [agents] 配置表")
+        fields = {
+            "agents.default_subagent_model": {
+                "present": True,
+                "value": "gpt-5.6-sol",
+            },
+            "agents.default_subagent_reasoning_effort": {
+                "present": True,
+                "value": "high",
+            },
+        }
+        current_fields = capture_fields(current_data, list(fields))
+        new_text = text
+        for field_name, state in fields.items():
+            new_text = self._set_agents_field_state(
+                new_text, field_name.split(".", 1)[1], state
+            )
+        new_data = parse_config_text(new_text)
+        applied_fields = capture_fields(new_data, list(fields))
+        if applied_fields != fields:
+            raise ValueError("子代理默认配置写入后校验失败")
+        if current_fields == applied_fields:
+            return self.read_snapshot()
+        self._journal.record_config(current_fields, applied_fields)
+        self._atomic_write_text(self.config_path, new_text)
+        return self.read_snapshot()
+
     def repair_relay_auth(self, key: str) -> dict:
         """修复中转 provider 的认证来源，同时保留现有 OAuth 凭据。"""
         key = str(key or "").strip()
@@ -717,6 +789,7 @@ class CodexConfigStore:
     def _build_restored_config(self, text, entries, field_names):
         new_text = text
         restored_providers = set()
+        restored_agents = False
         for field_name in field_names:
             new_text = self._restore_field_state(
                 new_text, field_name, entries[field_name]["original"]
@@ -724,7 +797,10 @@ class CodexConfigStore:
             parts = field_name.split(".")
             if parts[0] == "provider":
                 restored_providers.add(parts[1])
-        return self._remove_empty_provider_blocks(new_text, restored_providers)
+            elif parts[0] == "agents":
+                restored_agents = True
+        new_text = self._remove_empty_provider_blocks(new_text, restored_providers)
+        return self._remove_empty_agents_block(new_text, restored_agents)
 
     def _restore_config_entries(self, entries):
         if not entries:

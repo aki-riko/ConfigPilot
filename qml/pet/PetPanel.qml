@@ -45,6 +45,10 @@ Item {
     // 立绘帧四周的留白比例(与 scripts/generate_pet_art.py 的 --margin 一致):
     // 帽顶离桌宠框顶还有这么多,气泡锚点补上它才落在帽顶而不是脑袋上方。
     readonly property real spriteHeadInset: spriteSize * 0.06
+    // 明细卡片左右各让出的阴影余量(卡片 324 -> 300)。窗口宽 340、卡片原本居中只剩
+    // 8px 透明边,自绘阴影铺不开,实测外侧 alpha 只有个位数。改这里有连带影响:
+    // 卡片内容宽度 = panelWidth - 2*cardShadowBleed。
+    readonly property int cardShadowBleed: 12
 
     // 数据(全部来自 NewApiPet 的只读属性,窗口负责取值与降级)
     property var ready
@@ -213,12 +217,28 @@ Item {
         Fluent.ShadowedRectangle {
             id: card
             objectName: "petCard"
-            anchors.fill: parent
+            // 只横向内缩、纵向铺满:卡片内容是按 detailContentHeight 精确排的,缩高会裁掉内容;
+            // 而自绘阴影(SDF)越出窗口的部分会被窗口裁掉,卡片贴边只剩 8px,所以左右各让
+            // 12px 出来(合计 20px 余量),阴影才有铺开的余地。
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width - panel.cardShadowBleed * 2
             color: Fluent.Enums.stateColor.controlBg
             radius: Fluent.Enums.surfaceRadius(Fluent.Enums.radius.card)
             border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
             border.color: Fluent.Enums.stateColor.borderLight
-            shadowLevel: Fluent.Enums.shadow.level4
+            // 不用 shadowLevel 令牌:各档的 blur 是像素量纲(4/8/16/32)、配的 alpha 只有
+            // 0.08~0.22,在 20px 余量下实测外侧 alpha 只有个位数,肉眼看不见。
+            // 下面这组是实测扫出来的(真实窗口开/关阴影比像素):外侧剖面
+            // 39/36/32/26/18/10/5/2(1/2/3/5/8/12/16/19px),20px 内自然衰减到 0。
+            // color 的 alpha 给到 0.8 是因为 RectangularShadow 的 SDF 边缘衰减很陡,
+            // 实际可见强度只有约 15%;调小 alpha 会直接看不见。
+            shadowLevel: null
+            shadowBlur: 22
+            shadowColor: Qt.rgba(0, 0, 0, 0.8)
+            shadowSpread: 0.1
+            shadowOffsetY: 2
             // Card 的 clip 是兜内容溢出用的;ShadowedRectangle 的根节点不能 clip
             // (自绘阴影是它的子节点,会被一起裁掉),所以挂在内容层上。
             contentItem.clip: true

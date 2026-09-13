@@ -210,28 +210,65 @@ Fluent.Card {
                     font.family: Fluent.Enums.fontFamily
                 }
                 Text {
-                    text: "wire_api"
+                    Layout.fillWidth: true
+                    text: "wire_api · responses = /v1/responses · chat = /v1/chat/completions"
                     color: Fluent.Enums.textColor.tertiary
                     font.pixelSize: Fluent.Enums.typography.caption
                     font.family: Fluent.Enums.fontFamily
+                    wrapMode: Text.WordWrap
                 }
-                Fluent.LineEdit {
-                    id: wireApiEdit
-                    objectName: "wireApiEdit"
+                Fluent.ComboBoxDefault {
+                    id: wireApiBox
+                    objectName: "wireApiComboBox"
                     Layout.fillWidth: true
-                    placeholderText: "responses"
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.wireApiValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.wireApiValue) root.wireApiEdited(text)
+                    property var protocolOptions: []
+
+                    // Codex 的 wire_api 只接受 OpenAI 两种线协议标识：
+                    // responses（Responses API）与 chat（Chat Completions API）。
+                    // 配置里若存在其它历史值，追加成一项原样显示，避免被静默改写。
+                    function reloadOptions() {
+                        var options = [
+                            { "text": "responses · Responses API",
+                              "value": "responses" },
+                            { "text": "chat · Chat Completions API",
+                              "value": "chat" }
+                        ]
+                        var current = root.wireApiValue
+                        var known = false
+                        for (var i = 0; i < options.length; i++) {
+                            if (options[i].value === current) known = true
+                        }
+                        if (!known && current.length > 0) {
+                            options.push({
+                                "text": current + " · 现有配置值",
+                                "value": current
+                            })
+                        }
+                        protocolOptions = options
+                        wireApiBox.syncCurrentIndex()
+                    }
+
+                    function syncCurrentIndex() {
+                        var found = 0
+                        for (var i = 0; i < protocolOptions.length; i++) {
+                            if (protocolOptions[i].value === root.wireApiValue) {
+                                found = i
+                            }
+                        }
+                        if (currentIndex !== found) currentIndex = found
+                    }
+
+                    model: protocolOptions
+                    Component.onCompleted: Qt.callLater(reloadOptions)
+                    onActivated: function(index) {
+                        if (index >= 0 && index < protocolOptions.length) {
+                            root.wireApiEdited(protocolOptions[index].value)
+                        }
                     }
                     Connections {
                         target: root
                         function onWireApiValueChanged() {
-                            if (wireApiEdit.text !== root.wireApiValue) {
-                                wireApiEdit.text = root.wireApiValue
-                            }
+                            wireApiBox.reloadOptions()
                         }
                     }
                 }

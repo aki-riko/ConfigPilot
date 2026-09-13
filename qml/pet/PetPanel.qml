@@ -37,6 +37,9 @@ Item {
     property var bubbleAreaHeight
     // 气泡弹层高度:气泡现在是独立原生窗口,不再占悬浮窗高度,由窗口按内容给值
     property var bubbleTipHeight
+    // 气泡弹层宽度:独立常量,不跟随明细卡 panelWidth(卡片为 Token 行加宽后,
+    // 气泡三行小字撑满 468 会显得过长)。
+    property var bubbleWidth
     property var bubbleTop
     property var cardTop
     property var spriteBottomMargin
@@ -580,17 +583,17 @@ Item {
         // 窗口/屏幕几何都在 Qt 侧取(单位一致),QML 里的 screen 对象没有
         // availableGeometry,自己算会直接抛 TypeError。
         readonly property real tipCenterX: {
-            // 夹取用弹层真实宽度(尺寸由面板给,所以就是 panelWidth)
+            // 夹取用弹层真实宽度(尺寸由 bubbleWidth 给)
             var desired = panel.x + headCenterX
             if (managerReady)
-                return PetManager.clampTipCenterX(desired, panel.panelWidth) - panel.x
+                return PetManager.clampTipCenterX(desired, panel.bubbleWidth) - panel.x
             return headCenterX
         }
         // 锚点贴桌宠上方留一点间隙:气泡箭头落在帽顶
         // (立绘帧四周有 6% 留白,所以下移 spriteHeadInset 才不是指着脑袋上方)
         x: tipCenterX - width * 0.5
         y: petSprite.y + panel.spriteHeadInset - Fluent.Enums.spacing.xs
-        width: panel.panelWidth
+        width: panel.bubbleWidth
         // 锚点保留 1px 高度:零高度 Item 在弹层定位里会被当成零尺寸目标。
         // 它不参与悬浮窗高度计算(bubbleAreaHeight 为 0)。
         height: Math.max(1, panel.bubbleAreaHeight)
@@ -603,7 +606,7 @@ Item {
             anchorPosition: Fluent.Enums.teachingTip.anchor_bottom
             // 尺寸由调用方给:PrismQML 0.4.2.26(本地修复分支)已把 viewWidth/viewHeight
             // 改成公开可配,并把调用方内容挂进 customContentHost,所以富排版气泡成立。
-            viewWidth: panel.panelWidth
+            viewWidth: panel.bubbleWidth
             viewHeight: panel.bubbleTipHeight
             // 自动收起交给 PetWindow 的 hideTimer(它要支持悬停暂停),
             // 所以这里用 persistent,不让框架自己计时关掉。
@@ -614,7 +617,7 @@ Item {
             // 内容层:三行富排版 + 接回悬停暂停/点击展开的交互层。
             // 弹层窗口自带 padding,这里再给一层对称留白,避免贴边。
             Item {
-                width: panel.panelWidth - Fluent.Enums.spacing.xl * 2
+                width: panel.bubbleWidth - Fluent.Enums.spacing.xl * 2
                 implicitHeight: bubbleColumn.height
 
                 Column {

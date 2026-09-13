@@ -63,6 +63,9 @@ Window {
     // 气泡弹层自己的高度由 bubbleTipHeight 决定(尺寸是公开可配的)。
     readonly property int bubbleAreaHeight: 0
     readonly property int bubbleTipHeight: 84
+    // 气泡弹层宽度:保持明细卡加宽前的 324 紧凑值(气泡只有三行小字,
+    // 跟随 panelWidth 468 会被拉得过长)。
+    readonly property int bubbleWidth: 324
 
     readonly property int cardTop: panelPadding
     // 桌宠区:必须放下 下边距 + 桌宠 + 与上方内容之间的空档
@@ -252,6 +255,7 @@ Window {
         detailContentHeight: petWindow.detailContentHeight
         bubbleAreaHeight: petWindow.bubbleAreaHeight
         bubbleTipHeight: petWindow.bubbleTipHeight
+        bubbleWidth: petWindow.bubbleWidth
         bubbleTop: petWindow.bubbleTop
         cardTop: petWindow.cardTop
         spriteBottomMargin: petWindow.spriteBottomMargin

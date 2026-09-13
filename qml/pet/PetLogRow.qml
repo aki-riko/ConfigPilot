@@ -17,11 +17,14 @@ Rectangle {
     property string costText: ""
     property bool striped: false
 
-    // 列宽:时间 / Token / 金额固定,模型列自适应(约 66px,足够常见的模型名)。
+    // 列宽:时间 / Token / 金额固定,模型列自适应。
+    // 金额列旧值 54 装不下 "$0.0361"(隐宽 77,被省略成 "$0.03…"),Token 列
+    // 80 对 "+428.6K / +369" 也只剩零点余量;模型列有 minimumWidth 兜底,
+    // 加宽两列只是从模型列的富余里拿,不会挤压变形。
     // Enums 没有"列表列宽"令牌,这里是本组件的局部几何常量,只出现一次。
     readonly property int timeColumnWidth: 60
-    readonly property int tokensColumnWidth: 80
-    readonly property int costColumnWidth: 54
+    readonly property int tokensColumnWidth: 92
+    readonly property int costColumnWidth: 84
 
     height: Fluent.Enums.spacing.xxxl + Fluent.Enums.spacing.xs
     radius: Fluent.Enums.radius.large

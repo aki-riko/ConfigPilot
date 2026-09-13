@@ -17,6 +17,7 @@
 //      没有拖动结束信号,换掉会丢"记住位置"行为。
 //   3. PetSprite 角色插画:见 PetSprite.qml 文件头。
 import QtQuick
+import QtQuick.Layouts
 
 import PrismQML as Fluent
 
@@ -383,34 +384,44 @@ Item {
                     interactionEnabled: false
                     border.width: Fluent.Enums.border.thin
 
-                    Row {
+                    // RowLayout + elide:数字再大也只会省略,不会再溢出压到右侧
+                    // "总额 / N 次"上(旧 Row 里标签按隐宽排,溢出时直接重叠)。
+                    RowLayout {
                         anchors.left: parent.left
                         anchors.leftMargin: Fluent.Enums.spacing.m
                         anchors.right: tokenTotal.left
                         anchors.rightMargin: Fluent.Enums.spacing.m
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: Fluent.Enums.spacing.l
+                        spacing: Fluent.Enums.spacing.m
 
                         Fluent.Label {
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
                             text: "今日 Token"
                             type: Fluent.Enums.label.type_caption
                             font.pixelSize: Fluent.Enums.typography.micro
                             customTextColor: panel.mutedTextColor
                         }
                         Fluent.Label {
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: Fluent.Enums.spacing.xxxl * 2
                             text: "输入 " + panel.promptTokensText
                             type: Fluent.Enums.label.type_caption
                             font.pixelSize: Fluent.Enums.typography.captionCompact
                             customTextColor: panel.primaryTextColor
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
                         }
                         Fluent.Label {
-                            anchors.verticalCenter: parent.verticalCenter
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: Fluent.Enums.spacing.xxxl * 2
                             text: "输出 " + panel.completionTokensText
                             type: Fluent.Enums.label.type_caption
                             font.pixelSize: Fluent.Enums.typography.captionCompact
                             customTextColor: panel.primaryTextColor
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
                         }
                     }
 

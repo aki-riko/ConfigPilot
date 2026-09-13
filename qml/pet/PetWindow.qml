@@ -23,7 +23,10 @@ Window {
     // ---------------------------------------------------------------- 基础窗口
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
     color: Fluent.Enums.transparent
-    width: 340
+    // 484 = panelWidth 468 + 两侧 8px 阴影余量。旧 324 宽在"今日 Token"行遇到
+    // 大数字(输入 187.34M / 输出 475.8K)+ "≥1002 次"时溢出重叠;实测各标签
+    // 隐宽合计 313 + 右侧总额/次数 + 边距需要内容宽 ~452,整卡加宽到 468。
+    width: 484
     // 窗口尺寸恒定,取所有形态里的最大高度:形态切换只改可见内容与窗口遮罩
     // (遮罩由 pet_bootstrap 在 Python 侧 setMask),窗口本身**永不 resize**。
     // 原因:透明无边框窗口 resize 时,系统要重建整块渲染表面,表现为整个悬浮窗
@@ -51,7 +54,7 @@ Window {
     // 下面的尺寸是桌宠专属几何:Enums 里没有"悬浮窗宽度""桌宠图标边长"这类
     // 令牌,它们是本窗口的栅格定义,不是可复用的样式值,所以集中声明在此。
     readonly property int panelPadding: Fluent.Enums.spacing.m
-    readonly property int panelWidth: 324
+    readonly property int panelWidth: 468
     readonly property int spriteSize: 120
     readonly property int spriteRightMargin: 14
     readonly property int detailContentHeight: 352

@@ -599,7 +599,7 @@ class PetQmlLoadTests(unittest.TestCase):
         # 表现为整个悬浮窗(含桌宠)闪 1~2 帧 —— 这就是"点一下闪一下"的来源。
         self.assertEqual(len(sizes), 1, f"形态切换改了窗口尺寸: {sizes}")
         width, height = sizes.pop()
-        self.assertEqual(width, 340)
+        self.assertEqual(width, 484)
         self.assertEqual(height, max(EXPECTED_HEIGHTS.values()),
                          "窗口高度应恒定为最大形态高度")
 

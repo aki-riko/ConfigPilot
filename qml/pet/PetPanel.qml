@@ -197,17 +197,31 @@ Item {
         width: panel.panelWidth
         height: panel.cardHeight
 
-        Fluent.Card {
+        // 内边距归零:卡片内部是固定行高栅格,由 cardColumn 自己控制留白。
+        // 行高清单(改动时同步 PetWindow.detailContentHeight):
+        // 32(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照) + 34(Token 条)
+        // + 14(状态行) + 14(最近调用标题) + 90(三行日志) + 14(脚注)
+        // + 8*8(行间距) + 12*2(卡片内边距) ≈ 352
+        //
+        // 明细卡片用 ShadowedRectangle 而不是 Card:Card 的阴影等级在内部写死为
+        // level2(blur 4 / alpha 0.08),在这种花哨壁纸上几乎看不见,缺少"窗口悬浮感"。
+        // 表面四项(底色/圆角/描边宽/描边色)全部照 Card 默认卡片的取值抄,只换阴影等级;
+        // 几何完全不变(卡片仍是 panelWidth 宽、贴 cardTop),level4 的 8px 模糊正好
+        // 落在窗口左右各 8px 的透明边上,纵向余量更大。
+        // 注:不走原生 DWM —— 本窗口只有底部形态需要露出(SetWindowRgn 遮罩),
+        // 而 DWM 阴影沿整个窗口矩形画,会在 340×504 的空区上凭空出现一圈。
+        Fluent.ShadowedRectangle {
             id: card
             objectName: "petCard"
             anchors.fill: parent
-            // 内边距归零:卡片内部是固定行高栅格,由 cardColumn 自己控制留白。
-            // 行高清单(改动时同步 PetWindow.detailContentHeight):
-            // 32(头) + 1(分隔) + 52(额度卡) + 14(另一口径对照) + 34(Token 条)
-            // + 14(状态行) + 14(最近调用标题) + 90(三行日志) + 14(脚注)
-            // + 8*8(行间距) + 12*2(卡片内边距) ≈ 352
-            contentPadding: 0
-            clip: true
+            color: Fluent.Enums.stateColor.controlBg
+            radius: Fluent.Enums.surfaceRadius(Fluent.Enums.radius.card)
+            border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
+            border.color: Fluent.Enums.stateColor.borderLight
+            shadowLevel: Fluent.Enums.shadow.level4
+            // Card 的 clip 是兜内容溢出用的;ShadowedRectangle 的根节点不能 clip
+            // (自绘阴影是它的子节点,会被一起裁掉),所以挂在内容层上。
+            contentItem.clip: true
 
             Column {
                 id: cardColumn

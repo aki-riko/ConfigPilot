@@ -57,11 +57,21 @@ def _attach_pet_window_mask(window: QObject) -> None:
         if not isinstance(visible, (int, float)) or visible <= 0:
             visible = height
         visible = max(1, min(int(visible), height))
+        if width <= 0 or height <= 0:
+            # 窗口还没拿到真实尺寸:先不设遮罩,等 width/height 变化信号再算。
+            # 设成空区域等于把窗口永久变透明,桌宠会"进程活着但屏幕上什么都没有"。
+            return
         window.setMask(QRegion(QRect(0, height - visible, width, visible)))
+        LOGGER.debug(
+            "桌宠遮罩已应用: 窗口=%dx%d 可见高=%d dpr=%.2f",
+            width, height, visible, float(window.devicePixelRatio()),
+        )
 
-    signal = getattr(window, "visibleContentHeightChanged", None)
-    if signal is not None:
-        signal.connect(apply_mask)
+    signals = ("visibleContentHeightChanged", "widthChanged", "heightChanged", "screenChanged")
+    for name in signals:
+        signal = getattr(window, name, None)
+        if signal is not None:
+            signal.connect(apply_mask)
     apply_mask()
 
 

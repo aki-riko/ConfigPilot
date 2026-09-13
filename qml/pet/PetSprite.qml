@@ -243,6 +243,7 @@ Item {
         // ------------------------------------------------ 立绘(双缓冲交叉淡入)
         Image {
             id: poseA
+            objectName: "petImageLayerA"
             anchors.fill: parent
             opacity: 0
             fillMode: Image.PreserveAspectFit
@@ -252,6 +253,7 @@ Item {
         }
         Image {
             id: poseB
+            objectName: "petImageLayerB"
             anchors.fill: parent
             opacity: 0
             fillMode: Image.PreserveAspectFit

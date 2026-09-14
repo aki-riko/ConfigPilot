@@ -22,11 +22,16 @@ Fluent.Card {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         anchors.topMargin: Fluent.Enums.spacing.m
+        // 三列栅格下卡片只有 ~145px 宽,标题必须能省略而不是溢出压到邻卡
+        width: parent.width - Fluent.Enums.spacing.s
         text: card.caption
         // Label 只提供字体族/字重/换行策略,字号与颜色仍按桌宠紧凑栅格指定令牌。
         type: Fluent.Enums.label.type_caption
         font.pixelSize: Fluent.Enums.typography.micro
         customTextColor: Fluent.Enums.tertiaryForeground
+        elide: Text.ElideRight
+        maximumLineCount: 1
+        horizontalAlignment: Text.AlignHCenter
     }
 
     Fluent.Label {

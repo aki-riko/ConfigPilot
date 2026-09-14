@@ -179,6 +179,13 @@ class StubPet(QObject):
     def todayCount(self): return 608
     @Property(bool, notify=usageChanged)
     def todayLowerBound(self): return False
+    # 今日已用第二个口径:该账户下所有令牌合计
+    @Property(bool, notify=accountChanged)
+    def todayAccountReady(self): return True
+    @Property(str, notify=accountChanged)
+    def todayAccountAmountText(self): return "¥291.05"
+    @Property(str, notify=accountChanged)
+    def todayAccountStateText(self): return ""
     @Property(str, notify=usageChanged)
     def todayPromptTokensText(self): return "1.16B"
     @Property(str, notify=usageChanged)
@@ -343,6 +350,12 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertIn("账户余额", rendered)
         self.assertIn("¥1.23K", rendered)
         self.assertIn("令牌额度 ∞", rendered)
+        # 今日已用必须两个口径都摊开:本令牌 / 全账户(该账户下所有令牌合计)
+        self.assertIn("今日已用·本令牌", rendered)
+        self.assertIn("¥267.86", rendered)
+        self.assertIn("今日已用·全账户", rendered)
+        self.assertIn("¥291.05", rendered)
+        self.assertEqual(window.property("todayAccountAmount"), "¥291.05")
 
     def test_built_in_pet_art_reaches_sprite_and_chips(self):
         """内置立绘经后端解析后真的落到 PetSprite.imagePath,设置窗芯片同步列出。
@@ -474,6 +487,13 @@ class PetQmlLoadTests(unittest.TestCase):
         # 账户轮询间隔字段必须存在(值在 openForEdit 里从配置回填)
         field = dialog.findChild(QQuickItem, "accountIntervalField")
         self.assertIsNotNone(field, "缺少账户余额轮询间隔输入框")
+        # 日志窗口单独限频,也必须能在界面上调(顶在站点 20 次/20 分钟上限上会冻结)
+        log_field = dialog.findChild(QQuickItem, "logIntervalField")
+        self.assertIsNotNone(log_field, "缺少调用日志轮询间隔输入框")
+        self.assertTrue(
+            any(text.startswith("站点按路由限流") for text in rendered),
+            f"没有解释日志轮询为什么要低频: {rendered}",
+        )
 
     def test_account_not_ready_row_does_not_duplicate_message(self):
         """账户余额未就绪时,左右两栏不能各写一遍同样的话。"""
@@ -1112,6 +1132,156 @@ class PetTodayLogStoreTests(unittest.TestCase):
             self.assertEqual(pet2.todayCount, 15)
             self.assertFalse(pet2.todayLowerBound)
             self._wait_saved(pet2)                    # 等写完再退出,避免清理竞态
+
+
+class PetRemoteTodayTests(unittest.TestCase):
+    """「今日已用」改走远程累计差值后的控制器接线。
+
+    站点没有按天接口(实测 /api/log/token 忽略一切分页/时间参数,令牌与 billing 接口
+    只有终身累计值),所以金额只能用 total_used / billing 已用的零点基线差值算。
+    这里锁死三条最容易退回去的行为:
+      1. 日志路由被 429 时,金额必须继续跟着累计值涨(旧实现整轮作废 → 数字冻结);
+      2. 一天超过 1000 条(窗口不再覆盖零点)时金额仍然精确,只有次数标 ≥;
+      3. 基线跨重启保留,并额外给出"全账户"口径。
+    """
+
+    def setUp(self):
+        from datetime import datetime
+
+        now = datetime.now()
+        if now.hour == 0 and now.minute < 40:
+            self.skipTest("临近本地零点,窗口时间戳会跨天,跳过以免假失败")
+
+    def _pet(self, daily_state_path=""):
+        from backend.newapi_pet import NewApiPet
+        from backend.pet_config import PetConfig
+
+        # 凭证走配置而不是手工塞 _resolved_base:_refresh_account 会重新解析凭证,
+        # 直接覆盖那个字段会被它下一轮冲掉。
+        config = PetConfig(currency="USD", source="manual",
+                           base_url="https://site.test", api_key="sk-test")
+        pet = NewApiPet("__no_such_config_path_for_test__.json", config,
+                        daily_state_path=daily_state_path)
+        # 测试里绝不发真实请求:把网络出口换成记录器
+        pet.requested = []
+        pet._get = lambda base, key, path, *args, **kwargs: pet.requested.append(path)  # noqa: SLF001
+        APP.processEvents()      # 构造期的 refresh / _refresh_account 都在这里跑掉
+        pet.requested.clear()
+        return pet
+
+    @staticmethod
+    def _rows(count, quota_each=100, step=1):
+        import time as _t
+
+        now_ts = int(_t.time())
+        return [
+            {
+                "request_id": f"req-{i}",
+                "created_at": now_ts - i * step,
+                "type": 2,
+                "quota": quota_each,
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "model_name": "gpt-test",
+            }
+            for i in range(count)
+        ]
+
+    def _cycle(self, pet, total_used, rows=None, logs_fail=False):
+        """模拟一轮:令牌累计 + 日志窗口(或日志被限流)。"""
+        pet._pending = {"usage": True, "logs": True}       # noqa: SLF001
+        pet._staged = {}                                   # noqa: SLF001
+        pet._cycle_failed = False                          # noqa: SLF001
+        pet._handle_usage({"code": True, "data": {
+            "name": "Codex", "total_granted": 20_000_000, "total_used": total_used,
+            "total_available": 20_000_000 - total_used, "unlimited_quota": False,
+            "expires_at": 0,
+        }})                                                # noqa: SLF001
+        if logs_fail:
+            pet._handle_logs({"success": False, "message": "HTTP 429"})  # noqa: SLF001
+        elif rows is not None:
+            pet._handle_logs({"success": True, "data": rows})            # noqa: SLF001
+        APP.processEvents()
+
+    def test_log_rate_limit_does_not_freeze_the_amount(self):
+        pet = self._pet()
+        self._cycle(pet, 1_000_000, rows=self._rows(10, quota_each=10_000))  # 窗口合计 $0.20
+        self.assertEqual(pet.todayAmountText, "$0.20")
+        self._cycle(pet, 1_200_000, logs_fail=True)                     # 日志这一路被 429
+        self.assertEqual(pet.todayAmountText, "$0.60",
+                         "日志路由限流不能把金额一起冻住(累计值已到 1.2M)")
+        self.assertFalse(pet.todayAmountText.startswith("≥"))
+        self.assertTrue(pet.hasError or pet.statusText, "状态行仍要如实报告这次失败")
+
+    def test_amount_keeps_growing_beyond_the_1000_row_window(self):
+        pet = self._pet()
+        # 满窗且最老一条仍在今日 → 窗口不再覆盖零点:次数标下限,金额照累计继续涨
+        self._cycle(pet, 9_000_000, rows=self._rows(1000, quota_each=2_000))  # 窗口 $4.00
+        self.assertTrue(pet.todayLowerBound, "次数应显示为下限")
+        self.assertEqual(pet.todayAmountText, "≥$4.00")
+        self._cycle(pet, 11_000_000, rows=self._rows(1000, quota_each=2_000))
+        self.assertEqual(pet.todayAmountText, "≥$8.00",
+                         "窗口滑掉今天的记录时,金额必须靠累计差值继续涨,而不是停在 $4")
+
+    def test_account_scope_number_is_exposed(self):
+        pet = self._pet()
+        self._cycle(pet, 1_000_000, rows=self._rows(10, quota_each=10_000))   # 本令牌 $0.20
+        self.assertFalse(pet.todayAccountReady)          # 还没拿到账户累计 → 不猜
+        self.assertEqual(pet.todayAccountAmountText, "—")
+        pet._account_used = 9_100_000                    # noqa: SLF001
+        pet._refresh_daily_readings()                    # noqa: SLF001
+        self.assertTrue(pet.todayAccountReady)
+        self.assertEqual(pet.todayAccountAmountText, "≥$0.20",
+                         "首次锚定只能给出与本令牌相同的下限")
+        pet._account_used = 9_300_000                    # noqa: SLF001
+        pet._refresh_daily_readings()                    # noqa: SLF001
+        self.assertEqual(pet.todayAccountAmountText, "≥$0.60",
+                         "账户涨得比本令牌快 = 别的令牌也在用,要如实反映")
+
+    def test_daily_baseline_survives_restart(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "pet_daily.json")
+            pet1 = self._pet(path)
+            self._cycle(pet1, 1_000_000, rows=self._rows(10, quota_each=10_000))
+            for _ in range(100):
+                APP.processEvents()
+                if not pet1._daily_saving and not pet1._daily.dirty:  # noqa: SLF001
+                    break
+                QTest.qWait(20)
+            self.assertTrue(Path(path).is_file(), "零点基线必须落盘")
+
+            pet2 = self._pet(path)                          # 模拟重启
+            self._cycle(pet2, 1_300_000, logs_fail=True)    # 这次连窗口都没拿到
+            self.assertEqual(pet2.todayAmountText, "$0.80",
+                             "重启后基线要从磁盘续上,而不是从 0 重新累计")
+
+    def _prime_cycle(self, pet):
+        """清掉单飞标志:_get 被换成记录器后不会有回包,否则 _do_refresh 只会排队。"""
+        pet._inflight = False              # noqa: SLF001
+        pet._queued_refresh = False        # noqa: SLF001
+        pet._blocked_until = 0.0           # noqa: SLF001
+        pet._logs_blocked_until = 0.0      # noqa: SLF001
+
+    def test_log_route_is_polled_less_often_than_the_token(self):
+        pet = self._pet()
+        pet._next_log_fetch = 0.0                       # noqa: SLF001
+        self._prime_cycle(pet)
+        pet._do_refresh()                               # noqa: SLF001
+        self.assertEqual(pet.requested.count("/api/log/token"), 1)
+        pet.requested.clear()
+        self._prime_cycle(pet)
+        pet._do_refresh()                               # noqa: SLF001
+        self.assertEqual(pet.requested.count("/api/log/token"), 0,
+                         "日志窗口在 log_poll_interval 内不该重复请求(会顶在站点路由限流上)")
+        self.assertIn("/api/usage/token/", pet.requested)
+        pet.requested.clear()
+        self._prime_cycle(pet)
+        pet.refresh()                                   # 手动刷新必须带上日志
+        APP.processEvents()
+        self.assertIn("/api/log/token", pet.requested)
 
 
 class PetMaskRegionBuilderTests(unittest.TestCase):

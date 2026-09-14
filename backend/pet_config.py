@@ -42,6 +42,8 @@ _MIN_POLL_INTERVAL_SECONDS = 5
 _MAX_POLL_INTERVAL_SECONDS = 3600
 _MIN_ACCOUNT_POLL_INTERVAL_SECONDS = 30
 _MAX_ACCOUNT_POLL_INTERVAL_SECONDS = 7200
+_MIN_LOG_POLL_INTERVAL_SECONDS = 30
+_MAX_LOG_POLL_INTERVAL_SECONDS = 7200
 _MIN_BUBBLE_TIMEOUT_SECONDS = 2
 _MAX_BUBBLE_TIMEOUT_SECONDS = 120
 _DEFAULT_QUOTA_PER_UNIT = 500_000.0
@@ -68,6 +70,11 @@ class PetConfig:
     balance_source: str = BALANCE_AUTO
     # 账户余额变化慢,单独低频轮询,避免打爆 new-api 的按路由限流配额。
     account_poll_interval_seconds: int = 300
+    # 日志窗口(/api/log/token)单独限频:new-api 的 CriticalRateLimit 是每 IP 每路由
+    # 20 次/20 分钟,60s 轮询正好顶在天花板上,任何一次手动刷新都会把该路由打进 429,
+    # 「今日已用」因此会冻结十几分钟。默认 180s 留出余量;金额已改走累计计数器口径,
+    # 不再依赖这条路由的快慢。
+    log_poll_interval_seconds: int = 180
 
 
 def resolve_pet_config_path(
@@ -203,6 +210,13 @@ def parse_pet_config(data: object) -> PetConfig:
             _MAX_ACCOUNT_POLL_INTERVAL_SECONDS,
             300,
         ),
+        log_poll_interval_seconds=_bounded_int(
+            data.get("log_poll_interval_seconds"),
+            "log_poll_interval_seconds",
+            _MIN_LOG_POLL_INTERVAL_SECONDS,
+            _MAX_LOG_POLL_INTERVAL_SECONDS,
+            180,
+        ),
     )
 
 
@@ -247,6 +261,7 @@ def save_pet_config(path: str | Path, config: PetConfig) -> None:
         "pet_image": config.pet_image,
         "balance_source": config.balance_source,
         "account_poll_interval_seconds": config.account_poll_interval_seconds,
+        "log_poll_interval_seconds": config.log_poll_interval_seconds,
     }
     tmp_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -266,6 +281,7 @@ def build_config_from_user_input(
     source: str = SOURCE_MANUAL,
     balance_source: str = BALANCE_AUTO,
     account_interval_text: str = "300",
+    log_interval_text: str = "180",
 ) -> tuple[PetConfig, str]:
     """把设置窗口的字符串输入解析成配置;失败时返回错误信息。
 
@@ -279,6 +295,10 @@ def build_config_from_user_input(
         account_interval = int(str(account_interval_text).strip() or "300")
     except ValueError:
         return PetConfig(), "账户余额轮询间隔必须是整数秒"
+    try:
+        log_interval = int(str(log_interval_text).strip() or "180")
+    except ValueError:
+        return PetConfig(), "日志轮询间隔必须是整数秒"
     try:
         per_unit = float(str(per_unit_text).strip())
     except ValueError:
@@ -309,6 +329,7 @@ def build_config_from_user_input(
                 "pet_image": str(pet_image),
                 "balance_source": str(balance_source).strip() or BALANCE_AUTO,
                 "account_poll_interval_seconds": account_interval,
+                "log_poll_interval_seconds": log_interval,
             }
         )
     except ValueError as exc:

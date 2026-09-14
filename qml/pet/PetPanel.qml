@@ -85,6 +85,8 @@ Item {
     property var primaryNegative
     property var secondaryBalanceText
     property var accountFreshText
+    // 今日已用的两个口径:本令牌 / 全账户(该账户下所有令牌合计)
+    property var todayAccountAmount
 
     // ---------------------------------------------------------------- 主题别名
     // 面板统一从 Fluent.Enums 取色;这里只给"语义 → 令牌"一个本地名字,
@@ -324,13 +326,16 @@ Item {
                 }
 
                 // ---------------------------------------- 额度与今日用量
+                // 三列:余额口径 + 今日已用的两个口径(本令牌 / 全账户)。
+                // 站点没有按天接口,"今日已用"是远程终身累计值的零点差值算出来的
+                // (见 backend/daily_usage.py),两个口径并排摊开,不藏任何一个。
                 Row {
                     width: parent.width
                     height: panel.statCardHeight
                     spacing: Fluent.Enums.spacing.s
 
                     PetStatCard {
-                        width: (parent.width - Fluent.Enums.spacing.s) / 2
+                        width: (parent.width - 2 * Fluent.Enums.spacing.s) / 3
                         height: parent.height
                         caption: panel.primaryBalanceCaption
                         value: panel.primaryBalanceText
@@ -339,10 +344,17 @@ Item {
                     }
 
                     PetStatCard {
-                        width: (parent.width - Fluent.Enums.spacing.s) / 2
+                        width: (parent.width - 2 * Fluent.Enums.spacing.s) / 3
                         height: parent.height
-                        caption: "今日已用"
+                        caption: "今日已用·本令牌"
                         value: panel.todayAmount
+                    }
+
+                    PetStatCard {
+                        width: (parent.width - 2 * Fluent.Enums.spacing.s) / 3
+                        height: parent.height
+                        caption: "今日已用·全账户"
+                        value: panel.todayAccountAmount
                     }
                 }
 

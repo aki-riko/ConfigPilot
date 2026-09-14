@@ -1,9 +1,14 @@
 # coding: utf-8
 """NewAPI 余额桌宠控制器。
 
-只依赖 new-api 的两条只读接口(仅凭 API Key 即可访问,令牌耗尽/过期也可查):
+只读接口(仅凭 API Key 即可访问,令牌耗尽/过期也可查):
   GET {base}/api/usage/token/   -> {"code": true, "data": {total_granted/total_used/total_available/...}}
-  GET {base}/api/log/token      -> {"success": true, "data": [消费日志...]}
+  GET {base}/api/log/token      -> {"success": true, "data": [最近 1000 条消费日志,无任何分页/时间参数]}
+  GET {base}/v1/dashboard/billing/{subscription,usage} + /api/status -> 账户钱包余额与站点展示口径
+
+「今日已用」走远程累计差值(见 backend/daily_usage.py):站点没有按天接口,所以拿
+total_used / billing 已用的**零点基线差值**算,日志窗口只作下限校准与次数/Token 明细
+来源。这样限流冻结、进程重启、超 1000 条/天都不会让数字变小或长时间卡住。
 
 网络全部走 QNetworkAccessManager 异步回调,GUI 线程不做任何阻塞等待。
 """
@@ -25,6 +30,14 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 
 from backend import quota_math
 from backend.async_tasks import SerialTaskRunner
+from backend.daily_usage import (
+    CONFIDENCE_BELOW,
+    CONFIDENCE_EXACT,
+    CONFIDENCE_PREFIX,
+    COUNTER_ACCOUNT,
+    COUNTER_TOKEN,
+    DailyUsageTracker,
+)
 from backend.log_store import DailyLogStore, read_store, write_store
 from backend.pet_art import (
     default_preset_token,
@@ -80,6 +93,7 @@ class NewApiPet(QObject):
         source_resolver=None,
         resources_dir: str = "",
         log_store_path: str = "",
+        daily_state_path: str = "",
         parent: QObject | None = None,
     ):
         super().__init__(parent)
@@ -135,6 +149,15 @@ class NewApiPet(QObject):
         self._log_store_tasks: Optional[SerialTaskRunner] = None
         self._log_store_saving = False
         self._today_complete = True
+        # 「今日已用」的远程累计口径:两条终身累计计数器的零点基线
+        # (见 backend/daily_usage.py)。状态落盘,重启后当天继续累计;身份变了就作废。
+        self._daily_state_path = str(daily_state_path or "")
+        self._daily = DailyUsageTracker()
+        self._daily_identity = ""
+        self._daily_loaded = False
+        self._daily_saving = False
+        self._daily_reading = None
+        self._daily_account_reading = None
         self._last_error = ""
         self._save_error = ""
         self._last_updated = 0.0
@@ -144,10 +167,14 @@ class NewApiPet(QObject):
         self._staged: dict[str, Any] = {}
         # 限流退避与单飞:new-api 的 CriticalRateLimit 是每 IP 每路由 20 次/20 分钟,
         # 收到 429/503 必须按 Retry-After 退避,且一轮请求未回来前不再叠加。
+        # 退避按路由分开:日志路由被限流只该停日志,不能把令牌累计(金额数字)一起冻住。
         self._inflight = False
         self._queued_refresh = False
         self._blocked_until = 0.0
         self._retry_after = 0
+        self._logs_blocked_until = 0.0
+        self._next_log_fetch = 0.0
+        self._cycle_failed = False
 
         # 账户钱包余额:走 /v1/dashboard/billing/*,与令牌额度是两套数据。
         # 站点把金额按自己的"额度展示类型"换算过(billing.go),所以要先还原成
@@ -328,6 +355,11 @@ class NewApiPet(QObject):
     def configAccountIntervalText(self) -> str:
         return str(self._effective_config().account_poll_interval_seconds)
 
+    @Property(str, notify=configSaved)
+    def configLogIntervalText(self) -> str:
+        """日志窗口(/api/log/token)的轮询间隔:单独限频,避免顶在站点路由限流上。"""
+        return str(self._effective_config().log_poll_interval_seconds)
+
     @Property(int, notify=configSaved)
     def bubbleTimeoutSeconds(self) -> int:
         return self._effective_config().bubble_timeout_seconds
@@ -344,7 +376,7 @@ class NewApiPet(QObject):
     def saveErrorText(self) -> str:
         return self._save_error
 
-    @Slot(str, str, str, str, str, str, str, str, str, str, result=bool)
+    @Slot(str, str, str, str, str, str, str, str, str, str, str, result=bool)
     def saveSettings(
         self,
         base_url: str,
@@ -357,11 +389,12 @@ class NewApiPet(QObject):
         source: str,
         balance_source: str = "auto",
         account_interval_text: str = "300",
+        log_interval_text: str = "180",
     ) -> bool:
         """保存设置窗口提交的内容;校验失败返回 False 并写入 saveErrorText。"""
         parsed, error = build_config_from_user_input(
             base_url, api_key, interval_text, currency, per_unit_text, rate_text,
-            pet_image, source, balance_source, account_interval_text,
+            pet_image, source, balance_source, account_interval_text, log_interval_text,
         )
         if error:
             self._save_error = error
@@ -380,6 +413,7 @@ class NewApiPet(QObject):
             pet_image=parsed.pet_image,
             balance_source=parsed.balance_source,
             account_poll_interval_seconds=parsed.account_poll_interval_seconds,
+            log_poll_interval_seconds=parsed.log_poll_interval_seconds,
         )
         try:
             save_pet_config(self._config_path, merged)
@@ -413,6 +447,7 @@ class NewApiPet(QObject):
         self._account_staged = {}
         self._site_display_known = False
         self._site_display_base = ""
+        self._daily_account_reading = None
         self._account_generation += 1  # 丢弃在途的账户响应
         self.accountChanged.emit()
 
@@ -443,6 +478,8 @@ class NewApiPet(QObject):
     def refresh(self) -> None:
         """立即轮询一次余额与日志(auto 模式重置候选游标)。"""
         self._auto_attempt = 0
+        # 手动刷新是用户明确要"现在就看到",这一次日志窗口不受低频间隔约束。
+        self._next_log_fetch = 0.0
         self._do_refresh()
         # 手动刷新时顺带把账户余额也拉一次,两个口径的"上次更新"才对得上。
         QTimer.singleShot(0, self._refresh_account)
@@ -467,11 +504,18 @@ class NewApiPet(QObject):
             return
         self._generation += 1
         generation = self._generation
-        self._pending = {"usage": True, "logs": True}
+        self._pending = {"usage": True}
         self._staged = {}
+        self._cycle_failed = False
         self._inflight = True
         self._get(base, key, "/api/usage/token/", generation, "usage", self._handle_usage)
-        self._get(base, key, "/api/log/token", generation, "logs", self._handle_logs)
+        # 日志窗口单独限频:它只贡献"次数 / Token 明细 / 最近调用",每 60s 打一次
+        # 正好顶在站点每路由 20 次/20 分钟的上限上,一次手动刷新就能把该路由打进 429。
+        now = time.time()
+        if now >= self._next_log_fetch and now >= self._logs_blocked_until:
+            self._pending["logs"] = True
+            self._next_log_fetch = now + max(30, self._effective_config().log_poll_interval_seconds)
+            self._get(base, key, "/api/log/token", generation, "logs", self._handle_logs)
 
     def _finish_cycle(self) -> None:
         """一轮(成功或失败)结束后清标志,并补发被合并的刷新请求。"""
@@ -603,24 +647,52 @@ class NewApiPet(QObject):
 
     @Property(bool, notify=usageChanged)
     def todayLowerBound(self) -> bool:
-        """True = 今日日志存在本地无法补齐的缺口(离线期间新增超过接口 1000 条窗口),
-        此时金额/次数只是下限,UI 加"≥"前缀。"""
+        """True = 今日**次数/Token** 只是下限(日志窗口有本地补不回的洞)。
+
+        金额自 2026-09-14 起另有远程累计口径,不受日志窗口影响,它的前缀单独由
+        ``_today_quota()`` 的置信度决定;这里只管次数与 Token 明细。
+        """
         return not self._today_complete
 
     @Property(str, notify=usageChanged)
     def todayText(self) -> str:
         currency, per_unit, rate = self._display_params()
-        amount = quota_math.format_quota(
-            self._today["quota"], currency, per_unit, rate
+        quota, confidence = self._today_quota()
+        amount = quota_math.format_quota(quota, currency, per_unit, rate)
+        count_prefix = "" if self._today_complete else "≥"
+        return (
+            f"今日已用 {CONFIDENCE_PREFIX[confidence]}{amount}"
+            f" · {count_prefix}{self._today['count']} 次"
         )
-        prefix = "" if self._today_complete else "≥"
-        return f"今日已用 {prefix}{amount} · {prefix}{self._today['count']} 次"
 
     @Property(str, notify=usageChanged)
     def todayAmountText(self) -> str:
-        """今日消费金额(不带前缀),供卡片拆行展示。"""
-        prefix = "" if self._today_complete else "≥"
-        return prefix + self._fmt_compact(self._today["quota"])
+        """今日已用金额(本令牌,已带下限前缀),供卡片大数字展示。"""
+        quota, confidence = self._today_quota()
+        return CONFIDENCE_PREFIX[confidence] + self._fmt_compact(quota)
+
+    @Property(bool, notify=accountChanged)
+    def todayAccountReady(self) -> bool:
+        """账户口径(该账户下**所有**令牌合计)的今日读数是否可用。"""
+        reading = self._daily_account_reading
+        return bool(reading is not None and reading.usable)
+
+    @Property(str, notify=accountChanged)
+    def todayAccountAmountText(self) -> str:
+        """今日已用金额(全账户,含其它令牌);拿不到基线时给占位符不猜数。"""
+        reading = self._daily_account_reading
+        if reading is None or not reading.usable:
+            return "—"
+        return CONFIDENCE_PREFIX[reading.confidence] + self._fmt_compact(reading.quota)
+
+    @Property(str, notify=accountChanged)
+    def todayAccountStateText(self) -> str:
+        """账户今日还不可用时的一行原因(设置窗用),不用估算值糊弄。"""
+        if self.todayAccountReady:
+            return ""
+        if self._account_error:
+            return f"账户累计未就绪：{self.accountErrorBrief}"
+        return "账户累计未就绪：等一次账户轮询"
 
     @Property(int, notify=usageChanged)
     def todayCount(self) -> int:
@@ -865,24 +937,35 @@ class NewApiPet(QObject):
         return message
 
     def _handle_failure(self, status, retry_after: int, message: str, key: str) -> None:
-        self._pending.clear()  # 一次失败即中止本轮合并
+        """单条请求失败只作废这一条,同轮另一条的结果照样入账。
+
+        旧实现一次失败就 ``_pending.clear()`` 中止整轮:日志路由(new-api 每 IP 每路由
+        20 次/20 分钟)被 429 时,连已经成功返回的令牌累计一起被丢掉,整张卡冻结到
+        退避结束 —— 这正是"数字半天不动"的来源。
+        """
+        self._cycle_failed = True
         self._last_error = self._friendly_failure(status, message)
-        self._inflight = False
         LOGGER.info("桌宠请求失败(%s): %s", key, message)
         if status in (429, 503):
             # 限流:按 Retry-After 退避,绝不回退/重试(那只会更快再次 429)。
             wait = retry_after if retry_after > 0 else max(self._config.poll_interval_seconds, 60)
-            self._retry_after = wait
-            self._blocked_until = time.time() + wait
+            if key == "logs":
+                # 日志路由单独退避:金额已改走累计计数器口径,不该被日志限流拖住
+                self._logs_blocked_until = time.time() + wait
+                self._next_log_fetch = self._logs_blocked_until
+            else:
+                self._retry_after = wait
+                self._blocked_until = time.time() + wait
             self.statusChanged.emit()
-            self._drain_queued()
-            return
-        self.statusChanged.emit()
+        else:
+            self.statusChanged.emit()
+        self._pending.pop(key, None)
+        if self._pending:
+            return  # 同轮还有请求在途,等它回来再收尾
         # 404/405/401 等 = 该来源不是可用 new-api;auto 才换下一个候选。
-        if status in self._WRONG_SOURCE_STATUS or status is None:
-            if self._maybe_advance_auto():
-                return
-        self._drain_queued()
+        if (status in self._WRONG_SOURCE_STATUS or status is None) and self._maybe_advance_auto():
+            return
+        self._maybe_finish()
 
     def _route_failure(self, counter: str, status, retry_after: int, message: str, key: str) -> None:
         if counter == "account":
@@ -1025,16 +1108,12 @@ class NewApiPet(QObject):
         self._account_used = int(round(used))
         self._account_error = ""
         self._account_updated = time.time()
+        # 账户终身累计是"今日已用(全账户)"的数据源:喂给零点基线推算
+        self._refresh_daily_readings()
         self.accountChanged.emit()
         # 大数字可能切到账户口径,面板绑的是 usageChanged,这里补发一次。
         self.usageChanged.emit()
         self.statusChanged.emit()
-
-    def _drain_queued(self) -> None:
-        if self._queued_refresh:
-            self._queued_refresh = False
-            if time.time() >= self._blocked_until:
-                QTimer.singleShot(0, self._do_refresh)
 
     def _maybe_advance_auto(self) -> bool:
         """auto 模式:当前来源请求失败就换下一个候选重试,直到用尽。返回是否已发起。"""
@@ -1087,7 +1166,9 @@ class NewApiPet(QObject):
             return
         usage = self._staged.get("usage")
         logs = self._staged.get("logs")
-        self._last_error = ""
+        self._staged = {}
+        if not self._cycle_failed:
+            self._last_error = ""
         if isinstance(usage, dict):
             previous_used = self._known_used
             self._token_name = str(usage.get("name") or "")
@@ -1101,7 +1182,7 @@ class NewApiPet(QObject):
             if previous_used is not None and self._total_used > previous_used:
                 self.usageBumped.emit()
         if isinstance(logs, list):
-            identity = f"{self._resolved_base}|{self._token_name}"
+            identity = self._daily_identity_key()
             self._log_store.merge(logs, identity=identity)
             merged = self._log_store.entries
             self._raw_logs = merged
@@ -1109,13 +1190,92 @@ class NewApiPet(QObject):
             self._today_complete = self._log_store.complete
             self._schedule_log_store_save(identity)
             self._reformat_rows()
+        self._refresh_daily_readings(window_fresh=isinstance(logs, list))
         self._last_updated = time.time()
         if self._config.source == SOURCE_AUTO and not self._last_error:
             self._auto_locked = self._resolved_source  # 锁定可用来源,避免每轮抖动
-        self._inflight = False
-        self._blocked_until = 0.0
-        self._retry_after = 0
+        if not self._cycle_failed:
+            self._blocked_until = 0.0
+            self._retry_after = 0
         self.usageChanged.emit()
         self.logsChanged.emit()
         self.statusChanged.emit()
-        self._drain_queued()
+        # 账户口径的今日读数依赖令牌累计值,令牌轮询也可能让它从"未就绪"变可用
+        self.accountChanged.emit()
+        self._finish_cycle()
+
+    # ------------------------------------------------------ 今日已用(远程累计)
+
+    def _daily_identity_key(self) -> str:
+        return f"{self._resolved_base}|{self._token_name}"
+
+    def _refresh_daily_readings(self, window_fresh: bool = False) -> None:
+        """把两条终身累计值与日志窗口喂进零点基线推算,再取一次读数。
+
+        顺序有讲究:先 observe(令牌累计),再 observe_window(本轮**新到**的窗口合计),
+        这样窗口才能拿"累计值 − 窗口合计"反推出精确的零点基线。窗口不是本轮新到的
+        时候绝不能重锚 —— 那会把金额钉死在上一次窗口的合计上,又变成"数字不动"。
+        """
+        identity = self._daily_identity_key()
+        if not identity.startswith("http") or not self._token_name:
+            self._daily_reading = None
+            self._daily_account_reading = None
+            return
+        if identity != self._daily_identity:
+            # 换站点或换令牌:累计口径不能跨身份延续
+            self._daily_identity = identity
+            self._daily = DailyUsageTracker()
+            self._daily_loaded = False
+        if not self._daily_loaded:
+            self._daily_loaded = True
+            if self._daily_state_path:
+                stored = read_store(self._daily_state_path)
+                if stored is not None and self._daily.load_payload(stored, identity=identity):
+                    LOGGER.info("桌宠今日累计基线已从磁盘恢复(%s)。", self._daily.day)
+        self._daily.observe(COUNTER_TOKEN, self._total_used)
+        if window_fresh and self._raw_logs:
+            self._daily.observe_window(self._today["quota"], self._log_store.day_covered)
+        if self._account_used is not None:
+            self._daily.observe(COUNTER_ACCOUNT, self._account_used)
+        self._daily_reading = self._daily.reading(COUNTER_TOKEN)
+        self._daily_account_reading = self._daily.reading(COUNTER_ACCOUNT)
+        self._schedule_daily_save(identity)
+
+    def _schedule_daily_save(self, identity: str) -> None:
+        """零点基线落盘(与日志缓存共用同一条后台队列),主线程零阻塞。"""
+        if not self._daily_state_path or not self._daily.dirty or self._daily_saving:
+            return
+        if self._log_store_tasks is None:
+            self._log_store_tasks = SerialTaskRunner(
+                self, thread_name="ConfigPilotPetLogStore", drain_on_close=True
+            )
+        payload = self._daily.to_payload(identity)
+        revision = self._daily.revision
+        path = self._daily_state_path
+        self._daily_saving = True
+        try:
+            self._log_store_tasks.submit(
+                lambda: write_store(path, payload),
+                lambda _result: self._daily_saved(revision),
+                self._daily_save_failed,
+            )
+        except RuntimeError as exc:  # 队列已关闭(退出中)
+            self._daily_saving = False
+            LOGGER.info("桌宠累计基线落盘被跳过: %s", exc)
+
+    def _daily_saved(self, revision: int) -> None:
+        self._daily_saving = False
+        self._daily.mark_saved(revision)
+
+    def _daily_save_failed(self, exc: Exception) -> None:
+        self._daily_saving = False
+        LOGGER.info("桌宠累计基线落盘失败(下轮重试): %s", exc)
+
+    def _today_quota(self) -> tuple[int, str]:
+        """今日已用(本令牌)的额度与置信度;累计口径不可用时退回日志窗口合计。"""
+        reading = self._daily_reading
+        if reading is not None and reading.usable:
+            return reading.quota, reading.confidence
+        return int(self._today["quota"]), (
+            CONFIDENCE_EXACT if self._today_complete else CONFIDENCE_BELOW
+        )

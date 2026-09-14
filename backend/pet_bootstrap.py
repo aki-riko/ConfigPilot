@@ -291,6 +291,8 @@ def install_pet(
         resources_dir=os.path.join(app_dir, "resources"),
         # 今日日志本地累计缓存:与配置文件同目录,重启后"今日已用"不清零。
         log_store_path=str(pet_config_path.parent / "pet_logs.json"),
+        # 今日已用的远程累计零点基线:同样跨重启保留(站点没有按天接口,基线只能自己存)。
+        daily_state_path=str(pet_config_path.parent / "pet_daily.json"),
     )
 
     engine.rootContext().setContextProperty("PetStandalone", standalone)

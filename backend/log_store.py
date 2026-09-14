@@ -78,6 +78,11 @@ class DailyLogStore:
         self._by_key: dict[tuple, dict[str, Any]] = {}
         self._newest: int | None = None
         self._complete = True
+        # 最近一轮接口的窗口特征:条数与最老一条的时间戳,用来判断窗口有没有
+        # 覆盖到今日零点(远程累计计数器要靠它反推零点基线)。
+        self._window_rows = 0
+        self._window_oldest: int | None = None
+        self._midnight: float = 0.0
         self._dirty = False
         self._revision = 0
 
@@ -90,6 +95,20 @@ class DailyLogStore:
     @property
     def complete(self) -> bool:
         return self._complete
+
+    @property
+    def day_covered(self) -> bool:
+        """窗口有没有把「今日零点之前」也装进来。
+
+        True 的两种情形:窗口没被 1000 条上限撑满(说明该令牌的全部日志都在手上),
+        或撑满了但最老一条仍早于今日零点。只有此时,窗口里的今日合计才是精确值,
+        才能拿它反推累计计数器的零点基线。
+        """
+        if self._window_rows == 0:
+            return False
+        if self._window_rows < WINDOW_LIMIT:
+            return True
+        return self._window_oldest is not None and self._window_oldest < self._midnight
 
     @property
     def dirty(self) -> bool:
@@ -123,12 +142,15 @@ class DailyLogStore:
             self._dirty = True
             self._revision += 1
         midnight = local_midnight_timestamp(current)
+        self._midnight = midnight
 
         stamps = [
             ts for ts in (_valid_timestamp(r.get("created_at")) for r in rows or [] if isinstance(r, dict))
             if ts is not None
         ]
         window_oldest = min(stamps) if stamps else None
+        self._window_rows = len([r for r in rows or [] if isinstance(r, dict)])
+        self._window_oldest = window_oldest
         prev_newest = self._newest
         was_complete = self._complete
         added = 0

@@ -107,6 +107,9 @@ Window {
                                           : (failed ? "连接失败" : NewApiPet.balanceText)
     readonly property string todaySummary: ready ? NewApiPet.todayText : "—"
     readonly property string todayAmount: ready ? NewApiPet.todayAmountText : "—"
+    // 今日已用的第二个口径:该账户下所有令牌合计(站点只有终身累计值,
+    // 今天这段由 backend/daily_usage.py 用零点基线差值算出来)
+    readonly property string todayAccountAmount: ready ? NewApiPet.todayAccountAmountText : "—"
     readonly property string todayCountText: ready
                                              ? ((NewApiPet.todayLowerBound ? "≥" : "")
                                                 + NewApiPet.todayCount + " 次")
@@ -293,5 +296,6 @@ Window {
         primaryNegative: petWindow.primaryNegative
         secondaryBalanceText: petWindow.secondaryBalanceText
         accountFreshText: petWindow.accountFreshText
+        todayAccountAmount: petWindow.todayAccountAmount
     }
 }

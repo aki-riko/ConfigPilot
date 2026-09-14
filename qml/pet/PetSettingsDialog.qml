@@ -129,6 +129,7 @@ Window {
             imageField.text = NewApiPet.configPetImage
             dialog.balanceSource = NewApiPet.balanceSource
             dialog._fillSpin(accountIntervalField, NewApiPet.configAccountIntervalText, 300)
+            dialog._fillSpin(logIntervalField, NewApiPet.configLogIntervalText, 180)
         }
         errorText.text = ""
         x = Math.max(0, Screen.desktopAvailableWidth / 2 - width / 2)
@@ -144,7 +145,8 @@ Window {
             String(Math.round(intervalField.value)), dialog.currency,
             String(perUnitField.value), String(rateField.value),
             imageField.text, dialog.source,
-            dialog.balanceSource, String(Math.round(accountIntervalField.value)))
+            dialog.balanceSource, String(Math.round(accountIntervalField.value)),
+            String(Math.round(logIntervalField.value)))
         if (ok) {
             visible = false
             return
@@ -333,6 +335,26 @@ Window {
                             label: "账户余额轮询间隔（秒，30-7200；变化慢，建议 300）"
                             minimum: 30
                             maximum: 7200
+                        }
+
+                        SpinField {
+                            id: logIntervalField
+                            objectName: "logIntervalField"
+                            width: parent.width
+                            label: "调用日志轮询间隔（秒，30-7200；建议 ≥180）"
+                            minimum: 30
+                            maximum: 7200
+                        }
+
+                        Fluent.Label {
+                            objectName: "logIntervalHint"
+                            width: parent ? parent.width : 0
+                            text: "站点按路由限流 20 次/20 分钟：日志窗口打太勤会被 429 冻结，"
+                                  + "金额（今日已用）走累计计数器口径，不受这条影响。"
+                            type: Fluent.Enums.label.type_caption
+                            font.pixelSize: Fluent.Enums.typography.micro
+                            customTextColor: Fluent.Enums.tertiaryForeground
+                            wrapMode: Text.WordWrap
                         }
 
                         SpinField {

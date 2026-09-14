@@ -377,6 +377,34 @@ class PetConfigTests(unittest.TestCase):
         )
         self.assertEqual(error, "账户余额轮询间隔必须是整数秒")
 
+    def test_log_poll_interval_round_trip(self):
+        """日志窗口间隔必须能存能读能校验:它决定会不会把该路由打进 429。"""
+        config, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", "",
+            "manual", "account", "60", "240",
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(config.log_poll_interval_seconds, 240)
+
+        # 老调用不传第 11 个参数 → 用 180s 默认值(顶在 20 次/20 分钟死线上的是 60s)
+        legacy, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", "",
+            "manual", "account", "60",
+        )
+        self.assertEqual(error, "")
+        self.assertEqual(legacy.log_poll_interval_seconds, 180)
+
+        _, error = build_config_from_user_input(
+            "https://api.example.com", "sk-demo", "30", "CNY", "500000", "7.3", "",
+            "manual", "account", "60", "5",
+        )
+        self.assertIn("log_poll_interval_seconds", error)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pet_log_interval.json"
+            save_pet_config(path, PetConfig(log_poll_interval_seconds=420))
+            self.assertEqual(load_pet_config(path).log_poll_interval_seconds, 420)
+
     def test_env_overrides(self):
         base = PetConfig(base_url="https://from-file.example.com", api_key="sk-file")
         effective = resolve_effective_config(

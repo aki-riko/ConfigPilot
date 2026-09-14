@@ -116,6 +116,18 @@ class MainWindowCloseFlowTests(unittest.TestCase):
 
         self.assertTrue(bool(dialog.property("isOpen")),
                         "点关闭没有弹出选择框")
+        # 只断言 isOpen 挡不住真实发生过的 BUG：Fluent.Windows 的默认属性是 pages
+        # （页面列表）而不是 contentData，声明在窗口里的 CloseChoiceDialog 拿不到
+        # 视觉父项 —— _isOpen 被置真，但节点不在场景树里，宽高 0、永远不可见，
+        # 用户点关闭就是"什么都没发生"。所以必须核对它真的挂进了窗口并可见。
+        self.assertIsNotNone(dialog.property("parent"),
+                            "对话框没有视觉父项，根本没进窗口场景树")
+        self.assertTrue(bool(dialog.property("visible")),
+                        "对话框 _isOpen 为真但不可见：用户看不到任何反应")
+        self.assertGreater(dialog.property("width"), 0,
+                           "对话框宽度为 0，无法显示")
+        self.assertGreater(dialog.property("height"), 0,
+                           "对话框高度为 0，无法显示")
         self.assertTrue(bool(window.property("visible")),
                         "关闭请求没被挡下：窗口被直接关掉了")
         self.assertFalse(bool(window.property("quitApproved")),

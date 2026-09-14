@@ -118,6 +118,15 @@ QtObject {
 
             CloseChoiceDialog {
                 id: closeChoiceDialog
+
+                // Fluent.Windows 的默认属性是 pages（页面列表），不是 contentData。
+                // 声明在这里的对话框因此拿不到视觉父项：parent=null、尺寸 0x0，
+                // open() 只把 _isOpen 置真，Window.window 解析不出来 → 永远不可见。
+                // 结果就是点标题栏关闭后窗口被 closeRequestAccepted=false 留下，
+                // 确认框却根本没出现，看起来「关不掉」。显式挂到窗口 contentItem，
+                // 走 OverlayDialogCore 的窗口级覆盖，和页面里声明的对话框同一层级。
+                parent: appWindow.contentItem
+
                 onQuitRequested: {
                     appWindow.quitApproved = true
                     Qt.quit()

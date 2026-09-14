@@ -43,15 +43,28 @@ def _default_codex_store():
 _MASK_ALPHA_RUN = re.compile(rb"[\x10-\xff]+")
 _MASK_DEBOUNCE_MS = 300   # 形态切换/淡入淡出跑完后再抓像素
 _MASK_FOLLOWUP_MS = 600   # 事件驱动刷新后补一次,防抓到动画中途的帧
+# 遮罩相对"抓帧那一刻的剪影"向外胀的量(逻辑像素)。
+# 必须是正数:遮罩是一次性抓出来的静态剪影,而立绘之后还会继续动 ——
+#   * 摇摆 rotation = ±2.2°,以脚底为原点,头顶横向位移 ≈ tan(2.2°)*106 ≈ 4.1 逻辑像素,
+#     遮罩若在摆动的另一端定格,最坏要覆盖 2 倍 ≈ 8.2 像素;
+#   * alpha≥16 的判据本来就把立绘的抗锯齿软边排除在外,不胀边就等于沿轮廓削掉一圈;
+#   * sleepy 帧的手臂比 idle 宽 33/512 画布 ≈ 7.7 像素,姿势切换后 300ms 内遮罩还是旧剪影。
+# 实测不胀边时,摆到最大角度会有 ~3% 的立绘像素被硬边切掉(红色边缘见
+# work/pet_mask_sim),肉眼看到的就是轮廓外侧一层对不上的"重影"。
+# 10 像素同时盖住上面三项,又远小于旧的整宽矩形遮罩挡住的面积。
+_MASK_MARGIN_LOGICAL = 10
 
 
 def _build_mask_region(bits: bytes, stride: int, width: int, height: int,
-                       dpr: float) -> QRegion:
+                       dpr: float, margin: int = _MASK_MARGIN_LOGICAL) -> QRegion:
     """纯函数:把 grabWindow 的 BGRA 字节流转成逻辑坐标 QRegion。
 
     逐行用正则取 alpha 游程(字节级扫描,C 速度),映射到逻辑 x 后并入该
-    逻辑行的游程列表,最后逐行 OR。输入是 bytes 拷贝、输出是值类型 QRegion,
-    全程可安全在后台线程执行。
+    逻辑行的游程列表;最后把每行向左右各胀 margin、并吸收上下 margin 行的
+    游程(等价于方形核膨胀),逐行合并成区域。输入是 bytes 拷贝、输出是值
+    类型 QRegion,全程可安全在后台线程执行。
+
+    margin=0 时退化成"贴合剪影"的旧行为,单测用它验证扫描与 DPR 映射本身。
     """
     inv = 1.0 / dpr if dpr and dpr > 0 else 1.0
     rows: dict[int, list[list[int]]] = {}
@@ -69,10 +82,35 @@ def _build_mask_region(bits: bytes, stride: int, width: int, height: int,
                     spans[-1][1] = x1
             else:
                 spans.append([x0, x1])
-    region = QRegion()
+    if not rows:
+        return QRegion()
+
+    logical_w = int(math.ceil(width * inv))
+    logical_h = int(math.ceil(height * inv))
+    dilated: dict[int, list[list[int]]] = {}
     for ly, spans in rows.items():
-        for x0, x1 in spans:
-            region |= QRegion(QRect(x0, ly, x1 - x0, 1))
+        for ty in range(ly - margin, ly + margin + 1):
+            if ty < 0 or ty >= logical_h:
+                continue
+            bucket = dilated.setdefault(ty, [])
+            bucket.extend(
+                [max(0, x0 - margin), min(logical_w, x1 + margin)]
+                for x0, x1 in spans
+            )
+
+    region = QRegion()
+    for ty in sorted(dilated):
+        merged: list[list[int]] = []
+        for x0, x1 in sorted(dilated[ty]):
+            if x1 <= x0:
+                continue
+            if merged and x0 <= merged[-1][1]:
+                if x1 > merged[-1][1]:
+                    merged[-1][1] = x1
+            else:
+                merged.append([x0, x1])
+        for x0, x1 in merged:
+            region |= QRegion(QRect(x0, ty, x1 - x0, 1))
     return region
 
 
@@ -86,7 +124,10 @@ def _attach_pet_window_mask(window: QObject) -> None:
 
     旧版遮罩是 visibleContentHeight 的整宽矩形:pet 形态桌宠只占右下角
     ~136×136,矩形却是 340×156,大片没画东西的区域照样挡住桌面点击。
-    现在改为:抓窗口像素 → alpha 游程建区域,只有真正画了像素的地方可交互。
+    现在改为:抓窗口像素 → alpha 游程建区域 + 向外胀 10 逻辑像素,
+    只有"剪影胀开一圈"的地方可交互。胀边是必须的:遮罩是某个瞬间的剪影,
+    而立绘还在按 ±2.2° 摇摆、还会换姿势帧,贴合剪影的硬边会削掉对不上
+    的那一圈像素,肉眼看到就是轮廓外侧一层"重影"。
     形态变化先立即铺整宽矩形保底(新内容不被误裁),300ms 防抖后用像素
     区域收紧;立绘姿势帧(sleepy/wave/cheer)变化会改变剪影,钩住
     PetSprite.poseRoleChanged 补扫(眨眼不改剪影,跳过)。逐行字节扫描在

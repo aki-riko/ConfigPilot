@@ -1115,7 +1115,10 @@ class PetTodayLogStoreTests(unittest.TestCase):
 
 
 class PetMaskRegionBuilderTests(unittest.TestCase):
-    """_build_mask_region 纯函数:只有 alpha≥16 的像素进区域,DPR 映射正确。"""
+    """_build_mask_region 纯函数:alpha≥16 的游程进区域、DPR 映射正确、胀边盖住动画位移。
+
+    margin=0 用来单验"扫描 + DPR 映射"这层语义;胀边是另一层,单独测。
+    """
 
     @staticmethod
     def _image(width, height, rects, alpha=255):
@@ -1130,11 +1133,11 @@ class PetMaskRegionBuilderTests(unittest.TestCase):
         painter.end()
         return img
 
-    def _build(self, img, dpr=1.0):
+    def _build(self, img, dpr=1.0, margin=0):
         from backend.pet_bootstrap import _build_mask_region
 
         return _build_mask_region(bytes(img.constBits()), img.bytesPerLine(),
-                                  img.width(), img.height(), dpr)
+                                  img.width(), img.height(), dpr, margin)
 
     def test_only_opaque_runs_are_kept(self):
         region = self._build(self._image(40, 20, [(5, 3, 10, 7), (25, 12, 5, 5)]))
@@ -1158,6 +1161,33 @@ class PetMaskRegionBuilderTests(unittest.TestCase):
 
     def test_transparent_image_gives_empty_region(self):
         self.assertTrue(self._build(self._image(20, 20, [])).isEmpty())
+
+    def test_margin_widens_region_but_noise_still_excluded(self):
+        # 胀边:横向/纵向各向外 4 逻辑像素;alpha 太低的噪声块胀完也不该出现
+        img = self._image(60, 40, [(20, 15, 8, 6)])
+        tight = self._build(img, margin=0)
+        wide = self._build(img, margin=4)
+        self.assertFalse(tight.contains(QPoint(17, 15)))
+        self.assertTrue(wide.contains(QPoint(16, 11)), "胀边后应覆盖到左上 4 像素")
+        self.assertTrue(wide.contains(QPoint(31, 24)))
+        self.assertFalse(wide.contains(QPoint(10, 10)), "离剪影 10 像素以上不该被胀进来")
+        self.assertTrue(self._build(self._image(60, 40, [(20, 15, 8, 6)], alpha=8),
+                                    margin=6).isEmpty())
+
+    def test_default_margin_covers_sway_displacement(self):
+        """默认胀边必须盖住"遮罩定格在摆动一端"的最坏位移(头顶 ≈ 8.2 逻辑像素)。"""
+        from backend.pet_bootstrap import _MASK_MARGIN_LOGICAL
+
+        self.assertGreaterEqual(_MASK_MARGIN_LOGICAL, 9)
+
+    def test_production_default_margin_applied(self):
+        img = self._image(60, 40, [(20, 15, 8, 6)])
+        from backend.pet_bootstrap import _MASK_MARGIN_LOGICAL, _build_mask_region
+
+        default = _build_mask_region(bytes(img.constBits()), img.bytesPerLine(),
+                                     img.width(), img.height(), 1.0)
+        self.assertTrue(default.contains(QPoint(20 - _MASK_MARGIN_LOGICAL + 1, 15)))
+        self.assertTrue(default.contains(QPoint(28 + _MASK_MARGIN_LOGICAL - 1, 21)))
 
 
 if __name__ == "__main__":

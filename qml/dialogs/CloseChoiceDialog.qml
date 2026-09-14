@@ -100,49 +100,53 @@ Fluent.DialogBoxCore {
             border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
             border.color: root.effectiveSkinContext.stateColor.border
 
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Fluent.Enums.spacing.m
+                spacing: Fluent.Enums.spacing.m
+
+                Fluent.Icon {
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    icon: "ArrowMinimize"
+                    iconSize: Fluent.Enums.iconSize.l
+                    color: root.effectiveSkinContext.accentColor
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Fluent.Enums.spacing.xs
+                    Fluent.Label {
+                        Layout.fillWidth: true
+                        text: "最小化到托盘"
+                        type: Fluent.Enums.label.type_body_strong
+                        customTextColor: root.effectiveSkinContext.stateColor.textStrong
+                    }
+                    Fluent.Label {
+                        Layout.fillWidth: true
+                        text: "程序继续在后台运行，点托盘图标可重新打开窗口。"
+                        type: Fluent.Enums.label.type_caption
+                        customTextColor: root.effectiveSkinContext.stateColor.textMedium
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             Fluent.Button {
+                id: trayAction
                 objectName: "closeChoiceTrayButton"
                 anchors.fill: parent
                 style: Fluent.Enums.button.style_transparent
-                hasCustomContent: true
                 text: "最小化到托盘"
+                opacity: 0
                 onClicked: {
                     root.choice = "tray"
                     root.accept()
                 }
-
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: Fluent.Enums.spacing.m
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: Fluent.Enums.spacing.m
-                        Fluent.Icon {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            icon: "ArrowMinimize"
-                            iconSize: Fluent.Enums.iconSize.l
-                            color: root.effectiveSkinContext.accentColor
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Fluent.Enums.spacing.xs
-                            Fluent.Label {
-                                Layout.fillWidth: true
-                                text: "最小化到托盘"
-                                type: Fluent.Enums.label.type_body_strong
-                                customTextColor: root.effectiveSkinContext.stateColor.textStrong
-                            }
-                            Fluent.Label {
-                                Layout.fillWidth: true
-                                text: "程序继续在后台运行，点托盘图标可重新打开窗口。"
-                                type: Fluent.Enums.label.type_caption
-                                customTextColor: root.effectiveSkinContext.stateColor.textMedium
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-                }
+            }
+            MouseArea {
+                anchors.fill: parent
+                z: 2
+                onClicked: trayAction.clicked()
             }
         }
 
@@ -155,49 +159,53 @@ Fluent.DialogBoxCore {
             border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
             border.color: root.effectiveSkinContext.stateColor.borderLight
 
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: Fluent.Enums.spacing.m
+                spacing: Fluent.Enums.spacing.m
+
+                Fluent.Icon {
+                    Layout.preferredWidth: 28
+                    Layout.preferredHeight: 28
+                    icon: "ArrowExit"
+                    iconSize: Fluent.Enums.iconSize.l
+                    color: Fluent.Enums.statusLevel.errorColor
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Fluent.Enums.spacing.xs
+                    Fluent.Label {
+                        Layout.fillWidth: true
+                        text: "退出程序"
+                        type: Fluent.Enums.label.type_body_strong
+                        customTextColor: root.effectiveSkinContext.stateColor.textStrong
+                    }
+                    Fluent.Label {
+                        Layout.fillWidth: true
+                        text: "结束进程，右下角未点的「应用更改」草稿会一起丢弃。"
+                        type: Fluent.Enums.label.type_caption
+                        customTextColor: root.effectiveSkinContext.stateColor.textMedium
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             Fluent.Button {
+                id: quitAction
                 objectName: "closeChoiceQuitButton"
                 anchors.fill: parent
                 style: Fluent.Enums.button.style_transparent
-                hasCustomContent: true
                 text: "退出程序"
+                opacity: 0
                 onClicked: {
                     root.choice = "quit"
                     root.accept()
                 }
-
-                Item {
-                    anchors.fill: parent
-                    anchors.margins: Fluent.Enums.spacing.m
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: Fluent.Enums.spacing.m
-                        Fluent.Icon {
-                            Layout.preferredWidth: 28
-                            Layout.preferredHeight: 28
-                            icon: "ArrowExit"
-                            iconSize: Fluent.Enums.iconSize.l
-                            color: Fluent.Enums.statusLevel.errorColor
-                        }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: Fluent.Enums.spacing.xs
-                            Fluent.Label {
-                                Layout.fillWidth: true
-                                text: "退出程序"
-                                type: Fluent.Enums.label.type_body_strong
-                                customTextColor: root.effectiveSkinContext.stateColor.textStrong
-                            }
-                            Fluent.Label {
-                                Layout.fillWidth: true
-                                text: "结束进程，右下角未点的「应用更改」草稿会一起丢弃。"
-                                type: Fluent.Enums.label.type_caption
-                                customTextColor: root.effectiveSkinContext.stateColor.textMedium
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-                }
+            }
+            MouseArea {
+                anchors.fill: parent
+                z: 2
+                onClicked: quitAction.clicked()
             }
         }
     }

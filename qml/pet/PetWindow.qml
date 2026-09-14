@@ -256,7 +256,9 @@ Window {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width
-        height: panel.panelHeight
+        // 这里是 PetPanel 实例自身的高度；显式走窗口级派生属性，避免
+        // `panel.panelHeight` 在子组件内部解析为自身并形成绑定环。
+        height: petWindow.panelHeight
         mode: petWindow.mode
         panelPadding: petWindow.panelPadding
         panelWidth: petWindow.panelWidth

@@ -22,6 +22,7 @@ __pycache__/
 _*.py
 _*.png
 *.log
+work/
 
 # 生成流水线产物(桌宠立绘候选等),不入库
 .artifacts/

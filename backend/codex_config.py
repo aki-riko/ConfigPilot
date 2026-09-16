@@ -373,6 +373,10 @@ class CodexConfig(QObject):
     def stableContextPreset(self):
         return self._model_profiles.stable_context_preset()
 
+    @Slot(result="QVariantMap")
+    def millionContextPreset(self):
+        return self._model_profiles.million_context_preset()
+
     @Slot()
     def refreshReasoningProfiles(self):
         if not self._model_profiles_loaded:

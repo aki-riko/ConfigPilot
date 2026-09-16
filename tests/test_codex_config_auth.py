@@ -553,6 +553,17 @@ class CodexConfigAuthTests(unittest.TestCase):
                     "maxAutoCompactLimit": 245000,
                 },
             )
+            self.assertEqual(
+                config.millionContextPreset(),
+                {
+                    "menuText": "百万上下文",
+                    "contextWindow": 1000000,
+                    "autoCompactLimit": 900000,
+                    "toolOutputLimit": 6000,
+                    "maxContextWindow": 1000000,
+                    "maxAutoCompactLimit": 900000,
+                },
+            )
 
     def test_apply_custom_gpt56_context_values_are_preserved(self):
         codex_config = self.load_module()
@@ -625,6 +636,31 @@ class CodexConfigAuthTests(unittest.TestCase):
             self.assertEqual(saved["model_context_window"], 372000)
             self.assertEqual(saved["model_auto_compact_token_limit"], 353000)
             self.assertEqual(saved["tool_output_token_limit"], 6000)
+
+            million_preset = config.millionContextPreset()
+            config.applyConfig(
+                {
+                    "baseUrl": "https://api.9li.life/v1",
+                    "provider": "relay",
+                    "wireApi": "responses",
+                    "model": "gpt-5.6-sol",
+                    "reasoningEffort": "xhigh",
+                    "modelContextWindow": str(million_preset["contextWindow"]),
+                    "modelAutoCompactTokenLimit": str(
+                        million_preset["autoCompactLimit"]
+                    ),
+                    "toolOutputTokenLimit": str(million_preset["toolOutputLimit"]),
+                }
+            )
+            wait_for_idle(config)
+
+            with config_path.open("rb") as handle:
+                saved_million = tomllib.load(handle)
+            self.assertEqual(saved_million["model_context_window"], 1000000)
+            self.assertEqual(
+                saved_million["model_auto_compact_token_limit"], 900000
+            )
+            self.assertEqual(saved_million["tool_output_token_limit"], 6000)
 
     def test_model_fetch_notification_does_not_embed_model_list(self):
         codex_config = self.load_module()

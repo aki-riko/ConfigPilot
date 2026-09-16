@@ -13,17 +13,25 @@ SPECIAL_REASONING_EFFORTS = frozenset({"max", "ultra"})
 
 
 class ModelProfiles:
-    def __init__(self, default_options, profiles, stable_context_preset, labels):
+    def __init__(
+        self,
+        default_options,
+        profiles,
+        stable_context_preset,
+        million_context_preset,
+        labels,
+    ):
         self._default_options = default_options
         self._profiles = profiles
         self._stable_context_preset = stable_context_preset
+        self._million_context_preset = million_context_preset
         self._labels = labels
         self._reasoning_overrides = {}
 
     @classmethod
     def empty(cls):
         """返回异步加载完成前可安全查询的空模型配置。"""
-        return cls([], [], {}, {})
+        return cls([], [], {}, {}, {})
 
     @classmethod
     def from_file(cls, path):
@@ -40,12 +48,21 @@ class ModelProfiles:
         stable_context_preset = cls._normalize_context(
             data.get("stableContextPreset", {}), "stableContextPreset"
         )
+        million_context_preset = cls._normalize_context(
+            data.get("millionContextPreset", {}), "millionContextPreset"
+        )
         labels = {
             str(value).strip(): str(text).strip()
             for value, text in data.get("reasoningLabels", {}).items()
             if str(value).strip() and str(text).strip()
         }
-        return cls(default_options, profiles, stable_context_preset, labels)
+        return cls(
+            default_options,
+            profiles,
+            stable_context_preset,
+            million_context_preset,
+            labels,
+        )
 
     @staticmethod
     def _normalize_options(raw_options, field_name):
@@ -187,6 +204,9 @@ class ModelProfiles:
 
     def stable_context_preset(self):
         return dict(self._stable_context_preset)
+
+    def million_context_preset(self):
+        return dict(self._million_context_preset)
 
     def clamp_context_window(self, model, value):
         return self._clamp_context_value(model, value, "maxContextWindow")

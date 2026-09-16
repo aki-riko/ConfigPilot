@@ -1,5 +1,5 @@
 {
-  "_说明": "按模型匹配思考等级，并为所有受支持模型统一提供稳定上下文。value 是写入 config.toml 的真实值，text 是界面显示文本。",
+  "_说明": "按模型匹配思考等级，并为所有受支持模型提供上下文预设。value 是写入 config.toml 的真实值，text 是界面显示文本。",
   "defaultReasoningOptions": [
     { "value": "", "text": "(不设置)" },
     { "value": "low", "text": "low" },
@@ -21,6 +21,14 @@
     "toolOutputLimit": 6000,
     "maxContextWindow": 258400,
     "maxAutoCompactLimit": 245000
+  },
+  "millionContextPreset": {
+    "menuText": "百万上下文",
+    "contextWindow": 1000000,
+    "autoCompactLimit": 900000,
+    "toolOutputLimit": 6000,
+    "maxContextWindow": 1000000,
+    "maxAutoCompactLimit": 900000
   },
   "profiles": [
     {

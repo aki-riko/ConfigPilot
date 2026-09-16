@@ -6,6 +6,7 @@ Fluent.Card {
     id: root
 
     property var currentPreset: ({})
+    property var millionPreset: ({})
     property string contextWindowValue: ""
     property string autoCompactValue: ""
     property string toolOutputValue: ""
@@ -13,6 +14,7 @@ Fluent.Card {
     property string compactRatioText: "未设置"
 
     signal presetRequested()
+    signal millionPresetRequested()
     signal contextWindowEdited(string value)
     signal autoCompactEdited(string value)
     signal toolOutputEdited(string value)
@@ -80,6 +82,17 @@ Fluent.Card {
                 text: "套用稳定上下文"
                 enabled: root.currentPreset.contextWindow > 0
                 onClicked: root.presetRequested()
+            }
+            Fluent.Button {
+                width: 152
+                Layout.minimumWidth: 152
+                Layout.preferredWidth: 152
+                Layout.maximumWidth: 152
+                style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.checkmark
+                text: "套用百万上下文"
+                enabled: root.millionPreset.contextWindow > 0
+                onClicked: root.millionPresetRequested()
             }
             Fluent.Button {
                 width: 128

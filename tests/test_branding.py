@@ -192,6 +192,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("importAuthJson", view)
         self.assertIn("repairRelayAuth", view)
         self.assertIn('text: "套用稳定上下文"', context)
+        self.assertIn('text: "套用百万上下文"', context)
         self.assertNotIn("feature: Fluent.Enums.button.feature_dropdown", context)
         self.assertIn("Fluent.Expander", advanced)
         self.assertIn("function commitKey()", connection)

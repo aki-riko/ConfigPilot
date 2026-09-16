@@ -42,6 +42,10 @@ Item {
         var revision = profilesRevision
         return CodexConfig ? CodexConfig.stableContextPreset() : ({})
     }
+    readonly property var millionContextPreset: {
+        var revision = profilesRevision
+        return CodexConfig ? CodexConfig.millionContextPreset() : ({})
+    }
     readonly property real contextWindowNumber: parsePositive(fContextWindow)
     readonly property real autoCompactNumber: parsePositive(fAutoCompactLimit)
     readonly property real compactRatio: contextWindowNumber > 0 && autoCompactNumber > 0
@@ -113,6 +117,15 @@ Item {
 
     function useStableContextPreset() {
         var preset = CodexConfig ? CodexConfig.stableContextPreset() : ({})
+        useContextPreset(preset)
+    }
+
+    function useMillionContextPreset() {
+        var preset = CodexConfig ? CodexConfig.millionContextPreset() : ({})
+        useContextPreset(preset)
+    }
+
+    function useContextPreset(preset) {
         if (!preset || !preset.contextWindow) return
         fContextWindow = String(preset.contextWindow)
         fAutoCompactLimit = String(preset.autoCompactLimit)
@@ -392,12 +405,14 @@ Item {
                 width: pageColumn.innerWidth
                 enabled: !root.configBusy
                 currentPreset: root.currentContextPreset
+                millionPreset: root.millionContextPreset
                 contextWindowValue: root.fContextWindow
                 autoCompactValue: root.fAutoCompactLimit
                 toolOutputValue: root.fToolOutputLimit
                 compactRatio: root.compactRatio
                 compactRatioText: root.compactRatioLabel()
                 onPresetRequested: root.useStableContextPreset()
+                onMillionPresetRequested: root.useMillionContextPreset()
                 onContextWindowEdited: function(value) {
                     root.fContextWindow = value
                 }

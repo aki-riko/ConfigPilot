@@ -357,6 +357,19 @@ class PetQmlLoadTests(unittest.TestCase):
         self.assertIn("¥291.05", rendered)
         self.assertEqual(window.property("todayAccountAmount"), "¥291.05")
 
+    def test_initial_load_has_no_panel_height_binding_loop(self):
+        """启动时窗口与面板高度必须是单向依赖，不能产生 QML 绑定环。"""
+        engine = self._engine()
+        captured = _capture_qml_warnings()
+        with captured:
+            window = self._create(engine, "PetWindow.qml")
+            window.setProperty("visible", True)
+            APP.processEvents()
+            QTest.qWait(50)
+        warnings = captured.stop()
+        loops = [warning for warning in warnings if "Binding loop" in warning]
+        self.assertEqual(loops, [], "启动阶段出现 QML 绑定环: " + " | ".join(loops))
+
     def test_built_in_pet_art_reaches_sprite_and_chips(self):
         """内置立绘经后端解析后真的落到 PetSprite.imagePath,设置窗芯片同步列出。
 

@@ -31,7 +31,7 @@ Window {
     // (遮罩由 pet_bootstrap 在 Python 侧 setMask),窗口本身**永不 resize**。
     // 原因:透明无边框窗口 resize 时,系统要重建整块渲染表面,表现为整个悬浮窗
     // (含桌宠)闪 1~2 帧 —— 这正是"点一下闪一下"的来源。
-    height: panel.maxPanelHeight
+    height: maxPanelHeight
     // 底边固定在 bottomY。高度恒定后 y 也恒定,桌宠屏幕位置严格不动。
     y: bottomY >= 0 ? bottomY - height : 0
     title: "ConfigPilot 余额桌宠"
@@ -42,7 +42,7 @@ Window {
     readonly property bool petReady: typeof NewApiPet !== "undefined" && NewApiPet !== null
     // 当前形态真正需要露出的高度:Python 侧据此设置窗口遮罩,其余部分对系统来说
     // 等于不存在(既不参与合成,也不接收鼠标)。
-    readonly property int visibleContentHeight: panel.panelHeight
+    readonly property int visibleContentHeight: panelHeight
 
     // ---------------------------------------------------------------- 布局常量
     // 与 PetPanel 内部的固定行高一一对应,改动任一侧都要同步。
@@ -77,10 +77,36 @@ Window {
     // 气泡形态的面板高度 = 气泡顶边 + 锚点(0) + 空档 + 桌宠 + 下边距
     readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
                                              + spriteSize + spriteBottomMargin
+    readonly property int detailPanelHeight: cardTop + detailContentHeight + spriteGap
+                                            + spriteSize + spriteBottomMargin
+    readonly property int petPanelHeight: petAreaHeight
+    readonly property int maxPanelHeight: Math.max(
+        detailPanelHeight, Math.max(bubblePanelHeight, petPanelHeight)
+    )
 
     property string mode: "bubble"
-    // 面板是唯一布局来源:窗口高度跟随面板高度,底边保持不动。
-    readonly property int panelHeight: panel.panelHeight
+    // 当前可见高度由窗口持有为状态值。不能声明成 mode 的派生绑定，否则初始化时
+    // 会与 PetPanel 的 height 注入形成重入；收缩延迟的语义也需要可写状态。
+    property int panelHeight: bubblePanelHeight
+    function targetPanelHeightForMode() {
+        return mode === "detail" ? detailPanelHeight
+             : (mode === "bubble" ? bubblePanelHeight : petPanelHeight)
+    }
+    onModeChanged: {
+        var targetHeight = targetPanelHeightForMode()
+        if (targetHeight >= panelHeight) {
+            heightSettleTimer.stop()
+            panelHeight = targetHeight
+        } else {
+            heightSettleTimer.restart()
+        }
+    }
+
+    Timer {
+        id: heightSettleTimer
+        interval: Fluent.Enums.duration.medium
+        onTriggered: petWindow.panelHeight = petWindow.targetPanelHeightForMode()
+    }
 
     property int bottomY: -1
     property string lastBalance: ""
@@ -256,8 +282,7 @@ Window {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width
-        // 这里是 PetPanel 实例自身的高度；显式走窗口级派生属性，避免
-        // `panel.panelHeight` 在子组件内部解析为自身并形成绑定环。
+        // 高度只由窗口单向注入；窗口绝不再反向读取面板高度，避免绑定环。
         height: petWindow.panelHeight
         mode: petWindow.mode
         panelPadding: petWindow.panelPadding

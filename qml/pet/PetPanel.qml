@@ -119,36 +119,8 @@ Item {
     readonly property int bubblePanelHeight: bubbleTop + bubbleAreaHeight + spriteGap
                                              + spriteSize + spriteBottomMargin
     readonly property int petPanelHeight: petAreaHeight
-    // 形态上限高度:窗口尺寸恒定取它,于是窗口永远不做 resize —— 透明无边框窗口
-    // 一旦 resize,系统会重建整块渲染表面,用户看到的是整个悬浮窗(含桌宠)
-    // 闪 1~2 帧。形态切换改为只改"可见内容 + 窗口遮罩"。
-    readonly property int maxPanelHeight: Math.max(detailPanelHeight,
-                                                   Math.max(bubblePanelHeight, petPanelHeight))
-    readonly property int targetPanelHeight: mode === "detail" ? detailPanelHeight
-                                            : (mode === "bubble" ? bubblePanelHeight : petPanelHeight)
-
-    // 高度不做逐帧动画:窗口 resize 是同步系统调用,200ms 内 resize 几十次会把
-    // 主线程整个拖住(实测一次 processEvents 被拖到 170ms+,比"瞬变"更糟)。
-    // 所以高度一次到位,过渡感全部交给内容层的 opacity + 位移。
-    //
-    // 收缩必须等淡出跑完:明细卡比气泡高,窗口若立刻缩矮,正在淡出的卡片会被
-    // 窗口下沿一路裁掉(看起来像"卡片被抽走")。展开则立即生效 —— 那部分区域
-    // 是透明的,先变高不影响观感,还能给上浮动作留出落点。
-    //
-    // 这里存"滞后的高度值"而不是"滞后的 mode":mode 一旦变化,任何 `= mode`
-    // 的绑定都会立刻把高度一起带过去,延后收缩就白写了。0 表示还没锁定,
-    // 此时直接用目标高度。
-    property int settledPanelHeight: 0
-    readonly property int panelHeight: settledPanelHeight > 0 ? settledPanelHeight
-                                                              : targetPanelHeight
-    onTargetPanelHeightChanged: {
-        if (targetPanelHeight >= panelHeight) {
-            heightSettleTimer.stop()
-            settledPanelHeight = targetPanelHeight
-        } else {
-            heightSettleTimer.restart()
-        }
-    }
+    // 高度由 PetWindow 单向注入。窗口负责形态切换和延迟收缩，面板只消费结果。
+    readonly property int panelHeight: height
 
     // 桌宠永远贴着窗口底边 —— 这样三种形态下桌宠的屏幕位置恒定(窗口只向上长高),
     // 也保证桌宠一定落在窗口内(否则会被裁掉、看不见也点不到)。
@@ -167,13 +139,6 @@ Item {
 
     function showBubble() {
         petWindow.showBubble()
-    }
-
-    // 收缩时把高度切换延后到淡出结束(见上面 panelHeight 处的说明)。
-    Timer {
-        id: heightSettleTimer
-        interval: Fluent.Enums.duration.medium
-        onTriggered: panel.settledPanelHeight = panel.targetPanelHeight
     }
 
     // ============================================================ 明细面板

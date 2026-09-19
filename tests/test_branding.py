@@ -262,7 +262,7 @@ class BrandingTests(unittest.TestCase):
         requirements = self.read("requirements.txt")
         main = self.read("qml/main.qml")
 
-        self.assertIn("prismqml==0.4.2.25", requirements)
+        self.assertIn("prismqml==0.5.0.15", requirements)
         self.assertIn('setContextProperty("PrismQMLVersion", prismqml.__version__)', self.read("main.py"))
         self.assertIn("minimumWidth: 760", main)
         self.assertIn("minimumHeight: 560", main)

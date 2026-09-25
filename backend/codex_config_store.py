@@ -659,7 +659,7 @@ class CodexConfigStore:
         fields = {
             "agents.default_subagent_model": {
                 "present": True,
-                "value": "gpt-5.6-sol",
+                "value": "gpt-6-sol",
             },
             "agents.default_subagent_reasoning_effort": {
                 "present": True,

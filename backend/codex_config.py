@@ -696,7 +696,7 @@ class CodexConfig(QObject):
             lambda snapshot: self._complete_config_change(
                 snapshot,
                 "降智修复已写入",
-                '子代理默认已设为 gpt-5.6-sol / high；请完全重启 Codex 生效',
+                '子代理默认已设为 gpt-6-sol / high；请完全重启 Codex 生效',
             ),
             self._config_write_failed,
         )

@@ -25,7 +25,7 @@ class SubagentDefaultsTests(unittest.TestCase):
             self.assertEqual(
                 data["agents"],
                 {
-                    "default_subagent_model": "gpt-5.6-sol",
+                    "default_subagent_model": "gpt-6-sol",
                     "default_subagent_reasoning_effort": "high",
                 },
             )
@@ -63,7 +63,7 @@ class SubagentDefaultsTests(unittest.TestCase):
 
             store.apply_subagent_defaults()
             current = config_path.read_text(encoding="utf-8").replace(
-                'default_subagent_model = "gpt-5.6-sol"',
+                'default_subagent_model = "gpt-6-sol"',
                 'default_subagent_model = "gpt-6-astra"',
             )
             config_path.write_text(current, encoding="utf-8")

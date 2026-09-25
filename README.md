@@ -21,7 +21,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
   - `requires_openai_auth` —— 供应商用 Chat Completions 协议或非 GPT 模型时开启
   - `model_reasoning_effort` —— 优先从远端模型目录读取；GPT-5.6 提供“轻度 / 中 / 高 / 极高 / 最高”五档，“最高”的真实配置值为 `max`
   - `disable_response_storage` —— 禁用响应存储
-- **上下文预设**：保留所有受支持模型的稳定值 `258400 / 245000 / 6000`，并可一键套用百万上下文 `1000000 / 900000 / 6000`
+- **上下文预设**：保留所有受支持模型的稳定值 `258400 / 245000 / 6000`，并可一键套用百万上下文 `1048576 / 943718 / 6000`
 - **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列
 - **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）
 - **API key**：写入 `~/.codex/auth.json`

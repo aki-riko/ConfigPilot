@@ -24,11 +24,11 @@
   },
   "millionContextPreset": {
     "menuText": "百万上下文",
-    "contextWindow": 1000000,
-    "autoCompactLimit": 900000,
+    "contextWindow": 1048576,
+    "autoCompactLimit": 943718,
     "toolOutputLimit": 6000,
-    "maxContextWindow": 1000000,
-    "maxAutoCompactLimit": 900000
+    "maxContextWindow": 1048576,
+    "maxAutoCompactLimit": 943718
   },
   "profiles": [
     {

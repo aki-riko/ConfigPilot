@@ -557,11 +557,11 @@ class CodexConfigAuthTests(unittest.TestCase):
                 config.millionContextPreset(),
                 {
                     "menuText": "百万上下文",
-                    "contextWindow": 1000000,
-                    "autoCompactLimit": 900000,
+                    "contextWindow": 1048576,
+                    "autoCompactLimit": 943718,
                     "toolOutputLimit": 6000,
-                    "maxContextWindow": 1000000,
-                    "maxAutoCompactLimit": 900000,
+                    "maxContextWindow": 1048576,
+                    "maxAutoCompactLimit": 943718,
                 },
             )
 
@@ -656,9 +656,9 @@ class CodexConfigAuthTests(unittest.TestCase):
 
             with config_path.open("rb") as handle:
                 saved_million = tomllib.load(handle)
-            self.assertEqual(saved_million["model_context_window"], 1000000)
+            self.assertEqual(saved_million["model_context_window"], 1048576)
             self.assertEqual(
-                saved_million["model_auto_compact_token_limit"], 900000
+                saved_million["model_auto_compact_token_limit"], 943718
             )
             self.assertEqual(saved_million["tool_output_token_limit"], 6000)
 

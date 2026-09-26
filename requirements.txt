@@ -1,10 +1,10 @@
 # ConfigPilot 运行依赖
 # 安装: pip install -r requirements.txt
 
-# PrismQML 0.5.0.15 已包含桌宠气泡依赖的三项能力:
+# PrismQML 0.5.0.23 已包含桌宠气泡依赖的三项能力:
 #   1. TipPopup 公开可配的 viewWidth / viewHeight(提交 05babada)
 #   2. TipPopupWindow 的 customContentHost(提交 ece14ef5)
 #   3. Qt.Tool 窗口上 target.mapToGlobal 的坐标退化修复(提交 3e026b94)
-# 升级前曾用 prismqml_local.pth 指向本地检出;0.5.0.15 发布后已回归正式 wheel。
-prismqml==0.5.0.15
+# 升级前曾用 prismqml_local.pth 指向本地检出;0.5.0.23 发布后已回归正式 wheel。
+prismqml==0.5.0.23
 PySide6>=6.9.0

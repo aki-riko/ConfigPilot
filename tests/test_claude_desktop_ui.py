@@ -102,7 +102,7 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn("原样写入", gateway)
         self.assertNotIn("自动补全 /v1", gateway)
         self.assertIn('text: "网关连接"', gateway)
-        self.assertIn("type_password", gateway)
+        self.assertIn("inputType: Fluent.Enums.input.type_normal", gateway)
         self.assertIn("留空保持不变", gateway)
         self.assertIn('objectName: "claudeAuthSchemeBox"', gateway)
         self.assertIn("Layout.preferredHeight: root.controlHeight", gateway)

@@ -316,7 +316,7 @@ Fluent.Card {
                 Fluent.LineEdit {
                     id: keyInput
                     Layout.fillWidth: true
-                    inputType: Fluent.Enums.input.type_password
+                    inputType: Fluent.Enums.input.type_normal
                     enabled: !root.configBusy
                     placeholderText: "粘贴 API key"
                     onAccepted: root.commitKey()

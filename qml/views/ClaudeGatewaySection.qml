@@ -200,7 +200,7 @@ Fluent.Card {
                     objectName: "claudeApiKeyEdit"
                     Layout.fillWidth: true
                     Layout.preferredHeight: root.controlHeight
-                    inputType: Fluent.Enums.input.type_password
+                    inputType: Fluent.Enums.input.type_normal
                     enabled: !root.clearApiKeyValue
                     placeholderText: root.hasApiKey
                                      ? "已保存；留空保持不变"

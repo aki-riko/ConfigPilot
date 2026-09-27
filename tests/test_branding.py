@@ -164,6 +164,12 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("ModelSection", view)
         self.assertIn("ContextSection", view)
         self.assertIn("AdvancedSection", view)
+        self.assertIn("Fluent.Expander", connection)
+        self.assertIn('title: "连接与认证"', connection)
+        self.assertIn("Fluent.Expander", model)
+        self.assertIn('title: "模型与推理"', model)
+        self.assertIn("Fluent.Expander", context)
+        self.assertIn('title: "上下文预算"', context)
         self.assertIn("highestReasoningEffortForModel", view)
         for component in (
             "ConnectionSection",

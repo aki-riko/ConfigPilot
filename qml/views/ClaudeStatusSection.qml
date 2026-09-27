@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property bool installed: false
@@ -30,11 +30,24 @@ Fluent.Card {
     signal cancelInstallRequested()
     signal cloneActiveProfileRequested()
 
-    autoHeight: true
+    title: "应用状态"
+    content: "Claude Desktop 安装、运行模式与配置档案"
+    expanded: false
+    contentPadding: 0
+
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.installed ? "已安装" : "未安装"
+            level: root.installed
+                   ? Fluent.Enums.statusLevel.success
+                   : Fluent.Enums.statusLevel.attention
+        }
+    }
 
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
+        height: childrenRect.height
         leftPadding: Fluent.Enums.spacing.l
         rightPadding: Fluent.Enums.spacing.l
         topPadding: Fluent.Enums.spacing.m
@@ -43,40 +56,6 @@ Fluent.Card {
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
-
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "应用状态"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "安装 Claude Desktop，启用运行模式并管理配置档案"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    elide: Text.ElideRight
-                }
-            }
-
-            Fluent.Badge {
-                text: root.installed ? "已安装" : "未安装"
-                level: root.installed
-                       ? Fluent.Enums.statusLevel.success
-                       : Fluent.Enums.statusLevel.attention
-            }
-        }
 
         Rectangle {
             width: cardColumn.innerWidth

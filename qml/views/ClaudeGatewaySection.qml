@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property string endpointValue: ""
@@ -17,11 +17,30 @@ Fluent.Card {
     signal apiKeyEdited(string value)
     signal clearApiKeyToggled(bool value)
 
-    autoHeight: true
+    title: "网关连接"
+    content: "第三方推理入口、认证方式和 API 密钥"
+    expanded: true
+    contentPadding: 0
 
-    Column {
-        id: cardColumn
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.hasApiKey ? "已保存密钥" : "尚未保存密钥"
+            level: root.hasApiKey
+                   ? Fluent.Enums.statusLevel.success
+                   : Fluent.Enums.statusLevel.attention
+        }
+    }
+
+    Item {
+        id: contentHost
         width: parent ? parent.width : 0
+        implicitHeight: cardColumn.childrenRect.height
+        height: implicitHeight
+
+        Column {
+            id: cardColumn
+            width: parent ? parent.width : 0
+            height: childrenRect.height
         leftPadding: Fluent.Enums.spacing.l
         rightPadding: Fluent.Enums.spacing.l
         topPadding: Fluent.Enums.spacing.m
@@ -31,40 +50,6 @@ Fluent.Card {
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
-
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "网关连接"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "兼容 Anthropic /v1/messages 的第三方推理入口"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Fluent.Badge {
-                Layout.alignment: Qt.AlignVCenter
-                text: root.hasApiKey ? "已保存密钥" : "尚未保存密钥"
-                level: root.hasApiKey
-                       ? Fluent.Enums.statusLevel.success
-                       : Fluent.Enums.statusLevel.attention
-            }
-        }
 
         Column {
             width: cardColumn.innerWidth
@@ -266,4 +251,5 @@ Fluent.Card {
             }
         }
     }
+}
 }

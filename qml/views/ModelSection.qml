@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property string modelValue: ""
@@ -16,11 +16,26 @@ Fluent.Card {
     signal effortSelected(string value)
     signal fetchRequested()
 
-    autoHeight: true
+    title: "模型与推理"
+    content: "模型选择与思考档位"
+    expanded: false
+    contentPadding: 0
+
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.availableModels.length > 0
+                  ? root.availableModels.length + " 个模型"
+                  : "未获取列表"
+            level: root.availableModels.length > 0
+                   ? Fluent.Enums.statusLevel.info
+                   : Fluent.Enums.statusLevel.attention
+        }
+    }
 
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
+        height: childrenRect.height
         leftPadding: Fluent.Enums.spacing.l
         rightPadding: Fluent.Enums.spacing.l
         topPadding: Fluent.Enums.spacing.l
@@ -30,41 +45,6 @@ Fluent.Card {
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
-
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "模型与推理"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "选择模型时自动使用它支持的最高思考档位"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Fluent.Badge {
-                text: root.availableModels.length > 0
-                      ? root.availableModels.length + " 个模型"
-                      : "未获取列表"
-                level: root.availableModels.length > 0
-                       ? Fluent.Enums.statusLevel.info
-                       : Fluent.Enums.statusLevel.attention
-            }
-        }
 
         GridLayout {
             width: cardColumn.innerWidth

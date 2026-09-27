@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property string baseUrlValue: ""
@@ -55,12 +55,34 @@ Fluent.Card {
         authJsonInput.text = ""
     }
 
-    autoHeight: true
+    title: "连接与认证"
+    content: "API 地址、协议和访问密钥"
+    expanded: true
+    contentPadding: 0
 
-    Column {
-        id: cardColumn
-        objectName: "connectionCardColumn"
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.authSource === "environment"
+                  ? (root.envKeyPresent ? "环境变量已设置" : "环境变量未设置")
+                  : root.hasChatgptAuth ? "ChatGPT 已登录"
+                  : root.hasKey ? "API 密钥已设置" : "未设置认证"
+            level: root.authSource !== "none" && root.authReady
+                   ? Fluent.Enums.statusLevel.success
+                   : Fluent.Enums.statusLevel.warning
+        }
+    }
+
+    Item {
+        id: contentHost
         width: parent ? parent.width : 0
+        implicitHeight: cardColumn.childrenRect.height
+        height: implicitHeight
+
+        Column {
+            id: cardColumn
+            objectName: "connectionCardColumn"
+            width: parent ? parent.width : 0
+            height: childrenRect.height
         leftPadding: Fluent.Enums.spacing.l
         rightPadding: Fluent.Enums.spacing.l
         topPadding: Fluent.Enums.spacing.l
@@ -70,44 +92,6 @@ Fluent.Card {
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
-
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "连接与认证"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "配置 API 地址、协议和访问密钥"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Fluent.Badge {
-                text: root.authSource === "environment"
-                      ? (root.envKeyPresent
-                         ? "环境变量已设置"
-                         : "环境变量未设置")
-                      : root.hasChatgptAuth ? "ChatGPT 已登录"
-                      : root.hasKey ? "API 密钥已设置" : "未设置认证"
-                level: root.authSource !== "none" && root.authReady
-                       ? Fluent.Enums.statusLevel.success
-                       : Fluent.Enums.statusLevel.warning
-            }
-        }
 
         Column {
             width: cardColumn.innerWidth
@@ -449,4 +433,5 @@ Fluent.Card {
             }
         }
     }
+}
 }

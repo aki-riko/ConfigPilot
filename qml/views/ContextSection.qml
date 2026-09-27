@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-Fluent.Card {
+Fluent.Expander {
     id: root
 
     property var currentPreset: ({})
@@ -20,11 +20,24 @@ Fluent.Card {
     signal toolOutputEdited(string value)
     signal clearRequested()
 
-    autoHeight: true
+    title: "上下文预算"
+    content: "窗口大小、自动压缩阈值和工具输出保留量"
+    expanded: false
+    contentPadding: 0
+
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.currentPreset.menuText || "自定义"
+            level: root.currentPreset.contextWindow
+                   ? Fluent.Enums.statusLevel.info
+                   : Fluent.Enums.statusLevel.attention
+        }
+    }
 
     Column {
         id: cardColumn
         width: parent ? parent.width : 0
+        height: childrenRect.height
         leftPadding: Fluent.Enums.spacing.l
         rightPadding: Fluent.Enums.spacing.l
         topPadding: Fluent.Enums.spacing.l
@@ -34,39 +47,6 @@ Fluent.Card {
         readonly property real innerWidth: Math.max(
             0, width - leftPadding - rightPadding
         )
-
-        RowLayout {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "上下文预算"
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "控制窗口大小、自动压缩阈值和工具输出保留量"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-            }
-
-            Fluent.Badge {
-                text: root.currentPreset.menuText || "自定义"
-                level: root.currentPreset.contextWindow
-                       ? Fluent.Enums.statusLevel.info
-                       : Fluent.Enums.statusLevel.attention
-            }
-        }
 
         Flow {
             width: cardColumn.innerWidth

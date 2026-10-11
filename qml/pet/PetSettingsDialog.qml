@@ -203,9 +203,16 @@ Window {
                     font.pixelSize: Fluent.Enums.typography.bodyLarge
                     customTextColor: Fluent.Enums.foregroundColor
                 }
-                Fluent.CloseButton {
+                Fluent.Button {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
+                    width: Fluent.Enums.controlSize.closeButtonSize
+                    height: Fluent.Enums.controlSize.closeButtonSize
+                    radius: width / 2
+                    style: Fluent.Enums.button.style_transparent
+                    icon: Fluent.Enums.icon.dismiss
+                    iconSize: Fluent.Enums.iconSize.s
+                    focusOnPress: false
                     onClicked: dialog.visible = false
                 }
             }

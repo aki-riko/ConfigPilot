@@ -13,7 +13,11 @@ import os
 from PySide6.QtCore import QObject, Signal, Slot, Property
 
 from backend.async_tasks import SerialTaskRunner
-from backend.codex_config_store import CodexConfigStore, KEEP
+from backend.codex_config_store import (
+    CodexConfigStore,
+    KEEP,
+    persisted_user_environment_supported,
+)
 from backend.codex_model_catalog import fetch_codex_model_catalog
 from backend.codex_models_api import fetch_models_result
 from backend.codex_oauth import (
@@ -666,12 +670,21 @@ class CodexConfig(QObject):
         value = str(key or "").strip()
         self._config_tasks.submit(
             lambda: self._store.repair_relay_auth(value),
-            lambda snapshot: self._complete_config_change(
-                snapshot,
-                "中转站 401 修复成功",
-                "已修正中转站认证来源，请完全重启 Codex 后重试",
-            ),
+            self._complete_relay_auth_repair,
             self._relay_auth_repair_failed,
+        )
+
+    def _complete_relay_auth_repair(self, snapshot):
+        """按平台说明 key 的实际落点：Windows 是用户环境变量，macOS 是 .env。"""
+        where = (
+            "Windows 用户环境变量"
+            if persisted_user_environment_supported()
+            else f"{snapshot.get('dotenvPath') or '$CODEX_HOME/.env'}"
+        )
+        self._complete_config_change(
+            snapshot,
+            "中转站 401 修复成功",
+            f"API key 已写入{where}，请完全重启 Codex 后重试",
         )
 
     @Slot()

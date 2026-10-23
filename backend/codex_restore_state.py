@@ -19,6 +19,8 @@ except ModuleNotFoundError:  # pragma: no cover
 
 LOGGER = logging.getLogger(__name__)
 STATE_FILE_NAME = ".configpilot-managed-state.json"
+# 版本保持 1：dotenv 字段是后加的，旧记录里没有该键时按 None 处理（向后兼容），
+# 不能靠升版本让老用户的恢复记录整体作废。
 STATE_VERSION = 1
 TOP_FIELD_TYPES = {
     "model_provider": "string",
@@ -142,7 +144,7 @@ class ManagedChangeJournal:
 
     @staticmethod
     def _empty_state() -> dict:
-        return {"version": STATE_VERSION, "config": {}, "auth": None}
+        return {"version": STATE_VERSION, "config": {}, "auth": None, "dotenv": None}
 
     @staticmethod
     def _validate_value_state(value: object, label: str) -> None:
@@ -181,7 +183,18 @@ class ManagedChangeJournal:
                 raise ValueError("ConfigPilot 恢复记录中的 auth 无效")
             self._validate_file_state(auth.get("original"), "auth.original")
             self._validate_file_state(auth.get("lastApplied"), "auth.lastApplied")
-        return {"version": STATE_VERSION, "config": entries, "auth": auth}
+        dotenv = state.get("dotenv")
+        if dotenv is not None:
+            if not isinstance(dotenv, dict):
+                raise ValueError("ConfigPilot 恢复记录中的 dotenv 无效")
+            self._validate_file_state(dotenv.get("original"), "dotenv.original")
+            self._validate_file_state(dotenv.get("lastApplied"), "dotenv.lastApplied")
+        return {
+            "version": STATE_VERSION,
+            "config": entries,
+            "auth": auth,
+            "dotenv": dotenv,
+        }
 
     def _delete_empty_record(self) -> None:
         try:
@@ -223,14 +236,20 @@ class ManagedChangeJournal:
             raise
 
     def _write(self, state: dict) -> None:
-        if not state["config"] and state["auth"] is None:
+        if (
+            not state["config"]
+            and state["auth"] is None
+            and state.get("dotenv") is None
+        ):
             self._delete_empty_record()
             return
         self._write_payload(state)
 
     def has_changes(self) -> bool:
         state = self._read()
-        return bool(state["config"] or state["auth"] is not None)
+        return bool(
+            state["config"] or state["auth"] is not None or state["dotenv"] is not None
+        )
 
     def read_changes(self) -> dict:
         return self._read()
@@ -263,6 +282,18 @@ class ManagedChangeJournal:
             else current
         )
         state["auth"] = {"original": original, "lastApplied": applied}
+        self._write(state)
+
+    def record_dotenv(self, current: dict, applied: dict) -> None:
+        """记录 ``$CODEX_HOME/.env`` 的原状态与本次写入后的状态。"""
+        state = self._read()
+        previous = state["dotenv"]
+        original = (
+            previous["original"]
+            if previous and previous["lastApplied"] == current
+            else current
+        )
+        state["dotenv"] = {"original": original, "lastApplied": applied}
         self._write(state)
 
     def clear(self) -> None:

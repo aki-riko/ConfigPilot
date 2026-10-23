@@ -42,6 +42,63 @@ DEFAULT_CODEX_API_KEY_ENV = "OPENAI_API_KEY"
 # Codex 就不需要沙盒执行，也不再触发该 provisioning（CC Switch 的通用配置同样如此写）。
 SANDBOX_STOPGAP_MODE = "danger-full-access"
 SANDBOX_STOPGAP_FIELD = "top.sandbox_mode"
+DOTENV_FILE_NAME = ".env"
+# dotenvy 的解析规则：双引号内支持 \n \t \" \\ 转义，单引号内一律原样。
+_DOTENV_LINE_PATTERN = re.compile(
+    r"^\s*(?:export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?P<value>.*)$"
+)
+
+
+def persisted_user_environment_supported() -> bool:
+    """当前平台能否把环境变量持久化到"之后启动的 GUI 进程也能继承"的位置。
+
+    Windows 有 ``HKCU\\Environment`` 可写并广播 ``WM_SETTINGCHANGE``，重启后仍生效。
+    macOS/Linux 没有等价的用户级接口：GUI 进程不读 ``~/.zshrc``，``launchctl
+    setenv`` 只影响同一登录会话且注销/重启即失效。因此非 Windows 平台返回 False，
+    调用方必须改走 Codex 自己能读的落点（``$CODEX_HOME/.env``），而不是写一个
+    "看起来成功、Codex 实际读不到"的 env_key。
+    """
+    return os.name == "nt"
+
+
+def parse_dotenv_values(text: str) -> dict:
+    """按 dotenvy 的常见规则解析 KEY=VALUE，够读回本项目自己写的值即可。"""
+    values = {}
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = _DOTENV_LINE_PATTERN.match(line)
+        if not match:
+            continue
+        raw = match.group("value").strip()
+        if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+            quote = raw[0]
+            body = raw[1:-1]
+            if quote == '"':
+                body = (
+                    body.replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace('\\"', '"')
+                    .replace("\\\\", "\\")
+                )
+            values[match.group("key")] = body
+        else:
+            values[match.group("key")] = re.split(r"\s+#", raw, maxsplit=1)[0].strip()
+    return values
+
+
+def format_dotenv_value(value: str) -> str:
+    """把值写成 dotenvy 能原样读回的形态。"""
+    if value and not re.search(r"[\s#'\"\\]", value):
+        return value
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
 
 
 def persist_user_environment(name: str, value: str) -> None:
@@ -51,7 +108,7 @@ def persist_user_environment(name: str, value: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError("环境变量值不能为空")
     os.environ[name] = value
-    if os.name != "nt":
+    if not persisted_user_environment_supported():
         return
     import winreg
 
@@ -81,7 +138,65 @@ class CodexConfigStore:
         self.home = home
         self.config_path = os.path.join(home, "config.toml")
         self.auth_path = os.path.join(home, "auth.json")
+        self.dotenv_path = os.path.join(home, DOTENV_FILE_NAME)
         self._journal = ManagedChangeJournal(home)
+
+    def read_dotenv_values(self) -> dict:
+        """读取 ``$CODEX_HOME/.env``；文件不存在或不可读时返回空字典。"""
+        if not os.path.isfile(self.dotenv_path):
+            return {}
+        try:
+            with open(self.dotenv_path, "r", encoding="utf-8") as handle:
+                return parse_dotenv_values(handle.read())
+        except OSError as exc:
+            LOGGER.warning("读取 Codex .env 失败: %s", self.dotenv_path, exc_info=True)
+            raise ValueError(f"读取 {DOTENV_FILE_NAME} 失败: {exc}") from exc
+
+    def read_dotenv_key(self, name: str) -> str:
+        """从 ``$CODEX_HOME/.env`` 读单个变量，兼容 dotenvy 的引号规则。"""
+        if not _ENV_KEY_PATTERN.fullmatch(name or ""):
+            return ""
+        try:
+            return str(self.read_dotenv_values().get(name) or "")
+        except ValueError:
+            return ""
+
+    def _env_value_available(self, name: str) -> bool:
+        """进程环境与 Codex .env 任一有值即视为 Codex 能读到该变量。"""
+        if not name:
+            return False
+        if os.environ.get(name):
+            return True
+        return bool(self.read_dotenv_key(name))
+
+    def write_dotenv_key(self, name: str, value: str) -> None:
+        """把变量写入 ``$CODEX_HOME/.env``，供 Codex 启动时用 dotenvy 加载。
+
+        Codex 在 ``arg0`` 初始化阶段读取 ``$CODEX_HOME/.env``（见上游
+        ``codex-rs/arg0/src/lib.rs`` 的 ``load_dotenv``），因此这是 macOS/Linux
+        上唯一不依赖 shell 启动方式、也不依赖 launchd 会话的持久化落点。这里只
+        更新目标键，其它键与注释原样保留；文件权限收紧到 0600。
+        """
+        if not _ENV_KEY_PATTERN.fullmatch(name or ""):
+            raise ValueError("环境变量名无效")
+        if not isinstance(value, str) or not value:
+            raise ValueError("环境变量值不能为空")
+        lines = []
+        if os.path.isfile(self.dotenv_path):
+            with open(self.dotenv_path, "r", encoding="utf-8") as handle:
+                lines = handle.read().splitlines()
+        rendered = f"{name}={format_dotenv_value(value)}"
+        replaced = False
+        for index, line in enumerate(lines):
+            match = _DOTENV_LINE_PATTERN.match(line)
+            if match and match.group("key") == name:
+                lines[index] = rendered
+                replaced = True
+                break
+        if not replaced:
+            lines.append(rendered)
+        text = "\n".join(lines) + "\n"
+        self._atomic_write_text(self.dotenv_path, text)
 
     @staticmethod
     def _number_to_text(value) -> str:
@@ -107,6 +222,8 @@ class CodexConfigStore:
             "requiresAuth": False,
             "envKey": "",
             "envKeyPresent": False,
+            "envKeySource": "",
+            "dotenvPath": self.dotenv_path,
             "authSource": "none",
             "authReady": True,
             "reasoningEffort": "",
@@ -136,7 +253,14 @@ class CodexConfigStore:
                     "model": str(data.get("model", "")),
                     "requiresAuth": requires_auth,
                     "envKey": env_key,
-                    "envKeyPresent": bool(env_key and os.environ.get(env_key)),
+                    "envKeyPresent": bool(env_key and self._env_value_available(env_key)),
+                    "envKeySource": (
+                        ""
+                        if not env_key
+                        else "dotenv" if self.read_dotenv_key(env_key)
+                        else "process" if os.environ.get(env_key)
+                        else ""
+                    ),
                     "authSource": (
                         "auth_json" if requires_auth
                         else "environment" if env_key
@@ -213,7 +337,7 @@ class CodexConfigStore:
                 if env_key:
                     source = "environment"
         key = self.read_api_key() if source == "auth_json" else (
-            os.environ.get(env_key, "") if source == "environment" else ""
+            self._read_env_key(env_key) if source == "environment" else ""
         )
         return {
             "source": source,
@@ -221,6 +345,21 @@ class CodexConfigStore:
             "key": str(key or ""),
             "ready": bool(key) if source != "none" else True,
         }
+
+    def _read_env_key(self, name: str) -> str:
+        """按 Codex 的实际解析结果取值。
+
+        Codex 启动时用 dotenvy 把 ``$CODEX_HOME/.env`` 的键 ``set_var`` 到自己的
+        进程环境（见上游 ``arg0::load_dotenv``），因此同名变量 **.env 覆盖** Process
+        环境；这里必须按同样优先级取值，否则界面显示的 key 和 Codex 实际用到的
+        可能不是同一个。
+        """
+        if not name:
+            return ""
+        value = self.read_dotenv_key(name)
+        if value:
+            return value
+        return os.environ.get(name, "")
 
     def read_auth_status(self) -> dict:
         status = {"hasKey": False, "authMode": "", "hasChatgptAuth": False}
@@ -707,10 +846,25 @@ class CodexConfigStore:
             raise ValueError("provider.env_key 无效")
 
         persist_user_environment(env_key, key)
+        self._record_dotenv_key(env_key, key)
         return self._set_provider_auth_source(
             "environment",
             env_key_override=env_key,
         )
+
+    def _record_dotenv_key(self, env_key: str, key: str) -> None:
+        """把 key 落到当前平台下 Codex 真正会读到的位置。
+
+        Windows 走 HKCU 注册表（``persist_user_environment`` 已写），进程外启动的
+        Codex 能直接继承；macOS/Linux 没有等价的用户级接口，改为写 Codex 启动
+        阶段自己加载的 ``$CODEX_HOME/.env``（上游 ``arg0::load_dotenv`` 用 dotenvy
+        读取，且过滤 ``CODEX_`` 前缀）。写入前记录文件原状态，「恢复初始设置」可还原。
+        """
+        if persisted_user_environment_supported():
+            return
+        current_state = file_state(self.dotenv_path)
+        self.write_dotenv_key(env_key, key)
+        self._journal.record_dotenv(current_state, file_state(self.dotenv_path))
 
     def set_chatgpt_auth(self, tokens: dict) -> dict:
         required = ("id_token", "access_token", "refresh_token", "account_id")
@@ -833,13 +987,27 @@ class CodexConfigStore:
             os.remove(self.auth_path)
         return 1, 0
 
+    def _restore_dotenv_entry(self, entry):
+        if entry is None:
+            return 0, 0
+        if file_state(self.dotenv_path) != entry["lastApplied"]:
+            return 0, 1
+        original = entry["original"]
+        if original["present"]:
+            self._atomic_write_text(self.dotenv_path, original["content"])
+        elif os.path.isfile(self.dotenv_path):
+            shutil.copy2(self.dotenv_path, self.dotenv_path + ".bak")
+            os.remove(self.dotenv_path)
+        return 1, 0
+
     def restore_managed_changes(self) -> dict:
         """恢复仍由 ConfigPilot 拥有的字段，保留工作区和外部新修改。"""
         changes = self._journal.read_changes()
         config_counts = self._restore_config_entries(changes["config"])
         auth_counts = self._restore_auth_entry(changes["auth"])
-        restored = config_counts[0] + auth_counts[0]
-        skipped = config_counts[1] + auth_counts[1]
+        dotenv_counts = self._restore_dotenv_entry(changes.get("dotenv"))
+        restored = config_counts[0] + auth_counts[0] + dotenv_counts[0]
+        skipped = config_counts[1] + auth_counts[1] + dotenv_counts[1]
         self._journal.clear()
         return {
             "snapshot": self.read_snapshot(),

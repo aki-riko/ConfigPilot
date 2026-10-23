@@ -24,10 +24,10 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
 - **上下文预设**：保留所有受支持模型的稳定值 `258400 / 245000 / 6000`，并可一键套用百万上下文 `1048576 / 943718 / 6000`
 - **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列
 - **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）
-- **API key**：写入 `~/.codex/auth.json`
+- **API key**：写入 `~/.codex/auth.json`；「修复中转站 401」把 key 落到 Codex 真正会读的位置——Windows 写 `HKCU\Environment` 并广播 `WM_SETTINGCHANGE`，macOS/Linux 写 `$CODEX_HOME/.env`（权限 `0600`，Codex 启动时用 dotenvy 加载），不再出现「配置写好了但 Codex 报缺少环境变量」
 - **ChatGPT JSON 导入**：粘贴 Codex `auth.json`、codex2api 扁平 JSON 或 `accounts[].credentials` 单账号 JSON；完整凭据直接保存，仅有 `refresh_token` 时通过官方 OAuth 补齐
 - **安全**：每次写入前自动备份 `config.toml.bak` / `auth.json.bak`，保留 `notify` 等其它原有配置不动
-- **恢复初始设置**：只恢复 ConfigPilot 实际改过且此后未被外部修改的字段；保留 `[projects.*]` 工作区信任项和其它 Codex 配置
+- **恢复初始设置**：只恢复 ConfigPilot 实际改过且此后未被外部修改的字段；保留 `[projects.*]` 工作区信任项和其它 Codex 配置；macOS 上新建的 `$CODEX_HOME/.env` 会被还原（删掉或恢复原内容），不动用户自己的其它变量
 - **常驻操作栏**：随时查看未应用状态，并可重新读取或应用配置
 - **沙盒止血（临时）**：把 Codex 顶层 `sandbox_mode` 写为 `danger-full-access`，绕过 Windows 上「无法检查 Windows 设置」的沙盒初始化循环；只改这一个字段，`[windows]`／`[projects.*]`／`notify` 全部保留，可用「恢复初始设置」还原
 - **Claude Desktop Subpage**：直接写入 Claude 自己的本地配置库，一键启用 Developer Mode 与 `deploymentMode=3p`

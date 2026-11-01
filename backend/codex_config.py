@@ -90,6 +90,8 @@ class CodexConfig(QObject):
         self._tool_output_token_limit = ""
         self._model_catalog_json = ""
         self._sandbox_mode = ""
+        self._subagent_model = ""
+        self._subagent_reasoning_effort = ""
         self._has_restorable_changes = False
         self._available_models = []
         self._models_loading = False
@@ -254,6 +256,16 @@ class CodexConfig(QObject):
     def sandboxMode(self):
         return self._sandbox_mode
 
+    @Property(str, notify=changed)
+    def subagentModel(self):
+        """当前 config.toml 里的子代理默认模型，供「修复降智」回显。"""
+        return self._subagent_model
+
+    @Property(str, notify=changed)
+    def subagentReasoningEffort(self):
+        """当前 config.toml 里的子代理默认推理强度。"""
+        return self._subagent_reasoning_effort
+
     @Property("QVariantList", notify=modelsChanged)
     def availableModels(self):
         return self._available_models
@@ -320,6 +332,10 @@ class CodexConfig(QObject):
         self._tool_output_token_limit = str(snapshot["toolOutputTokenLimit"])
         self._model_catalog_json = str(snapshot["modelCatalogJson"])
         self._sandbox_mode = str(snapshot.get("sandboxMode", ""))
+        self._subagent_model = str(snapshot.get("subagentModel", ""))
+        self._subagent_reasoning_effort = str(
+            snapshot.get("subagentReasoningEffort", "")
+        )
         self._has_restorable_changes = bool(
             snapshot.get("hasRestorableChanges", False)
         )
@@ -729,15 +745,25 @@ class CodexConfig(QObject):
             self._config_write_failed,
         )
 
-    @Slot()
-    def repairSubagentDefaults(self):
-        """写入稳定的子代理默认模型与推理强度。"""
+    @Slot(str)
+    def repairSubagentDefaults(self, model=""):
+        """按用户选定的模型写入子代理默认配置。
+
+        模型来自「获取模型」的结果，不再内置兜底模型；推理强度取该模型可用的
+        最高档（与页面上「选模型即用最高档」的行为一致）。
+        """
+        model_name = str(model or "").strip()
+        if not model_name:
+            self.notify.emit(2, "无法修复", "请先获取模型并选择一个模型")
+            return
+        effort = self.highestReasoningEffortForModel(model_name)
         self._config_tasks.submit(
-            self._store.apply_subagent_defaults,
+            lambda: self._store.apply_subagent_defaults(model_name, effort),
             lambda snapshot: self._complete_config_change(
                 snapshot,
                 "降智修复已写入",
-                '子代理默认已设为 gpt-6-sol / high；请完全重启 Codex 生效',
+                f"子代理默认已设为 {model_name} / "
+                f"{effort or '默认档'}；请完全重启 Codex 生效",
             ),
             self._config_write_failed,
         )

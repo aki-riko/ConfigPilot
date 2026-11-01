@@ -35,6 +35,9 @@ LEGACY_MANAGED_CONTEXT_CATALOG = "gpt-5.5-1m.json"
 KEEP = object()
 _PROVIDER_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Codex 的推理强度是模型自己声明的档位标识（low/medium/high/xhigh/max/ultra 等）。
+# 写入前先卡一道字符集，避免把用户输入拼进 TOML 标量时带上引号或换行。
+_REASONING_EFFORT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 DEFAULT_CODEX_API_KEY_ENV = "OPENAI_API_KEY"
 # Codex 在 Windows 上会为沙盒执行 provisioning 本地沙盒账号（CodexSandboxOffline/
 # Online）。账号 profile 未初始化时，Windows 会走首次登录的「Windows 设置」流程，
@@ -258,6 +261,8 @@ class CodexConfigStore:
             "toolOutputTokenLimit": "",
             "modelCatalogJson": "",
             "sandboxMode": "",
+            "subagentModel": "",
+            "subagentReasoningEffort": "",
             "hasRestorableChanges": False,
             "restoreError": "",
         }
@@ -308,6 +313,18 @@ class CodexConfigStore:
                     ),
                     "modelCatalogJson": str(data.get("model_catalog_json", "")),
                     "sandboxMode": str(data.get("sandbox_mode", "")),
+                    "subagentModel": str(
+                        (data.get("agents") or {}).get("default_subagent_model", "")
+                        if isinstance(data.get("agents"), dict)
+                        else ""
+                    ),
+                    "subagentReasoningEffort": str(
+                        (data.get("agents") or {}).get(
+                            "default_subagent_reasoning_effort", ""
+                        )
+                        if isinstance(data.get("agents"), dict)
+                        else ""
+                    ),
                 }
             )
         try:
@@ -823,8 +840,20 @@ class CodexConfigStore:
         self._atomic_write_text(self.config_path, new_text)
         return self.read_snapshot()
 
-    def apply_subagent_defaults(self) -> dict:
-        """设置子代理默认模型与推理强度，保留其它 Codex 配置。"""
+    def apply_subagent_defaults(self, model: str, reasoning_effort) -> dict:
+        """把用户选定的子代理默认模型与推理强度写入 ``[agents]``。
+
+        模型必须是用户从「获取模型」结果里亲手选的，推理强度由调用方按该模型
+        的可用档位解析后传入；这里不再内置任何默认模型，避免覆盖用户在 Codex
+        侧自己调好的配置。传空字符串表示移除该键（回落到 Codex 自身默认）。
+        其它 Codex 配置（含 ``[agents]`` 里别的键）原样保留。
+        """
+        model_value = str(model or "").strip()
+        effort_value = str(reasoning_effort or "").strip().lower()
+        if not model_value:
+            raise ValueError("请先选择一个模型，再执行修复降智")
+        if effort_value and not _REASONING_EFFORT_PATTERN.fullmatch(effort_value):
+            raise ValueError(f"推理强度值无效: {reasoning_effort}")
         text = ""
         if os.path.isfile(self.config_path):
             with open(self.config_path, "r", encoding="utf-8") as handle:
@@ -838,12 +867,13 @@ class CodexConfigStore:
         fields = {
             "agents.default_subagent_model": {
                 "present": True,
-                "value": "gpt-6-sol",
+                "value": model_value,
             },
-            "agents.default_subagent_reasoning_effort": {
-                "present": True,
-                "value": "high",
-            },
+            "agents.default_subagent_reasoning_effort": (
+                {"present": True, "value": effort_value}
+                if effort_value
+                else {"present": False}
+            ),
         }
         current_fields = capture_fields(current_data, list(fields))
         new_text = text

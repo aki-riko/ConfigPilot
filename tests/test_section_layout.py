@@ -435,5 +435,69 @@ class SectionLayoutTests(unittest.TestCase):
         )
 
 
+    def test_toolbox_subagent_picker_only_offers_fetched_models(self):
+        """「修复降智」的模型下拉只能列出「获取模型」的真实结果。
+
+        防回流背景：旧实现由代码内置 gpt-6-sol 一键写入，会把用户自己在 Codex
+        侧调好的子代理配置覆盖掉。现在必须用户手动从「获取模型」的结果里选，
+        因此这里对着真实实例化的抽屉断言：
+        1. 没有列表时下拉不可用、执行按钮不可用；
+        2. 拿到列表后下拉可用，且按 config.toml 里现有的模型预选；
+        3. 手动改选后，执行信号必须带着用户选中的那个模型名；
+        4. 列表刷新丢了已选模型时，选中态必须清空（不能拿旧值去写）。
+        """
+        root, _ = self._create(
+            "ToolboxDrawer.qml",
+            properties={
+                "subagentModel": "gpt-6.1-sol",
+                "subagentReasoningEffort": "max",
+            },
+        )
+        box = root.findChild(QQuickItem, "subagentModelBox")
+        fetch = root.findChild(QQuickItem, "subagentModelFetchButton")
+        summary = root.findChild(QQuickItem, "subagentCurrentText")
+        self.assertIsNotNone(box, "找不到模型下拉")
+        self.assertIsNotNone(fetch, "找不到获取模型按钮")
+        self.assertIsNotNone(summary, "找不到当前配置回显")
+        self.assertIn("gpt-6.1-sol", summary.property("text"))
+
+        # 1) 没有列表：下拉与执行都不可用。
+        self.assertFalse(box.isEnabled(), "没有模型列表时下拉不应可用")
+        self.assertEqual(root.property("selectedSubagentModel"), "")
+
+        # 2) 拿到列表：下拉可用，并预选到 config.toml 里现有的模型。
+        root.setProperty(
+            "availableModels", ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.5"]
+        )
+        settle(300)
+        self.assertTrue(box.isEnabled(), "拿到列表后下拉应可用")
+        self.assertEqual(
+            root.property("selectedSubagentModel"),
+            "gpt-6.1-sol",
+            "应按当前配置预选子代理模型",
+        )
+
+        # 3) 手动改选后，执行信号带的是用户选中的模型。
+        box.activated.emit(1)
+        settle(120)
+        self.assertEqual(root.property("selectedSubagentModel"), "gpt-5.6-sol")
+        fired = []
+        root.repairSubagentDefaultsRequested.connect(lambda m: fired.append(m))
+        root.repairSubagentDefaultsRequested.emit(
+            root.property("selectedSubagentModel")
+        )
+        settle(120)
+        self.assertEqual(fired, ["gpt-5.6-sol"])
+
+        # 4) 列表刷新丢了已选模型，选中态必须清空。
+        root.setProperty("availableModels", ["gpt-5.5"])
+        settle(300)
+        self.assertEqual(
+            root.property("selectedSubagentModel"),
+            "",
+            "已选模型不在新列表里时必须清空，避免拿旧值写配置",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

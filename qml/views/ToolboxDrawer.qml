@@ -18,6 +18,15 @@ Fluent.Drawer {
 
     property bool configBusy: false
     property bool hasRestorableChanges: false
+    // 「修复降智」改为手动选择模型：可选项只来自「获取模型」的真实结果，
+    // 不再由代码内置任何兜底模型（旧实现写死 gpt-6-sol，会把用户在 Codex
+    // 侧自己调好的子代理配置覆盖掉）。
+    property var availableModels: []
+    property bool modelsLoading: false
+    property string subagentModel: ""
+    property string subagentReasoningEffort: ""
+    // 下拉框当前选中的模型；空值表示还没选，此时「执行」保持禁用。
+    property string selectedSubagentModel: ""
     // 启动即展开：外抽屉要求宿主窗口已就绪，因此等窗口可见后再开一次。
     // 只自动展开一次，用户手动收起后不再弹回来。
     property bool autoOpened: false
@@ -25,8 +34,47 @@ Fluent.Drawer {
     signal repairRelayAuthRequested()
     signal sandboxStopgapRequested()
     signal restoreInitialRequested()
-    signal repairSubagentDefaultsRequested()
+    signal repairSubagentDefaultsRequested(string model)
+    signal modelsFetchRequested()
     signal reloadRequested()
+
+    // 回显「当前 config.toml 里已经是什么」，让用户在覆盖前看得见差别。
+    function subagentSummary() {
+        if (!root.subagentModel) {
+            return "当前未设置子代理默认模型"
+        }
+        return "当前 " + root.subagentModel
+                + " / " + (root.subagentReasoningEffort || "默认档")
+    }
+
+    function subagentModelIndex() {
+        var list = root.availableModels || []
+        if (!root.selectedSubagentModel) return -1
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] === root.selectedSubagentModel) return i
+        }
+        return -1
+    }
+
+    // 列表刷新后校正选中项：已选的仍在表里就保持，否则回到未选状态。
+    function syncSelection() {
+        var list = root.availableModels || []
+        if (root.selectedSubagentModel
+                && list.indexOf(root.selectedSubagentModel) < 0) {
+            root.selectedSubagentModel = ""
+        }
+    }
+
+    // 还没手动选过时，把下拉预选到 config.toml 里已有的模型，让用户一眼
+    // 看出「现在是什么」。必须在完成时和属性变化时都调用一次：页面若在配置
+    // 读完之后才创建，subagentModel 一上来就有值，等不到变化通知。
+    function preselectCurrentModel() {
+        if (root.selectedSubagentModel || !root.subagentModel) return
+        var list = root.availableModels || []
+        if (list.indexOf(root.subagentModel) >= 0) {
+            root.selectedSubagentModel = root.subagentModel
+        }
+    }
 
     function openOnceReady() {
         if (autoOpened) return
@@ -36,7 +84,18 @@ Fluent.Drawer {
         root.open()
     }
 
-    Component.onCompleted: Qt.callLater(openOnceReady)
+    Component.onCompleted: {
+        Qt.callLater(openOnceReady)
+        Qt.callLater(preselectCurrentModel)
+    }
+
+    // 可用模型列表变化后校正选中项（例如重新获取列表、或切换中转站），
+    // 并在还没选过时按当前配置预选一次。
+    onAvailableModelsChanged: {
+        syncSelection()
+        preselectCurrentModel()
+    }
+    onSubagentModelChanged: preselectCurrentModel()
 
     // 宿主窗口首帧可见后再补一次：外抽屉要跟随宿主 HWND，太早开会拿不到宿主。
     Timer {
@@ -101,10 +160,16 @@ Fluent.Drawer {
             ToolRow {
                 Layout.fillWidth: true
                 title: "修复降智"
-                description: "写入稳定的子代理默认模型与推理强度"
+                description: "写入你选中的模型，推理强度取该模型最高档"
                 icon: Fluent.Enums.icon.wrench
                 busy: root.configBusy
-                onTriggered: root.repairSubagentDefaultsRequested()
+                enabled: root.selectedSubagentModel.length > 0
+                onTriggered: root.repairSubagentDefaultsRequested(
+                                 root.selectedSubagentModel)
+            }
+
+            SubagentPicker {
+                Layout.fillWidth: true
             }
 
             ToolRow {
@@ -174,6 +239,71 @@ Fluent.Drawer {
             text: toolRow.busy ? "处理中..." : "执行"
             enabled: toolRow.enabled && !toolRow.busy
             onClicked: toolRow.triggered()
+        }
+    }
+
+    // 「修复降智」的模型选择器：下拉选项只来自「获取模型」的结果。
+    // 没有列表时下拉置灰并提示先获取，避免用户以为可以凭手输蒙一个模型名。
+    component SubagentPicker: ColumnLayout {
+        id: picker
+
+        spacing: Fluent.Enums.spacing.xs
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Fluent.Enums.spacing.s
+
+            Fluent.ComboBoxDefault {
+                id: modelBox
+                objectName: "subagentModelBox"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                model: root.availableModels
+                placeholderText: root.availableModels.length > 0
+                                 ? "选择模型"
+                                 : "先获取模型"
+                currentIndex: root.subagentModelIndex()
+                enabled: root.availableModels.length > 0 && !root.configBusy
+
+                onActivated: function(index) {
+                    var list = root.availableModels || []
+                    if (index >= 0 && index < list.length) {
+                        root.selectedSubagentModel = list[index]
+                    }
+                }
+
+                Connections {
+                    target: root
+                    function onSelectedSubagentModelChanged() {
+                        var index = root.subagentModelIndex()
+                        if (modelBox.currentIndex !== index) {
+                            modelBox.currentIndex = index
+                        }
+                    }
+                }
+            }
+
+            Fluent.Button {
+                objectName: "subagentModelFetchButton"
+                Layout.minimumWidth: 88
+                Layout.preferredWidth: 88
+                Layout.maximumWidth: 88
+                style: Fluent.Enums.button.style_default
+                icon: Fluent.Enums.icon.arrow_sync
+                text: root.modelsLoading ? "获取中..." : "获取模型"
+                enabled: !root.modelsLoading && !root.configBusy
+                onClicked: root.modelsFetchRequested()
+            }
+        }
+
+        Text {
+            objectName: "subagentCurrentText"
+            Layout.fillWidth: true
+            text: root.subagentSummary()
+            color: Fluent.Enums.textColor.tertiary
+            font.pixelSize: Fluent.Enums.typography.caption
+            font.family: Fluent.Enums.fontFamily
+            wrapMode: Text.WordWrap
         }
     }
 }

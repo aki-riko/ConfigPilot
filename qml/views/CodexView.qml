@@ -238,14 +238,27 @@ Item {
         id: codexToolbox
         configBusy: root.configBusy
         hasRestorableChanges: CodexConfig ? CodexConfig.hasRestorableChanges : false
+        availableModels: CodexConfig ? CodexConfig.availableModels : []
+        modelsLoading: root.modelsLoading
+        subagentModel: CodexConfig ? CodexConfig.subagentModel : ""
+        subagentReasoningEffort: CodexConfig ? CodexConfig.subagentReasoningEffort : ""
         onRepairRelayAuthRequested: {
             var key = connectionSection ? connectionSection.keyDraft.trim() : ""
             if (CodexConfig) CodexConfig.repairRelayAuth(key)
         }
         onSandboxStopgapRequested: sandboxStopgapDialog.open()
         onRestoreInitialRequested: restoreInitialDialog.open()
-        onRepairSubagentDefaultsRequested: {
-            if (CodexConfig) CodexConfig.repairSubagentDefaults()
+        onRepairSubagentDefaultsRequested: function(model) {
+            if (CodexConfig) CodexConfig.repairSubagentDefaults(model)
+        }
+        // 抽屉里的「获取模型」与模型页共用同一次请求：key 取密钥框现填的值，
+        // 没填则由后端回落到 auth.json / 环境变量里的那把。
+        onModelsFetchRequested: {
+            if (CodexConfig) {
+                CodexConfig.fetchModels(
+                    root.fBaseUrl, connectionSection.keyDraft
+                )
+            }
         }
         onReloadRequested: if (CodexConfig) CodexConfig.reload()
     }

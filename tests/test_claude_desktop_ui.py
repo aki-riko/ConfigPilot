@@ -37,8 +37,10 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn("ClaudeModelEntry", advanced)
         self.assertIn("Fluent.Expander", status)
         self.assertIn('title: "应用状态"', status)
+        self.assertIn("icon: Fluent.Enums.icon.desktop", status)
         self.assertIn("Fluent.Expander", gateway)
         self.assertIn('title: "网关连接"', gateway)
+        self.assertIn("icon: Fluent.Enums.icon.server", gateway)
         self.assertIn("ClaudeDesktopConfig.applyConfig", page)
         self.assertIn('"modelsJson": fModelsJson', page)
         self.assertIn('"modelDiscoveryState": fModelDiscoveryState', page)
@@ -124,13 +126,17 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertNotIn("Fluent.Enums.toggle.control_switch", gateway)
         self.assertIn('text: "应用时删除"', gateway)
         self.assertIn("visible: root.hasApiKey", gateway)
+        # 认证方式的说明文字改为 FormField.hint，不再单独占一个 checkbox 行；
+        # 只有密钥「应用时删除」那一行需要固定 checkbox 高度。
+        self.assertIn("密钥将作为 Bearer Token 发送", gateway)
+        self.assertIn("密钥将写入 x-api-key 请求头", gateway)
         self.assertEqual(
             gateway.count(
                 "Layout.preferredHeight: Fluent.Enums.controlSize.checkboxOuter"
             ),
-            2,
+            1,
         )
-        self.assertEqual(gateway.count("Layout.alignment: Qt.AlignTop"), 2)
+        self.assertNotIn("Layout.alignment: Qt.AlignTop", gateway)
 
         self.assertIn(
             "height: root.controlHeight + 2 * Fluent.Enums.spacing.m",

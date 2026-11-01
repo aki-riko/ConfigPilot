@@ -166,10 +166,14 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("AdvancedSection", view)
         self.assertIn("Fluent.Expander", connection)
         self.assertIn('title: "连接与认证"', connection)
+        self.assertIn('content: ""', connection)
+        self.assertIn("icon: Fluent.Enums.icon.server", connection)
         self.assertIn("Fluent.Expander", model)
         self.assertIn('title: "模型与推理"', model)
+        self.assertIn("icon: Fluent.Enums.icon.brain", model)
         self.assertIn("Fluent.Expander", context)
         self.assertIn('title: "上下文预算"', context)
+        self.assertIn("icon: Fluent.Enums.icon.data_usage", context)
         self.assertIn("highestReasoningEffortForModel", view)
         for component in (
             "ConnectionSection",
@@ -404,6 +408,62 @@ raise SystemExit(app.exec())
             'cp "docs/macos-first-open.txt" "$STAGING/首次打开说明.txt"',
             macos_build,
         )
+
+    def test_section_cards_size_by_implicit_height_not_children_rect(self):
+        """卡片内容容器必须按 implicitHeight 取高，不能用 childrenRect。
+
+        Column 的 implicitHeight 含 left/right/top/bottom padding，而
+        childrenRect.height 不含。历史上 ConnectionSection / ModelSection /
+        ContextSection / ClaudeGatewaySection / ClaudeStatusSection /
+        ClaudeAdvancedSection 都用 ``height: childrenRect.height``，导致
+        卡片底部固定少 padding 那么多像素，最后一行被裁掉。
+        """
+        for relative_path in (
+            "qml/views/ConnectionSection.qml",
+            "qml/views/ModelSection.qml",
+            "qml/views/ContextSection.qml",
+            "qml/views/AdvancedSection.qml",
+            "qml/views/ClaudeGatewaySection.qml",
+            "qml/views/ClaudeStatusSection.qml",
+            "qml/views/ClaudeAdvancedSection.qml",
+        ):
+            content = self.read(relative_path)
+            self.assertNotIn(
+                "height: childrenRect.height",
+                content,
+                f"{relative_path} 用 childrenRect 算高度会裁掉卡片底部",
+            )
+            self.assertRegex(
+                content,
+                re.compile(r"implicitHeight:\s*\w+\.implicitHeight"),
+                f"{relative_path} 未按 implicitHeight 取高",
+            )
+
+    def test_form_fields_share_one_label_spec(self):
+        """字段标签走统一 FormField，不再每个 Section 各写一套双层头。"""
+        form_field = self.read("qml/views/FormField.qml")
+        self.assertIn("property string label", form_field)
+        self.assertIn("property string keyName", form_field)
+        self.assertIn("property string hint", form_field)
+        # Layout 里引用自身宽度会触发 Qt Quick Layouts 递归重排，
+        # 标签上限必须是常量。
+        self.assertIn("Layout.maximumWidth: 280", form_field)
+
+        for relative_path in (
+            "qml/views/ConnectionSection.qml",
+            "qml/views/ModelSection.qml",
+            "qml/views/ContextSection.qml",
+            "qml/views/ClaudeGatewaySection.qml",
+            "qml/views/ClaudeAdvancedSection.qml",
+            "qml/views/ClaudeModelEntry.qml",
+        ):
+            content = self.read(relative_path)
+            self.assertIn("FormField {", content, f"{relative_path} 未使用 FormField")
+            self.assertNotIn(
+                'text: "provider"',
+                content,
+                f"{relative_path} 仍保留旧的双层键名标签",
+            )
 
     def test_application_update_flow_uses_prismqml_engine(self):
         main_py = self.read("main.py")

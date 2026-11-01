@@ -37,8 +37,12 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            spacing: Fluent.Enums.spacing.m
+
             Text {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: "模型 " + (root.indexValue + 1)
                       + (root.entry.labelOverride
                          ? " · " + root.entry.labelOverride
@@ -62,22 +66,19 @@ Rectangle {
         }
 
         GridLayout {
+            id: modelFieldGrid
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             columns: width < 620 ? 1 : 2
             uniformCellWidths: columns === 2
             columnSpacing: Fluent.Enums.spacing.l
             rowSpacing: Fluent.Enums.spacing.s
 
-            ColumnLayout {
+            FormField {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-                Text {
-                    text: "Model ID"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
+                label: "Model ID"
+
                 Fluent.LineEdit {
                     id: modelIdEdit
                     Layout.fillWidth: true
@@ -88,16 +89,11 @@ Rectangle {
                 }
             }
 
-            ColumnLayout {
+            FormField {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-                Text {
-                    text: "Display name"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
+                label: "Display name"
+
                 Fluent.LineEdit {
                     id: labelEdit
                     Layout.fillWidth: true
@@ -107,17 +103,11 @@ Rectangle {
                     onAccepted: root.patchRequested({ "labelOverride": text })
                 }
             }
-        }
-
-        GridLayout {
-            Layout.fillWidth: true
-            columns: width < 620 ? 1 : 2
-            uniformCellWidths: columns === 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.xs
 
             Fluent.Toggle {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignTop
                 controlType: Fluent.Enums.toggle.control_switch
                 type: Fluent.Enums.toggle.type_subtitle
                 text: "Offer 1M-context variant"
@@ -130,6 +120,8 @@ Rectangle {
 
             Fluent.Toggle {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignTop
                 visible: !!root.entry.supports1m
                 enabled: !!root.entry.supports1m
                 controlType: Fluent.Enums.toggle.control_switch
@@ -141,25 +133,13 @@ Rectangle {
                     root.patchRequested({ "prefer1m": checkedValue })
                 }
             }
-        }
 
-        GridLayout {
-            Layout.fillWidth: true
-            columns: width < 620 ? 1 : 2
-            uniformCellWidths: columns === 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.s
-
-            ColumnLayout {
+            FormField {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-                Text {
-                    text: "Tier alias"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
+                Layout.alignment: Qt.AlignTop
+                label: "Tier alias"
+
                 Fluent.ComboBoxDefault {
                     id: tierBox
                     Layout.fillWidth: true
@@ -180,6 +160,8 @@ Rectangle {
 
             Fluent.Toggle {
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.alignment: Qt.AlignTop
                 visible: !!root.entry.anthropicFamilyTier
                 enabled: !!root.entry.anthropicFamilyTier
                 controlType: Fluent.Enums.toggle.control_switch

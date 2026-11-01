@@ -17,7 +17,8 @@ Fluent.Expander {
     signal fetchRequested()
 
     title: "模型与推理"
-    content: "模型选择与思考档位"
+    content: ""
+    icon: Fluent.Enums.icon.brain
     expanded: false
     contentPadding: 0
 
@@ -32,132 +33,127 @@ Fluent.Expander {
         }
     }
 
-    Column {
-        id: cardColumn
+    // 高度用 implicitHeight（含 padding）；childrenRect 不含 padding，
+    // 会把卡片底部最后一行裁掉。
+    Item {
         width: parent ? parent.width : 0
-        height: childrenRect.height
-        leftPadding: Fluent.Enums.spacing.l
-        rightPadding: Fluent.Enums.spacing.l
-        topPadding: Fluent.Enums.spacing.l
-        bottomPadding: Fluent.Enums.spacing.l
-        spacing: Fluent.Enums.spacing.l
+        implicitHeight: cardColumn.implicitHeight
+        height: implicitHeight
 
-        readonly property real innerWidth: Math.max(
-            0, width - leftPadding - rightPadding
-        )
+        Column {
+            id: cardColumn
+            objectName: "modelCardColumn"
+            width: parent ? parent.width : 0
+            leftPadding: Fluent.Enums.spacing.l
+            rightPadding: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.l
 
-        GridLayout {
-            width: cardColumn.innerWidth
-            columns: width < 680 ? 1 : 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.l
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+            GridLayout {
+                id: modelGrid
+                objectName: "modelGrid"
+                width: cardColumn.innerWidth
+                columns: width < 680 ? 1 : 2
+                uniformCellWidths: columns === 2
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.l
+                readonly property real equalItemWidth: columns === 2
+                                                       ? Math.max(
+                                                             0,
+                                                             (width - columnSpacing) / 2
+                                                         )
+                                                       : width
 
-                Text {
-                    text: "当前模型"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "model"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Fluent.LineEdit {
-                    id: modelEdit
-                    objectName: "modelEdit"
+                FormField {
                     Layout.fillWidth: true
-                    placeholderText: "例如 gpt-5.6-sol"
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.modelValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.modelValue) root.modelTextEdited(text)
-                    }
-                    onEditingFinished: root.modelCommitted(text)
-                    onAccepted: root.modelCommitted(text)
-                    Connections {
-                        target: root
-                        function onModelValueChanged() {
-                            if (modelEdit.text !== root.modelValue) {
-                                modelEdit.text = root.modelValue
-                            }
-                        }
-                    }
-                }
-            }
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: modelGrid.equalItemWidth
+                    Layout.maximumWidth: modelGrid.equalItemWidth
+                    label: "当前模型"
+                    keyName: "model"
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
-
-                Text {
-                    text: "在线模型列表"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "从当前 API 地址获取"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-
-                GridLayout {
-                    id: pickerGrid
-                    Layout.fillWidth: true
-                    columns: width < 330 ? 1 : 2
-                    columnSpacing: Fluent.Enums.spacing.s
-                    rowSpacing: Fluent.Enums.spacing.s
-
-                    Fluent.ComboBoxDefault {
-                        id: modelPicker
+                    Fluent.LineEdit {
+                        id: modelEdit
+                        objectName: "modelEdit"
                         Layout.fillWidth: true
-                        placeholderText: root.availableModels.length > 0
-                                         ? "选择已获取模型"
-                                         : "先获取模型"
-                        model: root.availableModels
-                        onActivated: function(index) {
-                            if (index >= 0 && index < root.availableModels.length) {
-                                root.modelSelected(root.availableModels[index])
+                        placeholderText: "例如 gpt-5.6-sol"
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.modelValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.modelValue) root.modelTextEdited(text)
+                        }
+                        onEditingFinished: root.modelCommitted(text)
+                        onAccepted: root.modelCommitted(text)
+                        Connections {
+                            target: root
+                            function onModelValueChanged() {
+                                if (modelEdit.text !== root.modelValue) {
+                                    modelEdit.text = root.modelValue
+                                }
                             }
                         }
                     }
-                    Fluent.Button {
-                        Layout.minimumWidth: 112
-                        Layout.preferredWidth: 112
-                        Layout.maximumWidth: 112
-                        Layout.alignment: Qt.AlignLeft
-                        style: Fluent.Enums.button.style_default
-                        icon: Fluent.Enums.icon.arrow_sync
-                        text: root.loading ? "获取中..." : "获取模型"
-                        enabled: !root.loading
-                        onClicked: root.fetchRequested()
+                }
+
+                FormField {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: modelGrid.equalItemWidth
+                    Layout.maximumWidth: modelGrid.equalItemWidth
+                    label: "在线模型列表"
+                    hint: "从当前 API 地址获取"
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        spacing: Fluent.Enums.spacing.s
+
+                        Fluent.ComboBoxDefault {
+                            id: modelPicker
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            placeholderText: root.availableModels.length > 0
+                                             ? "选择已获取模型"
+                                             : "先获取模型"
+                            model: root.availableModels
+                            onActivated: function(index) {
+                                if (index >= 0 && index < root.availableModels.length) {
+                                    root.modelSelected(root.availableModels[index])
+                                }
+                            }
+                        }
+
+                        Fluent.Button {
+                            Layout.minimumWidth: 112
+                            Layout.preferredWidth: 112
+                            Layout.maximumWidth: 112
+                            style: Fluent.Enums.button.style_default
+                            icon: Fluent.Enums.icon.arrow_sync
+                            text: root.loading ? "获取中..." : "获取模型"
+                            enabled: !root.loading
+                            onClicked: root.fetchRequested()
+                        }
                     }
                 }
             }
-        }
 
-        Fluent.Separator {
-            width: cardColumn.innerWidth
-        }
+            Fluent.Separator {
+                width: cardColumn.innerWidth
+            }
 
-        ReasoningEffortSelector {
-            width: cardColumn.innerWidth
-            modelName: root.modelValue
-            reasoningEffort: root.reasoningValue
-            onEffortSelected: function(value) {
-                root.effortSelected(value)
+            ReasoningEffortSelector {
+                width: cardColumn.innerWidth
+                modelName: root.modelValue
+                reasoningEffort: root.reasoningValue
+                onEffortSelected: function(value) {
+                    root.effortSelected(value)
+                }
             }
         }
     }

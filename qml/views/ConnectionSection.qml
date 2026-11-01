@@ -56,7 +56,8 @@ Fluent.Expander {
     }
 
     title: "连接与认证"
-    content: "API 地址、协议和访问密钥"
+    content: ""
+    icon: Fluent.Enums.icon.server
     expanded: true
     contentPadding: 0
 
@@ -72,255 +73,219 @@ Fluent.Expander {
         }
     }
 
+    // 内容高度必须用 implicitHeight：Column 的 implicitHeight 已含上下 padding，
+    // 而 childrenRect.height 不含。此前用 childrenRect 导致卡片底部被裁。
     Item {
-        id: contentHost
         width: parent ? parent.width : 0
-        implicitHeight: cardColumn.childrenRect.height
+        implicitHeight: cardColumn.implicitHeight
         height: implicitHeight
 
         Column {
             id: cardColumn
             objectName: "connectionCardColumn"
             width: parent ? parent.width : 0
-            height: childrenRect.height
-        leftPadding: Fluent.Enums.spacing.l
-        rightPadding: Fluent.Enums.spacing.l
-        topPadding: Fluent.Enums.spacing.l
-        bottomPadding: Fluent.Enums.spacing.l
-        spacing: Fluent.Enums.spacing.l
+            leftPadding: Fluent.Enums.spacing.l
+            rightPadding: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.l
 
-        readonly property real innerWidth: Math.max(
-            0, width - leftPadding - rightPadding
-        )
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-        Column {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.xs
+            // ---------- 地址与协议 ----------
+            FormField {
+                width: cardColumn.innerWidth
+                label: "API 地址"
+                keyName: "base_url"
+                hint: "未包含 /v1 时自动补全（失焦或回车即回填）"
 
-            Text {
-                text: "API 地址"
-                color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.body
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
-            }
-            Text {
-                text: "base_url · 未包含 /v1 时自动补全（失焦或回车即回填）"
-                color: Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-            }
-            Fluent.LineEdit {
-                id: baseUrlEdit
-                objectName: "baseUrlEdit"
-                width: parent.width
-                placeholderText: "https://api.example.com/v1"
-                Component.onCompleted: Qt.callLater(function() {
-                    text = root.baseUrlValue
-                })
-                onTextChanged: {
-                    if (text !== root.baseUrlValue) root.baseUrlEdited(text)
-                }
-                onEditingFinished: root.commitBaseUrl()
-                Connections {
-                    target: root
-                    function onBaseUrlValueChanged() {
-                        if (baseUrlEdit.text !== root.baseUrlValue) {
-                            baseUrlEdit.text = root.baseUrlValue
-                        }
-                    }
-                }
-            }
-        }
-
-        GridLayout {
-            id: connectionGrid
-            objectName: "connectionGrid"
-            width: cardColumn.innerWidth
-            columns: width < 620 ? 1 : 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.l
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
-
-                Text {
-                    text: "提供商标识"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "provider"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
                 Fluent.LineEdit {
-                    id: providerEdit
-                    objectName: "providerEdit"
+                    id: baseUrlEdit
+                    objectName: "baseUrlEdit"
                     Layout.fillWidth: true
-                    placeholderText: "relay"
+                    placeholderText: "https://api.example.com/v1"
                     Component.onCompleted: Qt.callLater(function() {
-                        text = root.providerValue
+                        text = root.baseUrlValue
                     })
                     onTextChanged: {
-                        if (text !== root.providerValue) root.providerEdited(text)
+                        if (text !== root.baseUrlValue) root.baseUrlEdited(text)
                     }
+                    onEditingFinished: root.commitBaseUrl()
                     Connections {
                         target: root
-                        function onProviderValueChanged() {
-                            if (providerEdit.text !== root.providerValue) {
-                                providerEdit.text = root.providerValue
+                        function onBaseUrlValueChanged() {
+                            if (baseUrlEdit.text !== root.baseUrlValue) {
+                                baseUrlEdit.text = root.baseUrlValue
                             }
                         }
                     }
                 }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
-
-                Text {
-                    text: "通信协议"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "wire_api"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Fluent.ComboBoxDefault {
-                    id: wireApiBox
-                    objectName: "wireApiComboBox"
-                    Layout.fillWidth: true
-                    property var protocolOptions: []
-
-                    // 候选与显示名都来自后端 CodexConfig.wireApiOptions()：
-                    // 界面只出现协议名，写入 config.toml 的 wire_api 标识由后端
-                    // 映射（backend/wire_api.py）。配置里若留着认不出的历史值，
-                    // 后端原样透传，这里也照原样多列一项，避免被静默改写。
-                    function reloadOptions() {
-                        var source = CodexConfig
-                                     ? CodexConfig.wireApiOptions() : []
-                        var options = []
-                        for (var i = 0; i < source.length; i++) {
-                            options.push({
-                                "value": source[i].value,
-                                "text": source[i].text
-                            })
-                        }
-                        var current = root.wireApiValue
-                        var known = false
-                        for (var j = 0; j < options.length; j++) {
-                            if (options[j].value === current) known = true
-                        }
-                        if (!known && current.length > 0) {
-                            options.push({
-                                "value": current,
-                                "text": CodexConfig
-                                        ? CodexConfig.wireApiLabel(current)
-                                        : current
-                            })
-                        }
-                        protocolOptions = options
-                        wireApiBox.syncCurrentIndex()
-                    }
-
-                    function syncCurrentIndex() {
-                        var found = 0
-                        for (var i = 0; i < protocolOptions.length; i++) {
-                            if (protocolOptions[i].value === root.wireApiValue) {
-                                found = i
-                            }
-                        }
-                        if (currentIndex !== found) currentIndex = found
-                    }
-
-                    model: protocolOptions
-                    Component.onCompleted: Qt.callLater(reloadOptions)
-                    onActivated: function(index) {
-                        if (index >= 0 && index < protocolOptions.length) {
-                            // 回传显示名，由 CodexView 交给后端映射成标识
-                            root.wireApiEdited(protocolOptions[index].text)
-                        }
-                    }
-                    Connections {
-                        target: root
-                        function onWireApiValueChanged() {
-                            wireApiBox.reloadOptions()
-                        }
-                    }
-                }
-            }
-        }
-
-        Fluent.Separator {
-            width: cardColumn.innerWidth
-        }
-
-        Column {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.s
-
-            Text {
-                text: "API 密钥"
-                color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.body
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
-            }
-            Text {
-                width: parent.width
-                text: root.authSource === "environment"
-                      ? "当前使用 env_key · " + (root.envKey || "未指定")
-                      : "输入完成后自动保存；留空不会改动现有 auth.json"
-                color: Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                wrapMode: Text.WordWrap
             }
 
             GridLayout {
-                id: keyGrid
-                width: parent.width
-                columns: width < 560 ? 1 : 2
-                columnSpacing: Fluent.Enums.spacing.m
-                rowSpacing: Fluent.Enums.spacing.s
+                id: connectionGrid
+                objectName: "connectionGrid"
+                width: cardColumn.innerWidth
+                columns: width < 620 ? 1 : 2
+                uniformCellWidths: columns === 2
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.l
+                readonly property real equalItemWidth: columns === 2
+                                                       ? Math.max(
+                                                             0,
+                                                             (width - columnSpacing) / 2
+                                                         )
+                                                       : width
 
-                Fluent.LineEdit {
-                    id: keyInput
+                FormField {
                     Layout.fillWidth: true
-                    inputType: Fluent.Enums.input.type_normal
-                    enabled: !root.configBusy
-                    placeholderText: "粘贴 API key"
-                    onAccepted: root.commitKey()
-                    onEditingFinished: root.commitKey()
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: connectionGrid.equalItemWidth
+                    Layout.maximumWidth: connectionGrid.equalItemWidth
+                    label: "提供商标识"
+                    keyName: "provider"
+
+                    Fluent.LineEdit {
+                        id: providerEdit
+                        objectName: "providerEdit"
+                        Layout.fillWidth: true
+                        placeholderText: "relay"
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.providerValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.providerValue) root.providerEdited(text)
+                        }
+                        Connections {
+                            target: root
+                            function onProviderValueChanged() {
+                                if (providerEdit.text !== root.providerValue) {
+                                    providerEdit.text = root.providerValue
+                                }
+                            }
+                        }
+                    }
                 }
-                Fluent.Button {
-                    Layout.minimumWidth: 112
-                    Layout.preferredWidth: 112
-                    Layout.maximumWidth: 112
-                    Layout.alignment: Qt.AlignLeft
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.save
-                    text: "保存密钥"
-                    enabled: !root.configBusy && keyInput.text.trim().length > 0
-                    onClicked: root.commitKey()
+
+                FormField {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: connectionGrid.equalItemWidth
+                    Layout.maximumWidth: connectionGrid.equalItemWidth
+                    label: "通信协议"
+                    keyName: "wire_api"
+
+                    Fluent.ComboBoxDefault {
+                        id: wireApiBox
+                        objectName: "wireApiComboBox"
+                        Layout.fillWidth: true
+                        property var protocolOptions: []
+
+                        // 候选与显示名都来自后端 CodexConfig.wireApiOptions()：
+                        // 界面只出现协议名，写入 config.toml 的 wire_api 标识由后端
+                        // 映射（backend/wire_api.py）。配置里若留着认不出的历史值，
+                        // 后端原样透传，这里也照原样多列一项，避免被静默改写。
+                        function reloadOptions() {
+                            var source = CodexConfig
+                                         ? CodexConfig.wireApiOptions() : []
+                            var options = []
+                            for (var i = 0; i < source.length; i++) {
+                                options.push({
+                                    "value": source[i].value,
+                                    "text": source[i].text
+                                })
+                            }
+                            var current = root.wireApiValue
+                            var known = false
+                            for (var j = 0; j < options.length; j++) {
+                                if (options[j].value === current) known = true
+                            }
+                            if (!known && current.length > 0) {
+                                options.push({
+                                    "value": current,
+                                    "text": CodexConfig
+                                            ? CodexConfig.wireApiLabel(current)
+                                            : current
+                                })
+                            }
+                            protocolOptions = options
+                            wireApiBox.syncCurrentIndex()
+                        }
+
+                        function syncCurrentIndex() {
+                            var found = 0
+                            for (var i = 0; i < protocolOptions.length; i++) {
+                                if (protocolOptions[i].value === root.wireApiValue) {
+                                    found = i
+                                }
+                            }
+                            if (currentIndex !== found) currentIndex = found
+                        }
+
+                        model: protocolOptions
+                        Component.onCompleted: Qt.callLater(reloadOptions)
+                        onActivated: function(index) {
+                            if (index >= 0 && index < protocolOptions.length) {
+                                // 回传显示名，由 CodexView 交给后端映射成标识
+                                root.wireApiEdited(protocolOptions[index].text)
+                            }
+                        }
+                        Connections {
+                            target: root
+                            function onWireApiValueChanged() {
+                                wireApiBox.reloadOptions()
+                            }
+                        }
+                    }
                 }
             }
 
+            Fluent.Separator {
+                width: cardColumn.innerWidth
+            }
+
+            // ---------- 凭据 ----------
+            FormField {
+                width: cardColumn.innerWidth
+                label: "API 密钥"
+                hint: root.authSource === "environment"
+                      ? "当前使用 env_key · " + (root.envKey || "未指定")
+                      : "输入完成后自动保存；留空不会改动现有 auth.json"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: Fluent.Enums.spacing.s
+
+                    Fluent.LineEdit {
+                        id: keyInput
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        inputType: Fluent.Enums.input.type_normal
+                        enabled: !root.configBusy
+                        placeholderText: "粘贴 API key"
+                        onAccepted: root.commitKey()
+                        onEditingFinished: root.commitKey()
+                    }
+                    Fluent.Button {
+                        Layout.minimumWidth: 112
+                        Layout.preferredWidth: 112
+                        Layout.maximumWidth: 112
+                        style: Fluent.Enums.button.style_default
+                        icon: Fluent.Enums.icon.save
+                        text: "保存密钥"
+                        enabled: !root.configBusy
+                                 && keyInput.text.trim().length > 0
+                        onClicked: root.commitKey()
+                    }
+                }
+            }
+
+            // ---------- 维护操作：说明在左、按钮统一宽度并右对齐 ----------
             RowLayout {
-                width: parent.width
+                width: cardColumn.innerWidth
                 spacing: Fluent.Enums.spacing.m
 
                 Text {
@@ -376,38 +341,16 @@ Fluent.Expander {
                     onClicked: root.sandboxStopgapRequested()
                 }
             }
-        }
 
-        Fluent.Separator {
-            width: cardColumn.innerWidth
-        }
-
-        Column {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.s
-
-            Text {
-                text: "ChatGPT JSON 导入"
-                color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.body
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
-            }
-            Text {
-                width: parent.width
-                text: "粘贴 Codex auth.json 或 codex2api 兼容 JSON；仅有 refresh_token 时自动换取完整凭据。"
-                color: Fluent.Enums.textColor.tertiary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.family: Fluent.Enums.fontFamily
-                wrapMode: Text.WordWrap
+            Fluent.Separator {
+                width: cardColumn.innerWidth
             }
 
-            GridLayout {
-                id: authJsonGrid
-                width: parent.width
-                columns: 1
-                columnSpacing: Fluent.Enums.spacing.m
-                rowSpacing: Fluent.Enums.spacing.s
+            FormField {
+                width: cardColumn.innerWidth
+                label: "ChatGPT JSON 导入"
+                hint: "粘贴 Codex auth.json 或 codex2api 兼容 JSON；"
+                      + "仅有 refresh_token 时自动换取完整凭据。"
 
                 Fluent.TextEdit {
                     id: authJsonInput
@@ -417,21 +360,31 @@ Fluent.Expander {
                     enabled: !root.configBusy
                     placeholderText: "{\n  \"refresh_token\": \"...\"\n}"
                 }
-                Fluent.Button {
-                    objectName: "authJsonImportButton"
-                    Layout.minimumWidth: 180
-                    Layout.preferredWidth: 180
-                    Layout.maximumWidth: 180
-                    Layout.alignment: Qt.AlignLeft
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.arrow_import
-                    text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
-                    enabled: !root.configBusy
-                             && authJsonInput.text.trim().length > 0
-                    onClicked: root.commitAuthJson()
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        implicitHeight: 1
+                    }
+
+                    Fluent.Button {
+                        objectName: "authJsonImportButton"
+                        Layout.minimumWidth: 180
+                        Layout.preferredWidth: 180
+                        Layout.maximumWidth: 180
+                        style: Fluent.Enums.button.style_default
+                        icon: Fluent.Enums.icon.arrow_import
+                        text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
+                        enabled: !root.configBusy
+                                 && authJsonInput.text.trim().length > 0
+                        onClicked: root.commitAuthJson()
+                    }
                 }
             }
         }
     }
-}
 }

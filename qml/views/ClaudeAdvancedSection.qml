@@ -20,8 +20,22 @@ Fluent.Expander {
     signal clearHeadersToggled(bool value)
 
     title: "模型与请求头"
-    content: "模型发现、模型展示、1M 上下文和额外请求头"
+    content: ""
+    icon: Fluent.Enums.icon.options
     expanded: false
+
+    headerContent: Component {
+        Fluent.Badge {
+            text: root.headerCount > 0
+                  ? root.headerCount + " 个请求头"
+                  : root.modelEntries.length > 0
+                    ? root.modelEntries.length + " 个模型"
+                    : "未配置"
+            level: root.headerCount > 0 || root.modelEntries.length > 0
+                   ? Fluent.Enums.statusLevel.info
+                   : Fluent.Enums.statusLevel.attention
+        }
+    }
 
     readonly property var stateOptions: [
         { "text": "自动", "value": "auto" },
@@ -105,253 +119,251 @@ Fluent.Expander {
     Component.onCompleted: syncModels()
     onModelsJsonValueChanged: syncModels()
 
-    Column {
-        id: contentColumn
+    // 高度用 implicitHeight（含 padding）；childrenRect 不含 padding 会裁掉底部。
+    Item {
         width: parent ? parent.width : 0
-        spacing: Fluent.Enums.spacing.l
-
-        GridLayout {
-            id: behaviorGrid
-            width: parent.width
-            columns: width < 620 ? 1 : 2
-            uniformCellWidths: columns === 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.s
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "模型发现"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "启动时从网关的 /v1/models 自动读取模型"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-                Fluent.ComboBoxDefault {
-                    id: discoveryBox
-                    Layout.fillWidth: true
-                    model: root.stateOptions
-                    Component.onCompleted: currentIndex = root.stateIndex(
-                        root.stateOptions, root.modelDiscoveryStateValue
-                    )
-                    onActivated: function(index) {
-                        if (index >= 0 && index < root.stateOptions.length) {
-                            root.modelDiscoveryStateSelected(
-                                root.stateOptions[index].value
-                            )
-                        }
-                    }
-                    Connections {
-                        target: root
-                        function onModelDiscoveryStateValueChanged() {
-                            discoveryBox.currentIndex = root.stateIndex(
-                                root.stateOptions,
-                                root.modelDiscoveryStateValue
-                            )
-                        }
-                    }
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "默认 1M 上下文"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: "优先选择第一个模型的 1M 变体"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    wrapMode: Text.WordWrap
-                }
-                Fluent.ComboBoxDefault {
-                    id: prefer1mBox
-                    Layout.fillWidth: true
-                    model: root.stateOptions
-                    Component.onCompleted: currentIndex = root.stateIndex(
-                        root.stateOptions, root.modelPrefer1mContextStateValue
-                    )
-                    onActivated: function(index) {
-                        if (index >= 0 && index < root.stateOptions.length) {
-                            root.modelPrefer1mContextStateSelected(
-                                root.stateOptions[index].value
-                            )
-                        }
-                    }
-                    Connections {
-                        target: root
-                        function onModelPrefer1mContextStateValueChanged() {
-                            prefer1mBox.currentIndex = root.stateIndex(
-                                root.stateOptions,
-                                root.modelPrefer1mContextStateValue
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        RowLayout {
-            width: parent.width
-            Text {
-                Layout.fillWidth: true
-                text: "模型列表"
-                color: Fluent.Enums.textColor.secondary
-                font.pixelSize: Fluent.Enums.typography.caption
-                font.bold: true
-                font.family: Fluent.Enums.fontFamily
-            }
-            Fluent.Button {
-                objectName: "claudeAddModelButton"
-                Layout.minimumWidth: 112
-                Layout.preferredWidth: 112
-                Layout.maximumWidth: 112
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.add
-                text: "添加模型"
-                onClicked: root.addModel()
-            }
-        }
-
-        Text {
-            width: parent.width
-            visible: root.modelEntries.length === 0
-            text: "未配置固定模型；模型发现开启时将使用网关返回的列表"
-            color: Fluent.Enums.textColor.tertiary
-            font.pixelSize: Fluent.Enums.typography.caption
-            font.family: Fluent.Enums.fontFamily
-            wrapMode: Text.WordWrap
-        }
+        implicitHeight: contentColumn.implicitHeight
+        height: implicitHeight
 
         Column {
-            id: modelColumn
-            width: parent.width
-            spacing: Fluent.Enums.spacing.s
+            id: contentColumn
+            objectName: "claudeAdvancedCardColumn"
+            width: parent ? parent.width : 0
+            leftPadding: Fluent.Enums.spacing.l
+            rightPadding: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.l
 
-            Repeater {
-                id: modelRepeater
-                model: root.modelEntries
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-                delegate: ClaudeModelEntry {
-                    width: modelColumn.width
-                    entry: modelData
-                    indexValue: index
-                    tierOptions: root.tierOptions
-                    onPatchRequested: function(patch) {
-                        root.updateModel(indexValue, patch)
-                    }
-                    onRemoveRequested: root.removeModel(indexValue)
-                }
-            }
-        }
+            GridLayout {
+                id: behaviorGrid
+                objectName: "behaviorGrid"
+                width: contentColumn.innerWidth
+                columns: width < 620 ? 1 : 2
+                uniformCellWidths: columns === 2
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.l
+                readonly property real equalItemWidth: columns === 2
+                                                       ? Math.max(
+                                                             0,
+                                                             (width - columnSpacing) / 2
+                                                         )
+                                                       : width
 
-        GridLayout {
-            id: headersGrid
-            width: parent.width
-            columns: width < 680 ? 1 : 2
-            uniformCellWidths: columns === 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.l
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                Layout.preferredWidth: headersGrid.columns === 2
-                                       ? (headersGrid.width - headersGrid.columnSpacing) / 2
-                                       : headersGrid.width
-                Layout.maximumWidth: headersGrid.columns === 2
-                                     ? (headersGrid.width - headersGrid.columnSpacing) / 2
-                                     : headersGrid.width
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
+                FormField {
                     Layout.fillWidth: true
-                    text: root.headerCount > 0
-                          ? "额外请求头 · 已保存 " + root.headerCount + " 项"
-                          : "额外请求头 · 可选"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Fluent.Enums.controlSize.checkboxOuter
-                    spacing: Fluent.Enums.spacing.s
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: behaviorGrid.equalItemWidth
+                    Layout.maximumWidth: behaviorGrid.equalItemWidth
+                    label: "模型发现"
+                    hint: "启动时从网关的 /v1/models 自动读取模型"
 
-                    Text {
+                    Fluent.ComboBoxDefault {
+                        id: discoveryBox
                         Layout.fillWidth: true
-                        Layout.alignment: Qt.AlignVCenter
-                        text: "输入 JSON 对象覆盖现有值；敏感内容不会回显"
-                        color: Fluent.Enums.textColor.tertiary
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.family: Fluent.Enums.fontFamily
-                        elide: Text.ElideRight
-                    }
-
-                    Fluent.Toggle {
-                        id: clearHeadersToggle
-                        objectName: "claudeClearHeadersToggle"
-                        Layout.alignment: Qt.AlignVCenter
-                        enabled: root.headerCount > 0
-                        visible: root.headerCount > 0
-                        controlType: Fluent.Enums.toggle.control_checkbox
-                        type: Fluent.Enums.toggle.type_default
-                        text: "应用时删除"
-                        Component.onCompleted: Qt.callLater(function() {
-                            checked = root.clearHeadersValue
-                        })
-                        onToggled: function(checkedValue) {
-                            root.clearHeadersToggled(checkedValue)
+                        model: root.stateOptions
+                        Component.onCompleted: currentIndex = root.stateIndex(
+                            root.stateOptions, root.modelDiscoveryStateValue
+                        )
+                        onActivated: function(index) {
+                            if (index >= 0 && index < root.stateOptions.length) {
+                                root.modelDiscoveryStateSelected(
+                                    root.stateOptions[index].value
+                                )
+                            }
                         }
                         Connections {
                             target: root
-                            function onClearHeadersValueChanged() {
-                                if (clearHeadersToggle.checked !== root.clearHeadersValue) {
-                                    clearHeadersToggle.checked = root.clearHeadersValue
-                                }
+                            function onModelDiscoveryStateValueChanged() {
+                                discoveryBox.currentIndex = root.stateIndex(
+                                    root.stateOptions,
+                                    root.modelDiscoveryStateValue
+                                )
                             }
                         }
                     }
                 }
-                Fluent.TextEdit {
-                    id: headersEdit
-                    objectName: "claudeHeadersEdit"
+
+                FormField {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 108
-                    enabled: !root.clearHeadersValue
-                    placeholderText: "{\n  \"X-Tenant\": \"tenant-id\"\n}"
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.headersValue
-                    })
-                    onTextEdited: {
-                        if (text !== root.headersValue) root.headersEdited(text)
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: behaviorGrid.equalItemWidth
+                    Layout.maximumWidth: behaviorGrid.equalItemWidth
+                    label: "默认 1M 上下文"
+                    hint: "优先选择第一个模型的 1M 变体"
+
+                    Fluent.ComboBoxDefault {
+                        id: prefer1mBox
+                        Layout.fillWidth: true
+                        model: root.stateOptions
+                        Component.onCompleted: currentIndex = root.stateIndex(
+                            root.stateOptions, root.modelPrefer1mContextStateValue
+                        )
+                        onActivated: function(index) {
+                            if (index >= 0 && index < root.stateOptions.length) {
+                                root.modelPrefer1mContextStateSelected(
+                                    root.stateOptions[index].value
+                                )
+                            }
+                        }
+                        Connections {
+                            target: root
+                            function onModelPrefer1mContextStateValueChanged() {
+                                prefer1mBox.currentIndex = root.stateIndex(
+                                    root.stateOptions,
+                                    root.modelPrefer1mContextStateValue
+                                )
+                            }
+                        }
                     }
-                    Connections {
-                        target: root
-                        function onHeadersValueChanged() {
-                            if (headersEdit.text !== root.headersValue) {
-                                headersEdit.text = root.headersValue
+                }
+            }
+
+            RowLayout {
+                width: contentColumn.innerWidth
+                spacing: Fluent.Enums.spacing.m
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: "模型列表"
+                    color: Fluent.Enums.textColor.secondary
+                    font.pixelSize: Fluent.Enums.typography.body
+                    font.bold: true
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
+                }
+                Fluent.Button {
+                    objectName: "claudeAddModelButton"
+                    Layout.minimumWidth: 112
+                    Layout.preferredWidth: 112
+                    Layout.maximumWidth: 112
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.add
+                    text: "添加模型"
+                    onClicked: root.addModel()
+                }
+            }
+
+            Text {
+                width: contentColumn.innerWidth
+                visible: root.modelEntries.length === 0
+                text: "未配置固定模型；模型发现开启时将使用网关返回的列表"
+                color: Fluent.Enums.textColor.tertiary
+                font.pixelSize: Fluent.Enums.typography.caption
+                font.family: Fluent.Enums.fontFamily
+                wrapMode: Text.WordWrap
+            }
+
+            Column {
+                id: modelColumn
+                objectName: "claudeModelColumn"
+                width: contentColumn.innerWidth
+                spacing: Fluent.Enums.spacing.s
+
+                Repeater {
+                    id: modelRepeater
+                    model: root.modelEntries
+
+                    delegate: ClaudeModelEntry {
+                        width: modelColumn.width
+                        entry: modelData
+                        indexValue: index
+                        tierOptions: root.tierOptions
+                        onPatchRequested: function(patch) {
+                            root.updateModel(indexValue, patch)
+                        }
+                        onRemoveRequested: root.removeModel(indexValue)
+                    }
+                }
+            }
+
+            GridLayout {
+                id: headersGrid
+                objectName: "headersGrid"
+                width: contentColumn.innerWidth
+                columns: width < 680 ? 1 : 2
+                uniformCellWidths: columns === 2
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.l
+                readonly property real equalItemWidth: columns === 2
+                                                       ? Math.max(
+                                                             0,
+                                                             (width - columnSpacing) / 2
+                                                         )
+                                                       : width
+
+                FormField {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: headersGrid.equalItemWidth
+                    Layout.maximumWidth: headersGrid.equalItemWidth
+                    label: root.headerCount > 0
+                           ? "额外请求头 · 已保存 " + root.headerCount + " 项"
+                           : "额外请求头 · 可选"
+                    hint: "输入 JSON 对象覆盖现有值；敏感内容不会回显"
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredHeight: Fluent.Enums.controlSize.checkboxOuter
+                        spacing: Fluent.Enums.spacing.s
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            implicitHeight: 1
+                        }
+
+                        Fluent.Toggle {
+                            id: clearHeadersToggle
+                            objectName: "claudeClearHeadersToggle"
+                            Layout.alignment: Qt.AlignVCenter
+                            enabled: root.headerCount > 0
+                            visible: root.headerCount > 0
+                            controlType: Fluent.Enums.toggle.control_checkbox
+                            type: Fluent.Enums.toggle.type_default
+                            text: "应用时删除"
+                            Component.onCompleted: Qt.callLater(function() {
+                                checked = root.clearHeadersValue
+                            })
+                            onToggled: function(checkedValue) {
+                                root.clearHeadersToggled(checkedValue)
+                            }
+                            Connections {
+                                target: root
+                                function onClearHeadersValueChanged() {
+                                    if (clearHeadersToggle.checked !== root.clearHeadersValue) {
+                                        clearHeadersToggle.checked = root.clearHeadersValue
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Fluent.TextEdit {
+                        id: headersEdit
+                        objectName: "claudeHeadersEdit"
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 108
+                        enabled: !root.clearHeadersValue
+                        placeholderText: "{\n  \"X-Tenant\": \"tenant-id\"\n}"
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.headersValue
+                        })
+                        onTextEdited: {
+                            if (text !== root.headersValue) root.headersEdited(text)
+                        }
+                        Connections {
+                            target: root
+                            function onHeadersValueChanged() {
+                                if (headersEdit.text !== root.headersValue) {
+                                    headersEdit.text = root.headersValue
+                                }
                             }
                         }
                     }

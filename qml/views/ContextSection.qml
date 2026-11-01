@@ -21,7 +21,8 @@ Fluent.Expander {
     signal clearRequested()
 
     title: "上下文预算"
-    content: "窗口大小、自动压缩阈值和工具输出保留量"
+    content: ""
+    icon: Fluent.Enums.icon.data_usage
     expanded: false
     contentPadding: 0
 
@@ -34,225 +35,218 @@ Fluent.Expander {
         }
     }
 
-    Column {
-        id: cardColumn
+    // 高度用 implicitHeight（含 padding）；childrenRect 不含 padding 会裁掉底部。
+    Item {
         width: parent ? parent.width : 0
-        height: childrenRect.height
-        leftPadding: Fluent.Enums.spacing.l
-        rightPadding: Fluent.Enums.spacing.l
-        topPadding: Fluent.Enums.spacing.l
-        bottomPadding: Fluent.Enums.spacing.l
-        spacing: Fluent.Enums.spacing.l
-
-        readonly property real innerWidth: Math.max(
-            0, width - leftPadding - rightPadding
-        )
-
-        Flow {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.m
-
-            Fluent.Button {
-                width: 152
-                Layout.minimumWidth: 152
-                Layout.preferredWidth: 152
-                Layout.maximumWidth: 152
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.checkmark
-                text: "套用稳定上下文"
-                enabled: root.currentPreset.contextWindow > 0
-                onClicked: root.presetRequested()
-            }
-            Fluent.Button {
-                width: 152
-                Layout.minimumWidth: 152
-                Layout.preferredWidth: 152
-                Layout.maximumWidth: 152
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.checkmark
-                text: "套用百万上下文"
-                enabled: root.millionPreset.contextWindow > 0
-                onClicked: root.millionPresetRequested()
-            }
-            Fluent.Button {
-                width: 128
-                Layout.minimumWidth: 128
-                Layout.preferredWidth: 128
-                Layout.maximumWidth: 128
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.icon_delete
-                text: "清空自定义值"
-                onClicked: root.clearRequested()
-            }
-        }
+        implicitHeight: cardColumn.implicitHeight
+        height: implicitHeight
 
         Column {
-            width: cardColumn.innerWidth
-            spacing: Fluent.Enums.spacing.s
+            id: cardColumn
+            objectName: "contextCardColumn"
+            width: parent ? parent.width : 0
+            leftPadding: Fluent.Enums.spacing.l
+            rightPadding: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.l
 
-            RowLayout {
-                width: parent.width
-                Text {
-                    Layout.fillWidth: true
-                    text: "自动压缩阈值占上下文窗口"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.family: Fluent.Enums.fontFamily
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
+
+            Flow {
+                width: cardColumn.innerWidth
+                spacing: Fluent.Enums.spacing.m
+
+                Fluent.Button {
+                    width: 152
+                    Layout.minimumWidth: 152
+                    Layout.preferredWidth: 152
+                    Layout.maximumWidth: 152
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.checkmark
+                    text: "套用稳定上下文"
+                    enabled: root.currentPreset.contextWindow > 0
+                    onClicked: root.presetRequested()
                 }
-                Text {
-                    text: root.compactRatioText
-                    color: Fluent.Enums.textColor.primary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
+                Fluent.Button {
+                    width: 152
+                    Layout.minimumWidth: 152
+                    Layout.preferredWidth: 152
+                    Layout.maximumWidth: 152
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.checkmark
+                    text: "套用百万上下文"
+                    enabled: root.millionPreset.contextWindow > 0
+                    onClicked: root.millionPresetRequested()
+                }
+                Fluent.Button {
+                    width: 128
+                    Layout.minimumWidth: 128
+                    Layout.preferredWidth: 128
+                    Layout.maximumWidth: 128
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.icon_delete
+                    text: "清空自定义值"
+                    onClicked: root.clearRequested()
                 }
             }
-            Fluent.ProgressBar {
-                width: parent.width
-                from: 0
-                to: 1
-                value: root.compactRatio
-            }
-        }
 
-        GridLayout {
-            width: cardColumn.innerWidth
-            columns: width < 440 ? 1 : (width < 720 ? 2 : 3)
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.l
+            Column {
+                width: cardColumn.innerWidth
+                spacing: Fluent.Enums.spacing.s
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
+                RowLayout {
+                    width: parent.width
+                    spacing: Fluent.Enums.spacing.s
 
-                Text {
-                    text: "上下文窗口"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "model_context_window"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Fluent.LineEdit {
-                    id: contextWindowEdit
-                    objectName: "contextWindowEdit"
-                    Layout.fillWidth: true
-                    placeholderText: root.currentPreset.contextWindow
-                                     ? String(root.currentPreset.contextWindow)
-                                     : "未设置"
-                    validator: IntValidator { bottom: 1 }
-                    inputMethodHints: Qt.ImhDigitsOnly
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.contextWindowValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.contextWindowValue) {
-                            root.contextWindowEdited(text)
-                        }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: "自动压缩阈值占上下文窗口"
+                        color: Fluent.Enums.textColor.secondary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideRight
                     }
-                    Connections {
-                        target: root
-                        function onContextWindowValueChanged() {
-                            if (contextWindowEdit.text !== root.contextWindowValue) {
-                                contextWindowEdit.text = root.contextWindowValue
+                    Text {
+                        id: compactRatioValue
+                        text: root.compactRatioText
+                        color: Fluent.Enums.textColor.primary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
+                    }
+                }
+                Fluent.ProgressBar {
+                    width: parent.width
+                    from: 0
+                    to: 1
+                    value: root.compactRatio
+                }
+            }
+
+            GridLayout {
+                id: contextGrid
+                objectName: "contextGrid"
+                width: cardColumn.innerWidth
+                columns: width < 440 ? 1 : (width < 720 ? 2 : 3)
+                uniformCellWidths: columns === 3
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.l
+                readonly property real equalItemWidth: columns === 3
+                                                       ? Math.max(
+                                                             0,
+                                                             (width
+                                                              - 2 * columnSpacing) / 3
+                                                         )
+                                                       : width
+
+                FormField {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: contextGrid.equalItemWidth
+                    Layout.maximumWidth: contextGrid.equalItemWidth
+                    label: "上下文窗口"
+                    keyName: "model_context_window"
+
+                    Fluent.LineEdit {
+                        id: contextWindowEdit
+                        objectName: "contextWindowEdit"
+                        Layout.fillWidth: true
+                        placeholderText: root.currentPreset.contextWindow
+                                         ? String(root.currentPreset.contextWindow)
+                                         : "未设置"
+                        validator: IntValidator { bottom: 1 }
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.contextWindowValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.contextWindowValue) {
+                                root.contextWindowEdited(text)
+                            }
+                        }
+                        Connections {
+                            target: root
+                            function onContextWindowValueChanged() {
+                                if (contextWindowEdit.text !== root.contextWindowValue) {
+                                    contextWindowEdit.text = root.contextWindowValue
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
-
-                Text {
-                    text: "自动压缩阈值"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "model_auto_compact_token_limit"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Fluent.LineEdit {
-                    id: autoCompactEdit
-                    objectName: "autoCompactEdit"
+                FormField {
                     Layout.fillWidth: true
-                    placeholderText: root.currentPreset.autoCompactLimit
-                                     ? String(root.currentPreset.autoCompactLimit)
-                                     : "未设置"
-                    validator: IntValidator { bottom: 1 }
-                    inputMethodHints: Qt.ImhDigitsOnly
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.autoCompactValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.autoCompactValue) {
-                            root.autoCompactEdited(text)
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: contextGrid.equalItemWidth
+                    Layout.maximumWidth: contextGrid.equalItemWidth
+                    label: "自动压缩阈值"
+                    keyName: "model_auto_compact_token_limit"
+
+                    Fluent.LineEdit {
+                        id: autoCompactEdit
+                        objectName: "autoCompactEdit"
+                        Layout.fillWidth: true
+                        placeholderText: root.currentPreset.autoCompactLimit
+                                         ? String(root.currentPreset.autoCompactLimit)
+                                         : "未设置"
+                        validator: IntValidator { bottom: 1 }
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.autoCompactValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.autoCompactValue) {
+                                root.autoCompactEdited(text)
+                            }
                         }
-                    }
-                    Connections {
-                        target: root
-                        function onAutoCompactValueChanged() {
-                            if (autoCompactEdit.text !== root.autoCompactValue) {
-                                autoCompactEdit.text = root.autoCompactValue
+                        Connections {
+                            target: root
+                            function onAutoCompactValueChanged() {
+                                if (autoCompactEdit.text !== root.autoCompactValue) {
+                                    autoCompactEdit.text = root.autoCompactValue
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xs
-
-                Text {
-                    text: "工具输出保留"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
-                    text: "tool_output_token_limit"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Fluent.LineEdit {
-                    id: toolOutputEdit
-                    objectName: "toolOutputEdit"
+                FormField {
                     Layout.fillWidth: true
-                    placeholderText: root.currentPreset.toolOutputLimit
-                                     ? String(root.currentPreset.toolOutputLimit)
-                                     : "6000"
-                    validator: IntValidator { bottom: 1 }
-                    inputMethodHints: Qt.ImhDigitsOnly
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.toolOutputValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.toolOutputValue) {
-                            root.toolOutputEdited(text)
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: contextGrid.equalItemWidth
+                    Layout.maximumWidth: contextGrid.equalItemWidth
+                    label: "工具输出保留"
+                    keyName: "tool_output_token_limit"
+
+                    Fluent.LineEdit {
+                        id: toolOutputEdit
+                        objectName: "toolOutputEdit"
+                        Layout.fillWidth: true
+                        placeholderText: root.currentPreset.toolOutputLimit
+                                         ? String(root.currentPreset.toolOutputLimit)
+                                         : "6000"
+                        validator: IntValidator { bottom: 1 }
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.toolOutputValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.toolOutputValue) {
+                                root.toolOutputEdited(text)
+                            }
                         }
-                    }
-                    Connections {
-                        target: root
-                        function onToolOutputValueChanged() {
-                            if (toolOutputEdit.text !== root.toolOutputValue) {
-                                toolOutputEdit.text = root.toolOutputValue
+                        Connections {
+                            target: root
+                            function onToolOutputValueChanged() {
+                                if (toolOutputEdit.text !== root.toolOutputValue) {
+                                    toolOutputEdit.text = root.toolOutputValue
+                                }
                             }
                         }
                     }

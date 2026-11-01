@@ -31,7 +31,8 @@ Fluent.Expander {
     signal cloneActiveProfileRequested()
 
     title: "应用状态"
-    content: "Claude Desktop 安装、运行模式与配置档案"
+    content: ""
+    icon: Fluent.Enums.icon.desktop
     expanded: false
     contentPadding: 0
 
@@ -44,31 +45,32 @@ Fluent.Expander {
         }
     }
 
-    Column {
-        id: cardColumn
+    // 高度用 implicitHeight（含 padding）；childrenRect 不含 padding 会裁掉底部。
+    Item {
         width: parent ? parent.width : 0
-        height: childrenRect.height
-        leftPadding: Fluent.Enums.spacing.l
-        rightPadding: Fluent.Enums.spacing.l
-        topPadding: Fluent.Enums.spacing.m
-        bottomPadding: Fluent.Enums.spacing.m
+        implicitHeight: cardColumn.implicitHeight
+        height: implicitHeight
 
-        readonly property real innerWidth: Math.max(
-            0, width - leftPadding - rightPadding
-        )
+        Column {
+            id: cardColumn
+            objectName: "claudeStatusCardColumn"
+            width: parent ? parent.width : 0
+            leftPadding: Fluent.Enums.spacing.l
+            rightPadding: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.l
+            bottomPadding: Fluent.Enums.spacing.l
+            spacing: Fluent.Enums.spacing.l
 
-        Rectangle {
-            width: cardColumn.innerWidth
-            height: Fluent.Enums.border.thin
-            color: Fluent.Enums.stateColor.borderLight
-        }
+            readonly property real innerWidth: Math.max(
+                0, width - leftPadding - rightPadding
+            )
 
-        GridLayout {
-            id: summaryLayout
-            width: cardColumn.innerWidth
-            columns: width < 700 ? 1 : 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.m
+            GridLayout {
+                id: summaryLayout
+                width: cardColumn.innerWidth
+                columns: width < 700 ? 1 : 2
+                columnSpacing: Fluent.Enums.spacing.l
+                rowSpacing: Fluent.Enums.spacing.m
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -292,44 +294,45 @@ Fluent.Expander {
 
         }
 
-        RowLayout {
-            width: cardColumn.innerWidth
-            visible: root.canImportActiveProfile
-            spacing: Fluent.Enums.spacing.m
+            RowLayout {
+                width: parent.width
+                visible: root.canImportActiveProfile
+                spacing: Fluent.Enums.spacing.m
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
-
-                Text {
-                    text: "导入当前 Claude 档案"
-                    color: Fluent.Enums.textColor.secondary
-                    font.pixelSize: Fluent.Enums.typography.body
-                    font.bold: true
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Text {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: "复制为独立的 ConfigPilot 档案，不修改当前档案"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    elide: Text.ElideRight
-                }
-            }
+                    Layout.minimumWidth: 0
+                    spacing: Fluent.Enums.spacing.xxs
 
-            Fluent.Button {
-                objectName: "claudeCloneProfileButton"
-                Layout.minimumWidth: 220
-                Layout.preferredWidth: 220
-                Layout.maximumWidth: 220
-                Layout.alignment: Qt.AlignVCenter
-                enabled: !root.configBusy && !root.installBusy
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.copy
-                text: "复制当前档案为 ConfigPilot"
-                onClicked: root.cloneActiveProfileRequested()
+                    Text {
+                        text: "导入当前 Claude 档案"
+                        color: Fluent.Enums.textColor.secondary
+                        font.pixelSize: Fluent.Enums.typography.body
+                        font.bold: true
+                        font.family: Fluent.Enums.fontFamily
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "复制为独立的 ConfigPilot 档案，不修改当前档案"
+                        color: Fluent.Enums.textColor.tertiary
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        font.family: Fluent.Enums.fontFamily
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Fluent.Button {
+                    objectName: "claudeCloneProfileButton"
+                    Layout.minimumWidth: 220
+                    Layout.preferredWidth: 220
+                    Layout.maximumWidth: 220
+                    Layout.alignment: Qt.AlignVCenter
+                    enabled: !root.configBusy && !root.installBusy
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.copy
+                    text: "复制当前档案为 ConfigPilot"
+                    onClicked: root.cloneActiveProfileRequested()
+                }
             }
         }
     }

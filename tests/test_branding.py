@@ -211,9 +211,18 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("Fluent.Enums.input.type_password", connection)
         self.assertIn("importAuthJson", view)
         self.assertIn("repairRelayAuth", view)
-        self.assertIn('text: "套用稳定上下文"', context)
-        self.assertIn('text: "套用百万上下文"', context)
-        self.assertNotIn("feature: Fluent.Enums.button.feature_dropdown", context)
+        # 三个上下文预设动作收进头部的一个 Button 下拉：横铺按钮会常驻占用
+        # 内容区一整行，而它们都是低频的一次性套用操作。
+        self.assertIn('objectName: "contextPresetDropdown"', context)
+        self.assertIn("feature: Fluent.Enums.button.feature_dropdown", context)
+        self.assertIn('"text": "套用稳定上下文"', context)
+        self.assertIn('"text": "套用百万上下文"', context)
+        self.assertIn('"text": "清空自定义值"', context)
+        self.assertIn("onMenuItemClicked", context)
+        # 预设动作不再以独立按钮出现在内容区里。
+        self.assertNotIn("onClicked: root.presetRequested()", context)
+        self.assertNotIn("onClicked: root.millionPresetRequested()", context)
+        self.assertNotIn("onClicked: root.clearRequested()", context)
         self.assertIn("Fluent.Expander", advanced)
         self.assertIn("function commitKey()", connection)
         self.assertIn("onAccepted: root.commitKey()", connection)
@@ -259,7 +268,9 @@ class BrandingTests(unittest.TestCase):
             # 维护按钮已收进工具箱抽屉，固定宽度约束随之落在抽屉里。
             (toolbox, "Layout.maximumWidth: 88"),
             (model, "Layout.maximumWidth: 112"),
-            (context, "Layout.maximumWidth: 152"),
+            # 上下文预设已收进头部下拉，固定宽度变成下拉按钮自身的约束
+            # （通过 readonly 属性统一定义，头部内容总宽也按它算）。
+            (context, "Layout.maximumWidth: root.presetButtonWidth"),
             (status, "Layout.maximumWidth: 220"),
         ):
             self.assertIn(width, content)
@@ -302,7 +313,17 @@ class BrandingTests(unittest.TestCase):
         requirements = self.read("requirements.txt")
         main = self.read("qml/main.qml")
 
-        self.assertIn("prismqml==0.5.0.23", requirements)
+        # 锁定版本必须与实际安装版本一致：只断言某个写死的版本号时，
+        # 升级依赖后两边会悄悄脱钩（requirements 说一套、跑的是另一套）。
+        import prismqml as _prismqml
+
+        pinned = re.search(r"^prismqml==(\S+)$", requirements, re.MULTILINE)
+        self.assertIsNotNone(pinned, "requirements.txt 未锁定 prismqml 版本")
+        self.assertEqual(
+            pinned.group(1),
+            _prismqml.__version__,
+            "requirements.txt 锁定的 prismqml 版本与当前安装不一致",
+        )
         self.assertIn('setContextProperty("PrismQMLVersion", prismqml.__version__)', self.read("main.py"))
         self.assertIn("minimumWidth: 760", main)
         self.assertIn("minimumHeight: 560", main)

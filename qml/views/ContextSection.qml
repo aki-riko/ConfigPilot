@@ -26,12 +26,54 @@ Fluent.Expander {
     expanded: false
     contentPadding: 0
 
+    // 预设动作收进头部的一个下拉按钮：三个按钮横铺会一直占着内容区一整行，
+    // 而这三个操作都是低频的「一次性套用」，放到标题栏不额外占内容高度。
+    // 菜单项只列当前可用的预设（不存在的预设直接不出现），
+    // 因为 PrismQML 内置下拉菜单不读 itemEnabled，做不了单项置灰。
+    readonly property var presetActions: {
+        var items = []
+        if (root.currentPreset.contextWindow > 0) {
+            items.push({ "text": "套用稳定上下文", "icon": Fluent.Enums.icon.checkmark })
+        }
+        if (root.millionPreset.contextWindow > 0) {
+            items.push({ "text": "套用百万上下文", "icon": Fluent.Enums.icon.checkmark })
+        }
+        if (items.length > 0) items.push("-")
+        items.push({ "text": "清空自定义值", "icon": Fluent.Enums.icon.icon_delete })
+        return items
+    }
+
+    readonly property int presetButtonWidth: 132
+
     headerContent: Component {
-        Fluent.Badge {
-            text: root.currentPreset.menuText || "自定义"
-            level: root.currentPreset.contextWindow
-                   ? Fluent.Enums.statusLevel.info
-                   : Fluent.Enums.statusLevel.attention
+        RowLayout {
+            spacing: Fluent.Enums.spacing.s
+
+            Fluent.Badge {
+                text: root.currentPreset.menuText || "自定义"
+                level: root.currentPreset.contextWindow
+                       ? Fluent.Enums.statusLevel.info
+                       : Fluent.Enums.statusLevel.attention
+            }
+
+            Fluent.Button {
+                objectName: "contextPresetDropdown"
+                Layout.minimumWidth: root.presetButtonWidth
+                Layout.preferredWidth: root.presetButtonWidth
+                Layout.maximumWidth: root.presetButtonWidth
+                style: Fluent.Enums.button.style_default
+                feature: Fluent.Enums.button.feature_dropdown
+                icon: Fluent.Enums.icon.options
+                text: "上下文预设"
+                menuItems: root.presetActions
+                enabled: root.presetActions.length > 0
+                onMenuItemClicked: function(index, text) {
+                    // 菜单项都是动态拼的，按文本分发，避免菜单增删后索引错位。
+                    if (text === "套用稳定上下文") root.presetRequested()
+                    else if (text === "套用百万上下文") root.millionPresetRequested()
+                    else if (text === "清空自定义值") root.clearRequested()
+                }
+            }
         }
     }
 
@@ -54,44 +96,6 @@ Fluent.Expander {
             readonly property real innerWidth: Math.max(
                 0, width - leftPadding - rightPadding
             )
-
-            Flow {
-                width: cardColumn.innerWidth
-                spacing: Fluent.Enums.spacing.m
-
-                Fluent.Button {
-                    width: 152
-                    Layout.minimumWidth: 152
-                    Layout.preferredWidth: 152
-                    Layout.maximumWidth: 152
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.checkmark
-                    text: "套用稳定上下文"
-                    enabled: root.currentPreset.contextWindow > 0
-                    onClicked: root.presetRequested()
-                }
-                Fluent.Button {
-                    width: 152
-                    Layout.minimumWidth: 152
-                    Layout.preferredWidth: 152
-                    Layout.maximumWidth: 152
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.checkmark
-                    text: "套用百万上下文"
-                    enabled: root.millionPreset.contextWindow > 0
-                    onClicked: root.millionPresetRequested()
-                }
-                Fluent.Button {
-                    width: 128
-                    Layout.minimumWidth: 128
-                    Layout.preferredWidth: 128
-                    Layout.maximumWidth: 128
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.icon_delete
-                    text: "清空自定义值"
-                    onClicked: root.clearRequested()
-                }
-            }
 
             // 占比这块也是「标签在左、控件在右」：以前标题一行、进度条一行，
             // 白白占掉两行高度；进度条本身只有几个像素高，跟标题同一行更紧凑。

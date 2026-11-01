@@ -6,5 +6,10 @@
 #   2. TipPopupWindow 的 customContentHost(提交 ece14ef5)
 #   3. Qt.Tool 窗口上 target.mapToGlobal 的坐标退化修复(提交 3e026b94)
 # 升级前曾用 prismqml_local.pth 指向本地检出;0.5.0.23 发布后已回归正式 wheel。
-prismqml==0.5.0.23
+#
+# 0.7.1.10(2026-11-02 升级)的破坏性变更：
+#   - 移除 Fluent.CloseButton，改用只设 icon 的 Fluent.Button(自动走工具按钮样式)
+#   - 修复 Expander 头部布局：headerContent 变宽时不再把内容顶出可视区
+#     (0.5.0.56 上 900px 窗口里 132px 按钮会被排到 x=929，完全看不见)
+prismqml==0.7.1.10
 PySide6>=6.9.0

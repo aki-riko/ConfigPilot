@@ -360,6 +360,86 @@ class SectionLayoutTests(unittest.TestCase):
         ):
             self._find(root, object_name, "ContextSection.qml")
 
+    def test_context_preset_dropdown_lives_in_header_and_drives_actions(self):
+        """三个预设动作收进头部下拉：菜单项按可用性出现，点击要真的发出信号。
+
+        防回流两层：
+        1. 下拉按钮必须在展开器头部，不能回到内容区横铺三个按钮（会常驻
+           占掉内容区一整行，实测内容区高度从 170 涨回 214）。
+        2. 菜单项的文字分发必须真的连到 presetRequested / millionPresetRequested
+           / clearRequested ——拼对菜单文字但点下去没反应是最容易漏的坑。
+        """
+        root, _ = self._create("ContextSection.qml")
+        button = root.findChild(QQuickItem, "contextPresetDropdown")
+        self.assertIsNotNone(button, "找不到上下文预设下拉按钮")
+
+        content_area = root.findChild(QQuickItem, "contentArea")
+        self.assertIsNotNone(content_area, "找不到 contentArea")
+        # 按钮不能在内容区里（否则就是又回到横铺占用内容高度）。
+        self.assertFalse(
+            self._is_descendant_of(button, content_area),
+            "预设下拉必须留在展开器头部，不能塞回内容区",
+        )
+        self.assertTrue(button.isVisible(), "预设下拉应当可见")
+
+        # 两个预设都可用时，菜单项齐全（含分隔线）。
+        root.setProperty("currentPreset", {
+            "contextWindow": 400000, "autoCompactLimit": 320000,
+            "toolOutputLimit": 6000, "menuText": "稳定上下文",
+        })
+        root.setProperty("millionPreset", {
+            "contextWindow": 1000000, "autoCompactLimit": 800000,
+            "toolOutputLimit": 6000, "menuText": "百万上下文",
+        })
+        settle(300)
+        texts = self._menu_texts(button)
+        self.assertEqual(
+            texts,
+            ["套用稳定上下文", "套用百万上下文", "-", "清空自定义值"],
+            "预设齐全时菜单项不对",
+        )
+
+        # 百万预设不可用时，该项必须整条消失（内置菜单不支持单项置灰）。
+        root.setProperty("millionPreset", {})
+        settle(300)
+        self.assertEqual(
+            self._menu_texts(button),
+            ["套用稳定上下文", "-", "清空自定义值"],
+            "不可用的百万预设应整条不出现",
+        )
+
+        # 点了要真的发出对应信号。
+        fired = []
+        root.presetRequested.connect(lambda: fired.append("preset"))
+        root.millionPresetRequested.connect(lambda: fired.append("million"))
+        root.clearRequested.connect(lambda: fired.append("clear"))
+        for index, text, expected in (
+            (0, "套用稳定上下文", "preset"),
+            (2, "清空自定义值", "clear"),
+        ):
+            fired.clear()
+            button.menuItemClicked.emit(index, text)
+            settle(120)
+            self.assertIn(expected, fired, f"点「{text}」未触发 {expected}")
+
+    @staticmethod
+    def _menu_texts(button):
+        items = button.property("menuItems")
+        converted = items.toVariant() if hasattr(items, "toVariant") else items
+        texts = []
+        for item in converted or []:
+            texts.append(item.get("text") if isinstance(item, dict) else str(item))
+        return texts
+
+    @staticmethod
+    def _is_descendant_of(item, ancestor):
+        node = item
+        while node is not None:
+            if node is ancestor:
+                return True
+            node = node.parentItem()
+        return False
+
     def test_advanced_section_content_is_not_clipped(self):
         root, _ = self._create("AdvancedSection.qml")
         self._assert_content_fits(root, "AdvancedSection.qml")

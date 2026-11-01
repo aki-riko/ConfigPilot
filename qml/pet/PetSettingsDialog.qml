@@ -4,7 +4,7 @@
 //   卡片表面 Fluent.ShadowedRectangle / 分组 Fluent.SettingsCardGroup /
 //   枚举项 Fluent.SettingsCard / 单选芯片 Fluent.Chip / 文本 Fluent.Label /
 //   文本输入 Fluent.LineEdit / 数值输入 Fluent.SpinBox / 正文滚动 Fluent.ScrollArea /
-//   分隔线 Fluent.Separator / 操作按钮 Fluent.Button / 关闭钮 Fluent.CloseButton;
+//   分隔线 Fluent.Separator / 操作按钮 Fluent.Button(关闭钮同样用图标型 Button);
 //   配色与尺寸全部走 Fluent.Enums 令牌。
 //
 // 窗口壳为什么仍是裸 Window:桌宠在独立进程(pet_main.py)里也要能弹出这个设置窗,
@@ -203,9 +203,14 @@ Window {
                     font.pixelSize: Fluent.Enums.typography.bodyLarge
                     customTextColor: Fluent.Enums.foregroundColor
                 }
-                Fluent.CloseButton {
+                // PrismQML 0.7 移除了 CloseButton 组件，改用图标型 Button：
+                // 只设 icon 不设 text 时 ButtonCore 会自动走 isToolButton 紧凑样式。
+                Fluent.Button {
+                    objectName: "petSettingsCloseButton"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
+                    style: Fluent.Enums.button.style_default
+                    icon: Fluent.Enums.icon.dismiss
                     onClicked: dialog.visible = false
                 }
             }

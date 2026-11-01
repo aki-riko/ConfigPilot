@@ -248,6 +248,46 @@ class SectionLayoutTests(unittest.TestCase):
         self._assert_content_fits(root, "ModelSection.qml")
         self._find(root, "modelEdit", "ModelSection.qml")
 
+    def test_model_fields_align_title_caption_control(self):
+        """两列字段必须按「标题 → 说明 → 控件」排，且控件顶部在同一水平线。
+
+        防回流：说明文字曾排在控件下方，导致带 hint 的右列比左列高一行，
+        GridLayout 把左列垂直居中压偏半行，两边控件顶部差 8px。
+        """
+        root, _ = self._create("ModelSection.qml")
+        grid = root.findChild(QQuickItem, "modelGrid")
+        self.assertIsNotNone(grid, "找不到 modelGrid")
+        self.assertEqual(grid.property("columns"), 2, "宽窗口下应排两列")
+
+        fields = [c for c in grid.childItems() if c.property("label") is not None]
+        self.assertEqual(len(fields), 2, "模型区应有「当前模型 / 在线模型列表」两列")
+
+        control_tops = []
+        for field in fields:
+            column = field.childItems()[0]
+            parts = column.childItems()
+            self.assertEqual(
+                len(parts), 3, f"{field.property('label')} 应恰好三行：标题/说明/控件"
+            )
+            title_row, caption, host = parts
+            self.assertLess(
+                title_row.y() + title_row.height(),
+                caption.y() + 0.5,
+                "说明文字必须排在标题下方",
+            )
+            self.assertLess(
+                caption.y() + caption.height(),
+                host.y() + 0.5,
+                "控件必须排在说明文字下方",
+            )
+            control_tops.append(round(field.y() + host.y(), 1))
+
+        self.assertEqual(
+            control_tops[0],
+            control_tops[1],
+            f"两列控件顶部未对齐：{control_tops}",
+        )
+
     def test_context_section_content_is_not_clipped(self):
         root, _ = self._create("ContextSection.qml")
         self._assert_content_fits(root, "ContextSection.qml")

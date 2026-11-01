@@ -492,6 +492,21 @@ raise SystemExit(app.exec())
                 f"{relative_path} 仍保留旧的双层键名标签",
             )
 
+    def test_form_field_orders_title_caption_then_control(self):
+        """FormField 内部行序固定为「标题 → 说明 → 控件」。
+
+        说明行挪到控件后面时，同排字段高度不一，GridLayout 会把矮的那个
+        垂直居中，控件顶部就错开了；这里用源码顺序防回流。
+        """
+        form_field = self.read("qml/views/FormField.qml")
+        title_row = form_field.index("id: labelRow")
+        caption = form_field.index("id: hintText")
+        host = form_field.index("id: fieldHost")
+        self.assertLess(title_row, caption, "标题行必须在说明文字之上")
+        self.assertLess(caption, host, "说明文字必须在控件宿主之上")
+        # 常量上限而不是引用自身宽度：引用会触发 Qt Quick Layouts 递归重排。
+        self.assertIn("Layout.alignment: Qt.AlignTop", form_field)
+
     def test_application_update_flow_uses_prismqml_engine(self):
         main_py = self.read("main.py")
         main_qml = self.read("qml/main.qml")

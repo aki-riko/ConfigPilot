@@ -65,17 +65,11 @@ class ClaudeDesktopUiTests(unittest.TestCase):
 
         self.assertIn("columns: width < 700 ? 1 : 2", status)
         self.assertIn("id: statusGrid", status)
-        self.assertIn("columns: width < 480 ? 1 : 3", status)
-        self.assertIn("uniformCellWidths: columns === 3", status)
-        self.assertIn("readonly property real equalItemWidth", status)
-        self.assertEqual(
-            status.count("Layout.preferredWidth: statusGrid.equalItemWidth"), 3
-        )
-        self.assertEqual(
-            status.count("Layout.maximumWidth: statusGrid.equalItemWidth"), 3
-        )
-        self.assertIn("Layout.preferredWidth: summaryLayout.columns === 2", status)
-        self.assertIn("summaryLayout.width - 240", status)
+        # 三个状态项单列纵向排列，不再等分三列、也不居中。
+        self.assertNotIn("uniformCellWidths", status)
+        self.assertNotIn("equalItemWidth", status)
+        self.assertNotIn("Qt.AlignHCenter", status)
+        self.assertIn("Layout.preferredWidth: 240", status)
         self.assertIn('text: "Claude Desktop"', status)
         self.assertIn('text: "开发者模式"', status)
         self.assertIn('text: "推理网关"', status)
@@ -119,14 +113,10 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertIn("Layout.preferredHeight: root.controlHeight", gateway)
         self.assertIn('objectName: "claudeClearKeyToggle"', gateway)
         self.assertIn("id: gatewayGrid", gateway)
-        self.assertIn("uniformCellWidths: columns === 2", gateway)
-        self.assertIn("readonly property real equalItemWidth", gateway)
-        self.assertEqual(
-            gateway.count("Layout.preferredWidth: gatewayGrid.equalItemWidth"), 2
-        )
-        self.assertEqual(
-            gateway.count("Layout.maximumWidth: gatewayGrid.equalItemWidth"), 2
-        )
+        # 字段单列纵向堆叠，不再切两列、也不等分宽度。
+        self.assertNotIn("uniformCellWidths", gateway)
+        self.assertNotIn("equalItemWidth", gateway)
+        self.assertIn("ColumnLayout", gateway)
         self.assertIn("Fluent.Enums.toggle.control_checkbox", gateway)
         self.assertNotIn("Fluent.Enums.toggle.control_switch", gateway)
         self.assertIn('text: "应用时删除"', gateway)
@@ -156,8 +146,10 @@ class ClaudeDesktopUiTests(unittest.TestCase):
 
         self.assertIn("/v1/models", advanced)
         self.assertIn("Fluent.Expander", advanced)
-        self.assertIn("columns: width < 620 ? 1 : 2", advanced)
-        self.assertIn("uniformCellWidths: columns === 2", advanced)
+        # 模型发现/默认 1M/额外请求头一律单列纵向堆叠。
+        self.assertNotIn("uniformCellWidths", advanced)
+        self.assertNotIn("equalItemWidth", advanced)
+        self.assertIn("ColumnLayout", advanced)
         self.assertIn("modelDiscoveryStateValue", advanced)
         self.assertIn("modelPrefer1mContextStateValue", advanced)
         self.assertIn("stateOptions", advanced)

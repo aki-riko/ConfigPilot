@@ -128,27 +128,17 @@ Fluent.Expander {
                 }
             }
 
-            GridLayout {
+            // 字段一律单列纵向堆叠、占满整行：并排多列时带说明的字段比兄弟
+            // 高一截，GridLayout 会把矮的垂直居中，控件顶部就错开了。
+            ColumnLayout {
                 id: contextGrid
                 objectName: "contextGrid"
                 width: cardColumn.innerWidth
-                columns: width < 440 ? 1 : (width < 720 ? 2 : 3)
-                uniformCellWidths: columns === 3
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 3
-                                                       ? Math.max(
-                                                             0,
-                                                             (width
-                                                              - 2 * columnSpacing) / 3
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.l
 
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: contextGrid.equalItemWidth
-                    Layout.maximumWidth: contextGrid.equalItemWidth
                     label: "上下文窗口"
                     keyName: "model_context_window"
 
@@ -183,8 +173,6 @@ Fluent.Expander {
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: contextGrid.equalItemWidth
-                    Layout.maximumWidth: contextGrid.equalItemWidth
                     label: "自动压缩阈值"
                     keyName: "model_auto_compact_token_limit"
 
@@ -219,8 +207,6 @@ Fluent.Expander {
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: contextGrid.equalItemWidth
-                    Layout.maximumWidth: contextGrid.equalItemWidth
                     label: "工具输出保留"
                     keyName: "tool_output_token_limit"
 

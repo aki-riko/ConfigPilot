@@ -81,26 +81,17 @@ Fluent.Expander {
                 }
             }
 
-            GridLayout {
+            // 字段一律单列纵向堆叠、占满整行：并排两列时带说明的字段比兄弟
+            // 高一截，GridLayout 会把矮的垂直居中，控件顶部就错开了。
+            ColumnLayout {
                 id: gatewayGrid
                 objectName: "gatewayGrid"
                 width: cardColumn.innerWidth
-                columns: width < 620 ? 1 : 2
-                uniformCellWidths: columns === 2
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 2
-                                                       ? Math.max(
-                                                             0,
-                                                             (width - columnSpacing) / 2
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.l
 
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: gatewayGrid.equalItemWidth
-                    Layout.maximumWidth: gatewayGrid.equalItemWidth
                     label: "认证方式"
                     keyName: "auth"
                     hint: root.authSchemeValue === "x-api-key"
@@ -144,8 +135,6 @@ Fluent.Expander {
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: gatewayGrid.equalItemWidth
-                    Layout.maximumWidth: gatewayGrid.equalItemWidth
                     label: "API 密钥"
                     hint: root.hasApiKey
                           ? "修改后随「应用更改」写入"

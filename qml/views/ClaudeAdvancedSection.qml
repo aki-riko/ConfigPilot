@@ -139,26 +139,17 @@ Fluent.Expander {
                 0, width - leftPadding - rightPadding
             )
 
-            GridLayout {
+            // 字段一律单列纵向堆叠、占满整行：并排两列时带说明的字段比兄弟
+            // 高一截，GridLayout 会把矮的垂直居中，控件顶部就错开了。
+            ColumnLayout {
                 id: behaviorGrid
                 objectName: "behaviorGrid"
                 width: contentColumn.innerWidth
-                columns: width < 620 ? 1 : 2
-                uniformCellWidths: columns === 2
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 2
-                                                       ? Math.max(
-                                                             0,
-                                                             (width - columnSpacing) / 2
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.l
 
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: behaviorGrid.equalItemWidth
-                    Layout.maximumWidth: behaviorGrid.equalItemWidth
                     label: "模型发现"
                     hint: "启动时从网关的 /v1/models 自动读取模型"
 
@@ -191,8 +182,6 @@ Fluent.Expander {
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: behaviorGrid.equalItemWidth
-                    Layout.maximumWidth: behaviorGrid.equalItemWidth
                     label: "默认 1M 上下文"
                     hint: "优先选择第一个模型的 1M 变体"
 
@@ -282,26 +271,15 @@ Fluent.Expander {
                 }
             }
 
-            GridLayout {
+            ColumnLayout {
                 id: headersGrid
                 objectName: "headersGrid"
                 width: contentColumn.innerWidth
-                columns: width < 680 ? 1 : 2
-                uniformCellWidths: columns === 2
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 2
-                                                       ? Math.max(
-                                                             0,
-                                                             (width - columnSpacing) / 2
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.l
 
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: headersGrid.equalItemWidth
-                    Layout.maximumWidth: headersGrid.equalItemWidth
                     label: root.headerCount > 0
                            ? "额外请求头 · 已保存 " + root.headerCount + " 项"
                            : "额外请求头 · 可选"

@@ -248,45 +248,89 @@ class SectionLayoutTests(unittest.TestCase):
         self._assert_content_fits(root, "ModelSection.qml")
         self._find(root, "modelEdit", "ModelSection.qml")
 
-    def test_model_fields_align_title_caption_control(self):
-        """两列字段必须按「标题 → 说明 → 控件」排，且控件顶部在同一水平线。
+    def test_model_fields_stack_vertically_with_full_width(self):
+        """字段按「标题 → 说明 → 控件」单列纵向堆叠，每个字段占满整行宽度。
 
-        防回流：说明文字曾排在控件下方，导致带 hint 的右列比左列高一行，
-        GridLayout 把左列垂直居中压偏半行，两边控件顶部差 8px。
+        防回流：曾经并排两列，带说明的字段比兄弟高一截，GridLayout 会把矮的
+        那个垂直居中，两边控件顶部错开；说明文字也曾排在控件下方。
         """
         root, _ = self._create("ModelSection.qml")
-        grid = root.findChild(QQuickItem, "modelGrid")
-        self.assertIsNotNone(grid, "找不到 modelGrid")
-        self.assertEqual(grid.property("columns"), 2, "宽窗口下应排两列")
+        container = root.findChild(QQuickItem, "modelGrid")
+        self.assertIsNotNone(container, "找不到 modelGrid")
+        self.assertIsNone(
+            container.property("columns"),
+            "modelGrid 不应再是 GridLayout（单列纵向堆叠即可）",
+        )
 
-        fields = [c for c in grid.childItems() if c.property("label") is not None]
-        self.assertEqual(len(fields), 2, "模型区应有「当前模型 / 在线模型列表」两列")
+        fields = [
+            c for c in container.childItems() if c.property("label") is not None
+        ]
+        self.assertEqual(len(fields), 2, "模型区应有「当前模型 / 在线模型列表」两个字段")
 
-        control_tops = []
+        previous_bottom = None
         for field in fields:
+            self.assertAlmostEqual(
+                field.width(),
+                container.width(),
+                2.0,
+                f"{field.property('label')} 应占满整行宽度",
+            )
             column = field.childItems()[0]
             parts = column.childItems()
             self.assertEqual(
                 len(parts), 3, f"{field.property('label')} 应恰好三行：标题/说明/控件"
             )
             title_row, caption, host = parts
-            self.assertLess(
-                title_row.y() + title_row.height(),
-                caption.y() + 0.5,
-                "说明文字必须排在标题下方",
-            )
-            self.assertLess(
-                caption.y() + caption.height(),
-                host.y() + 0.5,
-                "控件必须排在说明文字下方",
-            )
-            control_tops.append(round(field.y() + host.y(), 1))
+            # 没有说明文字时该行折叠为 0 高并收在顶部，此时只校验控件在标题下。
+            if caption.isVisible() and caption.height() > 0:
+                self.assertLess(
+                    title_row.y() + title_row.height(),
+                    caption.y() + 0.5,
+                    "说明文字必须排在标题下方",
+                )
+                self.assertLess(
+                    caption.y() + caption.height(),
+                    host.y() + 0.5,
+                    "控件必须排在说明文字下方",
+                )
+            else:
+                self.assertLess(
+                    title_row.y() + title_row.height(),
+                    host.y() + 0.5,
+                    "控件必须排在标题下方",
+                )
+            if previous_bottom is not None:
+                self.assertGreaterEqual(
+                    field.y() + 0.5,
+                    previous_bottom,
+                    "字段之间不得重叠，应自上而下依次堆叠",
+                )
+            previous_bottom = field.y() + field.height()
 
-        self.assertEqual(
-            control_tops[0],
-            control_tops[1],
-            f"两列控件顶部未对齐：{control_tops}",
+        # 思考等级也必须并进同一套 FormField 尺寸，不能自己封顶一个窄下拉。
+        effort = root.findChild(QQuickItem, "effortBox")
+        self.assertIsNotNone(effort, "找不到思考等级下拉")
+        self.assertAlmostEqual(
+            effort.width(), container.width(), 2.0,
+            "思考等级下拉应与其它字段等宽（不再写死 280 封顶）",
         )
+
+    def test_form_fields_share_one_column_across_sections(self):
+        """各节字段一律单列：GridLayout 里不该再给 FormField 定两列宽度。"""
+        for name in (
+            "ConnectionSection.qml",
+            "ContextSection.qml",
+            "ClaudeGatewaySection.qml",
+            "ClaudeAdvancedSection.qml",
+        ):
+            source = (VIEWS_DIR / name).read_text(encoding="utf-8")
+            self.assertNotIn(
+                "equalItemWidth",
+                source,
+                f"{name} 仍在按等分宽度并排字段，应改为单列纵向堆叠",
+            )
+            self.assertIn("ColumnLayout", source, f"{name} 应改用单列 ColumnLayout")
+
 
     def test_context_section_content_is_not_clipped(self):
         root, _ = self._create("ContextSection.qml")

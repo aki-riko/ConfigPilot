@@ -145,40 +145,20 @@ Fluent.Expander {
                 }
             }
 
-            GridLayout {
+            // 状态卡片也单列纵向排列：标题在上、控件在下，与其它字段同一套行序。
+            // 之前三个状态并排三列，标题居中、宽度等分，窄窗口下会挤成一团。
+            ColumnLayout {
                 id: statusGrid
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                Layout.preferredWidth: summaryLayout.columns === 2
-                                       ? Math.max(
-                                             0,
-                                             summaryLayout.width - 240
-                                             - summaryLayout.columnSpacing
-                                         )
-                                       : summaryLayout.width
-                Layout.alignment: Qt.AlignVCenter
-                columns: width < 480 ? 1 : 3
-                uniformCellWidths: columns === 3
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.m
-                readonly property real equalItemWidth: columns === 3
-                                                       ? Math.max(
-                                                             0,
-                                                             (width
-                                                              - 2 * columnSpacing)
-                                                             / 3
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.m
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: statusGrid.equalItemWidth
-                    Layout.maximumWidth: statusGrid.equalItemWidth
                     spacing: Fluent.Enums.spacing.xxs
 
                     Text {
-                        Layout.alignment: Qt.AlignHCenter
                         text: "开发者模式"
                         color: Fluent.Enums.textColor.tertiary
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -187,7 +167,6 @@ Fluent.Expander {
                     Fluent.Toggle {
                         id: developerModeToggle
                         objectName: "claudeDeveloperModeToggle"
-                        Layout.alignment: Qt.AlignHCenter
                         controlType: Fluent.Enums.toggle.control_switch
                         type: Fluent.Enums.toggle.type_default
                         enabled: !root.configBusy
@@ -216,12 +195,9 @@ Fluent.Expander {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: statusGrid.equalItemWidth
-                    Layout.maximumWidth: statusGrid.equalItemWidth
                     spacing: Fluent.Enums.spacing.xxs
 
                     Text {
-                        Layout.alignment: Qt.AlignHCenter
                         text: "推理网关"
                         color: Fluent.Enums.textColor.tertiary
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -230,7 +206,6 @@ Fluent.Expander {
                     Fluent.Toggle {
                         id: gatewayToggle
                         objectName: "claudeGatewayToggle"
-                        Layout.alignment: Qt.AlignHCenter
                         enabled: !root.configBusy
                                  && (root.thirdPartyEnabled || root.gatewayCanEnable)
                         controlType: Fluent.Enums.toggle.control_switch
@@ -260,19 +235,15 @@ Fluent.Expander {
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: statusGrid.equalItemWidth
-                    Layout.maximumWidth: statusGrid.equalItemWidth
                     spacing: Fluent.Enums.spacing.xxs
 
                     Text {
-                        Layout.alignment: Qt.AlignHCenter
                         text: "配置档案"
                         color: Fluent.Enums.textColor.tertiary
                         font.pixelSize: Fluent.Enums.typography.caption
                         font.family: Fluent.Enums.fontFamily
                     }
                     Fluent.Badge {
-                        Layout.alignment: Qt.AlignHCenter
                         text: root.profileName.length > 0 ? root.profileName : "未创建"
                         level: root.profileName.length > 0
                                ? Fluent.Enums.statusLevel.info
@@ -283,7 +254,6 @@ Fluent.Expander {
                         visible: root.activeProfileName.length > 0
                                  && root.activeProfileName !== "ConfigPilot"
                         text: "当前 Claude 档案：" + root.activeProfileName + "（只读）"
-                        horizontalAlignment: Text.AlignHCenter
                         color: Fluent.Enums.textColor.tertiary
                         font.pixelSize: Fluent.Enums.typography.caption
                         font.family: Fluent.Enums.fontFamily

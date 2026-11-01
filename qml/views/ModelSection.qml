@@ -54,26 +54,17 @@ Fluent.Expander {
                 0, width - leftPadding - rightPadding
             )
 
-            GridLayout {
+            // 单列纵向堆叠：一个字段一行、占满整行。并排两列时带说明的字段
+            // 比兄弟高一截，GridLayout 会垂直居中矮的那个，控件顶部对不齐。
+            ColumnLayout {
                 id: modelGrid
                 objectName: "modelGrid"
                 width: cardColumn.innerWidth
-                columns: width < 680 ? 1 : 2
-                uniformCellWidths: columns === 2
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 2
-                                                       ? Math.max(
-                                                             0,
-                                                             (width - columnSpacing) / 2
-                                                         )
-                                                       : width
+                spacing: Fluent.Enums.spacing.l
 
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: modelGrid.equalItemWidth
-                    Layout.maximumWidth: modelGrid.equalItemWidth
                     label: "当前模型"
                     keyName: "model"
 
@@ -104,8 +95,6 @@ Fluent.Expander {
                 FormField {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    Layout.preferredWidth: modelGrid.equalItemWidth
-                    Layout.maximumWidth: modelGrid.equalItemWidth
                     label: "在线模型列表"
                     hint: "从当前 API 地址获取"
 

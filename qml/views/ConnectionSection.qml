@@ -161,26 +161,17 @@ Fluent.Expander {
                             }
                         }
 
-                        GridLayout {
+                        // 字段一律单列纵向堆叠、占满整行：并排两列时带说明的
+                        // 字段比兄弟高一截，GridLayout 会把矮的垂直居中，控件错位。
+                        ColumnLayout {
                             id: connectionGrid
                             objectName: "connectionGrid"
                             width: parent.width
-                            columns: width < 620 ? 1 : 2
-                            uniformCellWidths: columns === 2
-                            columnSpacing: Fluent.Enums.spacing.l
-                            rowSpacing: Fluent.Enums.spacing.l
-                            readonly property real equalItemWidth: columns === 2
-                                                                   ? Math.max(
-                                                                         0,
-                                                                         (width - columnSpacing) / 2
-                                                                     )
-                                                                   : width
+                            spacing: Fluent.Enums.spacing.l
 
                             FormField {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
-                                Layout.preferredWidth: connectionGrid.equalItemWidth
-                                Layout.maximumWidth: connectionGrid.equalItemWidth
                                 label: "提供商标识"
                                 keyName: "provider"
 
@@ -209,8 +200,6 @@ Fluent.Expander {
                             FormField {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
-                                Layout.preferredWidth: connectionGrid.equalItemWidth
-                                Layout.maximumWidth: connectionGrid.equalItemWidth
                                 label: "通信协议"
                                 keyName: "wire_api"
 

@@ -189,10 +189,12 @@ class BrandingTests(unittest.TestCase):
                 ),
             )
 
+        # 字段统一单列纵向堆叠：不再按窗口宽度切多列，也不再等分宽度。
         for section in (connection, model, context):
             self.assertIn("import QtQuick.Layouts", section)
-            self.assertIn("GridLayout", section)
-            self.assertIn("columns: width <", section)
+            self.assertIn("ColumnLayout", section)
+            self.assertNotIn("equalItemWidth", section)
+            self.assertNotIn("uniformCellWidths", section)
 
         self.assertIn("未包含 /v1 时自动补全", connection)
         self.assertIn('objectName: "authJsonInput"', connection)

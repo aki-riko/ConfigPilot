@@ -65,14 +65,12 @@ Rectangle {
             }
         }
 
-        GridLayout {
+        // 字段单列纵向堆叠、占满整行；并排两列时带说明的字段会比兄弟高一截。
+        ColumnLayout {
             id: modelFieldGrid
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            columns: width < 620 ? 1 : 2
-            uniformCellWidths: columns === 2
-            columnSpacing: Fluent.Enums.spacing.l
-            rowSpacing: Fluent.Enums.spacing.s
+            spacing: Fluent.Enums.spacing.s
 
             FormField {
                 Layout.fillWidth: true

@@ -9,8 +9,6 @@ Fluent.Expander {
     property string authSchemeValue: "bearer"
     property string apiKeyValue: ""
     property bool hasApiKey: false
-    // 默认遮罩：屏幕可能被旁人看到，真实密钥要用户主动点眼睛才显示。
-    property bool apiKeyRevealed: false
     property bool clearApiKeyValue: false
     readonly property int controlHeight: Fluent.Enums.controlSize.inputHeight
 
@@ -150,58 +148,36 @@ Fluent.Expander {
                     Layout.maximumWidth: gatewayGrid.equalItemWidth
                     label: "API 密钥"
                     hint: root.hasApiKey
-                          ? "默认遮罩显示，点右侧眼睛查看明文；修改后随「应用更改」写入"
+                          ? "修改后随「应用更改」写入"
                           : "仅写入本机 Claude 配置；填写后随「应用更改」写入"
 
-                    RowLayout {
+                    // 遮罩与眼睛切换全部交给 PrismQML 的 LineEdit：
+                    // type_password 会内置眼睛按钮并自动切换 showPassword，
+                    // 不需要在外部再叠一个显隐按钮（那样会出现两个眼睛）。
+                    Fluent.LineEdit {
+                        id: apiKeyEdit
+                        objectName: "claudeApiKeyEdit"
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        spacing: Fluent.Enums.spacing.s
-
-                        Fluent.LineEdit {
-                            id: apiKeyEdit
-                            objectName: "claudeApiKeyEdit"
-                            Layout.fillWidth: true
-                            Layout.minimumWidth: 0
-                            Layout.preferredHeight: root.controlHeight
-                            // 默认遮罩，由右侧眼睛按钮显式切换成明文。
-                            inputType: root.apiKeyRevealed
-                                       ? Fluent.Enums.input.type_normal
-                                       : Fluent.Enums.input.type_password
-                            enabled: !root.clearApiKeyValue
-                            placeholderText: "粘贴第三方 API key"
-                            Component.onCompleted: Qt.callLater(function() {
-                                text = root.apiKeyValue
-                            })
-                            onTextChanged: {
-                                if (text !== root.apiKeyValue) root.apiKeyEdited(text)
-                            }
-                            Connections {
-                                target: root
-                                function onApiKeyValueChanged() {
-                                    // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
-                                    if (!apiKeyEdit.activeFocus
-                                            && apiKeyEdit.text !== root.apiKeyValue) {
-                                        apiKeyEdit.text = root.apiKeyValue
-                                    }
+                        Layout.preferredHeight: root.controlHeight
+                        inputType: Fluent.Enums.input.type_password
+                        enabled: !root.clearApiKeyValue
+                        placeholderText: "粘贴第三方 API key"
+                        Component.onCompleted: Qt.callLater(function() {
+                            text = root.apiKeyValue
+                        })
+                        onTextChanged: {
+                            if (text !== root.apiKeyValue) root.apiKeyEdited(text)
+                        }
+                        Connections {
+                            target: root
+                            function onApiKeyValueChanged() {
+                                // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
+                                if (!apiKeyEdit.activeFocus
+                                        && apiKeyEdit.text !== root.apiKeyValue) {
+                                    apiKeyEdit.text = root.apiKeyValue
                                 }
                             }
-                        }
-
-                        Fluent.Button {
-                            objectName: "claudeKeyRevealButton"
-                            Layout.minimumWidth: 40
-                            Layout.preferredWidth: 40
-                            Layout.maximumWidth: 40
-                            Layout.preferredHeight: root.controlHeight
-                            style: Fluent.Enums.button.style_default
-                            icon: root.apiKeyRevealed
-                                  ? Fluent.Enums.icon.eye_off
-                                  : Fluent.Enums.icon.eye
-                            text: ""
-                            enabled: !root.clearApiKeyValue
-                            onClicked: root.apiKeyRevealed = !root.apiKeyRevealed
-                            Accessible.name: root.apiKeyRevealed ? "隐藏密钥" : "显示密钥"
                         }
                     }
 

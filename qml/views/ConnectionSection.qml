@@ -18,8 +18,6 @@ Fluent.Expander {
     // 当前生效的 API key 明文（后端 authKeyPreview），直接回显在输入框里，
     // 不再用「已设置/未设置」把真实值藏起来。
     property string keyValue: ""
-    // 默认遮罩：屏幕可能被旁人看到，真实密钥要用户主动点眼睛才显示。
-    property bool keyRevealed: false
     readonly property string keyDraft: keyInput.text
 
     signal baseUrlEdited(string value)
@@ -261,59 +259,36 @@ Fluent.Expander {
                 hint: root.authSource === "environment"
                       ? (root.envKeyPresent
                          ? "当前使用环境变量 " + (root.envKey || "未指定")
-                           + "；点右侧眼睛可查看明文"
                          : "环境变量 " + (root.envKey || "未指定")
                            + " 当前没有值；填入密钥后随「应用更改」写入")
-                      : "默认遮罩显示，点右侧眼睛查看明文；修改后随「应用更改」写入"
+                      : "修改后随「应用更改」一起写入"
 
-                RowLayout {
+                // 遮罩与眼睛切换全部交给 PrismQML 的 LineEdit：
+                // type_password 会内置眼睛按钮并自动切换 showPassword，
+                // 不需要在外部再叠一个显隐按钮（那样会出现两个眼睛）。
+                Fluent.LineEdit {
+                    id: keyInput
+                    objectName: "codexApiKeyEdit"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.s
-
-                    Fluent.LineEdit {
-                        id: keyInput
-                        objectName: "codexApiKeyEdit"
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        // 默认遮罩，由右侧眼睛按钮显式切换成明文：屏幕可能被旁人看到，
-                        // 不应一打开页面就裸露真实密钥。
-                        inputType: root.keyRevealed
-                                   ? Fluent.Enums.input.type_normal
-                                   : Fluent.Enums.input.type_password
-                        enabled: !root.configBusy
-                        placeholderText: "粘贴 API key"
-                        Component.onCompleted: Qt.callLater(function() {
-                            text = root.keyValue
-                        })
-                        onAccepted: root.commitKey()
-                        onEditingFinished: root.commitKey()
-                        onTextChanged: root.keyEdited(text)
-                        Connections {
-                            target: root
-                            function onKeyValueChanged() {
-                                // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
-                                if (!keyInput.activeFocus
-                                        && keyInput.text !== root.keyValue) {
-                                    keyInput.text = root.keyValue
-                                }
+                    inputType: Fluent.Enums.input.type_password
+                    enabled: !root.configBusy
+                    placeholderText: "粘贴 API key"
+                    Component.onCompleted: Qt.callLater(function() {
+                        text = root.keyValue
+                    })
+                    onAccepted: root.commitKey()
+                    onEditingFinished: root.commitKey()
+                    onTextChanged: root.keyEdited(text)
+                    Connections {
+                        target: root
+                        function onKeyValueChanged() {
+                            // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
+                            if (!keyInput.activeFocus
+                                    && keyInput.text !== root.keyValue) {
+                                keyInput.text = root.keyValue
                             }
                         }
-                    }
-
-                    Fluent.Button {
-                        objectName: "codexKeyRevealButton"
-                        Layout.minimumWidth: 40
-                        Layout.preferredWidth: 40
-                        Layout.maximumWidth: 40
-                        style: Fluent.Enums.button.style_default
-                        icon: root.keyRevealed
-                              ? Fluent.Enums.icon.eye_off
-                              : Fluent.Enums.icon.eye
-                        text: ""
-                        enabled: !root.configBusy
-                        onClicked: root.keyRevealed = !root.keyRevealed
-                        Accessible.name: root.keyRevealed ? "隐藏密钥" : "显示密钥"
                     }
                 }
             }

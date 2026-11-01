@@ -199,7 +199,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('objectName: "authJsonImportButton"', connection)
         self.assertIn('objectName: "repairRelayAuthButton"', connection)
         self.assertIn("enabled: !root.configBusy", connection)
-        self.assertIn("Fluent.Enums.input.type_normal", connection)
+        self.assertIn("Fluent.Enums.input.type_password", connection)
         self.assertIn("importAuthJson", view)
         self.assertIn("repairRelayAuth", view)
         self.assertIn('text: "套用稳定上下文"', context)
@@ -209,15 +209,13 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("function commitKey()", connection)
         self.assertIn("onAccepted: root.commitKey()", connection)
         self.assertIn("onEditingFinished: root.commitKey()", connection)
-        # 密钥默认遮罩、由眼睛按钮显式切换明文；输入框不再用占位符藏真实值，
-        # 也没有失焦即写 auth.json 的旁路。
+        # 密钥用 PrismQML 内置的密码框：type_password 自带眼睛按钮并切换
+        # showPassword，不得在外部再叠一个显隐按钮（否则会出现两个眼睛）。
         self.assertIn("property string keyValue", connection)
-        self.assertIn("property bool keyRevealed", connection)
         self.assertIn("Fluent.Enums.input.type_password", connection)
-        self.assertIn("Fluent.Enums.input.type_normal", connection)
-        self.assertIn('objectName: "codexKeyRevealButton"', connection)
-        self.assertIn("Enums.icon.eye_off", connection)
-        self.assertIn("Enums.icon.eye", connection)
+        self.assertNotIn("keyRevealed", connection)
+        self.assertNotIn("codexKeyRevealButton", connection)
+        self.assertIn("text = root.keyValue", connection)
         self.assertIn("text = root.keyValue", connection)
         self.assertNotIn("保存密钥", connection)
         self.assertNotIn("saveKeyRequested", connection)

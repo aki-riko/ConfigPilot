@@ -943,5 +943,161 @@ class CodexConfigAuthTests(unittest.TestCase):
                 wait_for_idle(config)
 
 
+    def test_auth_key_preview_exposes_the_key_actually_in_use(self):
+        """界面要明文显示当前生效的 key：auth_json 与环境变量两种来源都要给出真实值。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_PREVIEW_KEY"\n'
+                "requires_openai_auth = false\n",
+                encoding="utf-8",
+            )
+            (codex_home / "auth.json").write_text(
+                json.dumps(
+                    {"OPENAI_API_KEY": "sk-json-key", "auth_mode": "apikey"}
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"CONFIGPILOT_PREVIEW_KEY": "env-key"}):
+                snapshot = CodexConfigStore(str(codex_home)).read_snapshot()
+
+            self.assertEqual(snapshot["authSource"], "environment")
+            self.assertEqual(snapshot["authKeyPreview"], "env-key")
+
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                "requires_openai_auth = true\n",
+                encoding="utf-8",
+            )
+            snapshot = CodexConfigStore(str(codex_home)).read_snapshot()
+            self.assertEqual(snapshot["authSource"], "auth_json")
+            self.assertEqual(snapshot["authKeyPreview"], "sk-json-key")
+
+    def test_chatgpt_session_does_not_preview_none_as_key(self):
+        """auth.json 里 OPENAI_API_KEY 为 null 时不能回显字符串 "None"。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                "requires_openai_auth = true\n",
+                encoding="utf-8",
+            )
+            (codex_home / "auth.json").write_text(
+                json.dumps({"OPENAI_API_KEY": None, "auth_mode": "chatgpt"}),
+                encoding="utf-8",
+            )
+            snapshot = CodexConfigStore(str(codex_home)).read_snapshot()
+
+            self.assertEqual(snapshot["authKeyPreview"], "")
+
+    def test_env_key_falls_back_to_windows_user_environment(self):
+        """Windows 上 key 落在 HKCU\\Environment，进程环境里没有也要能显示出来。
+
+        这正是「界面一直显示未设置」的真因：ConfigPilot 自己把 key 写进注册表，
+        但下次冷启动的进程读不到，只有 Codex 新会话继承得到。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_PREVIEW_KEY"\n'
+                "requires_openai_auth = false\n",
+                encoding="utf-8",
+            )
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch(
+                    "backend.codex_config_store.read_persisted_user_environment",
+                    return_value="hkcu-key",
+                ),
+            ):
+                os.environ.pop("CONFIGPILOT_PREVIEW_KEY", None)
+                snapshot = CodexConfigStore(str(codex_home)).read_snapshot()
+
+            self.assertEqual(snapshot["authSource"], "environment")
+            self.assertTrue(snapshot["envKeyPresent"])
+            self.assertEqual(snapshot["authKeyPreview"], "hkcu-key")
+
+    def test_apply_config_writes_key_together_with_connection(self):
+        """「应用更改」必须把密钥框里的 key 一并写进 auth.json，不再走旁路。"""
+        codex_config = self.load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            codex_home = tmp_path / ".codex"
+            codex_home.mkdir()
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            config = codex_config.CodexConfig()
+            wait_for_idle(config)
+
+            config.applyConfig(
+                {
+                    "baseUrl": "https://gateway.example.com",
+                    "provider": "relay",
+                    "wireApi": "responses",
+                    "model": "gpt-5.6-sol",
+                    "requiresAuth": False,
+                    "authSource": "auth_json",
+                    "envKey": "",
+                    "key": "sk-applied-with-connection",
+                }
+            )
+            wait_for_idle(config)
+
+            auth = json.loads(
+                (codex_home / "auth.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(auth["OPENAI_API_KEY"], "sk-applied-with-connection")
+            self.assertEqual(config.authKeyPreview, "sk-applied-with-connection")
+            with (codex_home / "config.toml").open("rb") as handle:
+                provider = tomllib.load(handle)["model_providers"]["relay"]
+            self.assertTrue(provider["requires_openai_auth"])
+
+    def test_apply_config_without_key_change_keeps_existing_auth(self):
+        """密钥没改（传空 key）时不能清掉现有 auth.json，也不能改认证来源。"""
+        codex_config = self.load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            codex_home = Path(tmp) / ".codex"
+            codex_home.mkdir()
+            (codex_home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\n'
+                'base_url = "https://gateway.example.com/v1"\n'
+                'env_key = "CONFIGPILOT_PREVIEW_KEY"\n'
+                "requires_openai_auth = false\n",
+                encoding="utf-8",
+            )
+            codex_config._codex_home = lambda: str(codex_home)
+            codex_config._app_dir = lambda: str(ROOT)
+            with patch.dict(os.environ, {"CONFIGPILOT_PREVIEW_KEY": "env-key"}):
+                config = codex_config.CodexConfig()
+                wait_for_idle(config)
+                config.applyConfig(
+                    {
+                        "baseUrl": "https://gateway.example.com",
+                        "provider": "relay",
+                        "wireApi": "responses",
+                        "model": "gpt-5.6-sol",
+                        "requiresAuth": False,
+                        "authSource": "environment",
+                        "envKey": "CONFIGPILOT_PREVIEW_KEY",
+                        "key": "",
+                    }
+                )
+                wait_for_idle(config)
+                self.assertEqual(config.authSource, "environment")
+
+            self.assertFalse((codex_home / "auth.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

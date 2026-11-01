@@ -141,6 +141,7 @@ class ClaudeDesktopConfig(QObject):
         self._auth_scheme = "bearer"
         self._models_text = ""
         self._has_api_key = False
+        self._api_key_preview = ""
         self._header_count = 0
         self._profile_name = ""
         self._models_json = "[]"
@@ -198,6 +199,11 @@ class ClaudeDesktopConfig(QObject):
     @Property(bool, notify=changed)
     def hasApiKey(self):
         return self._has_api_key
+
+    @Property(str, notify=changed)
+    def apiKeyPreview(self):
+        """当前 Gateway 档案里的 API key 明文，供界面直接回显。"""
+        return self._api_key_preview
 
     @Property(int, notify=changed)
     def headerCount(self):
@@ -296,6 +302,7 @@ class ClaudeDesktopConfig(QObject):
             "modelDiscoveryState": "auto",
             "modelPrefer1mContextState": "auto",
             "hasApiKey": False,
+            "apiKeyPreview": "",
             "headerCount": 0,
             "profileName": "",
             "configPilotProfileExists": False,
@@ -375,6 +382,10 @@ class ClaudeDesktopConfig(QObject):
                     else "auto"
                 ),
                 "hasApiKey": bool(profile.get("inferenceGatewayApiKey")),
+                # 界面明文回显当前档案里存的 key，不在本地界面隐藏真实值。
+                "apiKeyPreview": str(
+                    profile.get("inferenceGatewayApiKey") or ""
+                ),
                 "headerCount": len(headers) if isinstance(headers, dict) else 0,
                 "thirdPartyEnabled": (
                     desktop_config.get("deploymentMode") == "3p"
@@ -400,6 +411,7 @@ class ClaudeDesktopConfig(QObject):
             snapshot["modelPrefer1mContextState"]
         )
         self._has_api_key = bool(snapshot["hasApiKey"])
+        self._api_key_preview = str(snapshot.get("apiKeyPreview", ""))
         self._header_count = int(snapshot["headerCount"])
         self._profile_name = str(snapshot["profileName"])
         self._configpilot_profile_exists = bool(snapshot["configPilotProfileExists"])
@@ -511,6 +523,7 @@ class ClaudeDesktopConfig(QObject):
             profile.pop("inferenceGatewayApiKey", None)
         elif api_key:
             profile["inferenceGatewayApiKey"] = api_key
+        # 留空且未勾选删除时保留原有 key，不做任何删改。
 
         headers_text = str(cfg.get("headersText", "")).strip()
         if bool(cfg.get("clearHeaders", False)):

@@ -79,6 +79,7 @@ class CodexConfig(QObject):
         self._requires_auth = False
         self._env_key = ""
         self._env_key_present = False
+        self._auth_key_preview = ""
         self._auth_source = "none"
         self._auth_ready = True
         self._reasoning_effort = ""
@@ -215,6 +216,11 @@ class CodexConfig(QObject):
     def authSource(self):
         return self._auth_source
 
+    @Property(str, notify=changed)
+    def authKeyPreview(self):
+        """当前生效的 API key 明文，供界面直接回显（不参与任何写入判断）。"""
+        return self._auth_key_preview
+
     @Property(bool, notify=changed)
     def authReady(self):
         return self._auth_ready
@@ -301,6 +307,7 @@ class CodexConfig(QObject):
         self._requires_auth = bool(snapshot["requiresAuth"])
         self._env_key = str(snapshot.get("envKey", ""))
         self._env_key_present = bool(snapshot.get("envKeyPresent", False))
+        self._auth_key_preview = str(snapshot.get("authKeyPreview", ""))
         self._auth_source = str(snapshot.get("authSource", "none"))
         self._auth_ready = bool(snapshot.get("authReady", True))
         self._reasoning_effort = str(snapshot["reasoningEffort"])
@@ -408,6 +415,18 @@ class CodexConfig(QObject):
         self._apply_snapshot(snapshot)
         self.notify.emit(1, title, message)
 
+    def _apply_config_with_key(self, values, key):
+        """先落 key 再写连接配置，两步共用同一个完成回调。
+
+        「应用更改」必须一次性把界面上看到的密钥一起写下去，否则界面显示的 key
+        和 auth.json 里的 key 会分叉（此前靠输入框失焦旁路写入，与「应用更改」
+        是两条路径）。``set_key`` 会顺带把 provider 认证来源切到 auth_json，
+        之后的 ``apply_config`` 按 values 里显式的 authSource 再校正一次。
+        """
+        if key:
+            self._store.set_key(key)
+        return self._store.apply_config(values)
+
     def _config_write_failed(self, exc):
         LOGGER.exception(
             "写入 Codex 配置失败",
@@ -462,9 +481,17 @@ class CodexConfig(QObject):
         provider = (str(cfg.get("provider", "")) or "relay").strip()
         wire_api = canonical_wire_api(cfg.get("wireApi", ""))
         model = str(cfg.get("model", "")).strip()
+        # 界面上密钥框里的内容随「应用更改」一起落盘；留空表示沿用现有 key，
+        # 不会清掉 auth.json（清空密钥仍走「恢复初始设置」，口径不变）。
+        key_draft = str(cfg.get("key", "") or "").strip()
         # 高级项: 缺省键 -> None(不写); 显式给值才写
         auth_source = cfg.get("authSource", None)
         env_key = KEEP
+        if key_draft:
+            # 输入了新 key 就是 auth.json 认证，覆盖界面上提交的 authSource：
+            # 否则「填了 key + requiresAuth=false」会被写成环境变量模式，
+            # key 存了却不生效。
+            auth_source = "auth_json"
         if auth_source == "auth_json":
             req = True
             env_key = None
@@ -527,7 +554,7 @@ class CodexConfig(QObject):
             "modelCatalogJson": model_catalog_json,
         }
         self._config_tasks.submit(
-            lambda: self._store.apply_config(values),
+            lambda: self._apply_config_with_key(values, key_draft),
             lambda snapshot: self._complete_config_change(
                 snapshot,
                 "已应用",

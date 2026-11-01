@@ -133,6 +133,30 @@ def persist_user_environment(name: str, value: str) -> None:
         LOGGER.debug("广播用户环境变量更新失败: %s", exc)
 
 
+def read_persisted_user_environment(name: str) -> str:
+    """读 Windows 用户环境变量（HKCU\\Environment）里的值。
+
+    ConfigPilot 自己就是用 ``persist_user_environment`` 把 key 写进 HKCU 的，
+    但写入只影响当前进程（``os.environ``）；用户下次冷启动 ConfigPilot 时进程里
+    并没有它，只有 Codex 从注册表新继承的会话里才有。界面要显示"Codex 实际会用
+    的那把 key"，就必须回读注册表，否则会一直显示空值、看起来像是被藏起来了。
+    """
+    if not persisted_user_environment_supported():
+        return ""
+    if not _ENV_KEY_PATTERN.fullmatch(name or ""):
+        return ""
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment") as key:
+            value, value_type = winreg.QueryValueEx(key, name)
+    except OSError:
+        return ""
+    if value_type not in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+        return ""
+    return str(value or "")
+
+
 class CodexConfigStore:
     def __init__(self, home: str):
         self.home = home
@@ -162,12 +186,12 @@ class CodexConfigStore:
             return ""
 
     def _env_value_available(self, name: str) -> bool:
-        """进程环境与 Codex .env 任一有值即视为 Codex 能读到该变量。"""
+        """进程环境、Codex .env 或 Windows 用户环境任一有值即视为 Codex 能读到。"""
         if not name:
             return False
         if os.environ.get(name):
             return True
-        return bool(self.read_dotenv_key(name))
+        return bool(self.read_dotenv_key(name) or read_persisted_user_environment(name))
 
     def write_dotenv_key(self, name: str, value: str) -> None:
         """把变量写入 ``$CODEX_HOME/.env``，供 Codex 启动时用 dotenvy 加载。
@@ -222,6 +246,7 @@ class CodexConfigStore:
             "requiresAuth": False,
             "envKey": "",
             "envKeyPresent": False,
+            "authKeyPreview": "",
             "envKeySource": "",
             "dotenvPath": self.dotenv_path,
             "authSource": "none",
@@ -288,6 +313,16 @@ class CodexConfigStore:
         try:
             auth_status = self.read_auth_status()
             snapshot.update(auth_status)
+            # 界面要明文回显「当前真正在用」的那把 key：auth_json 取 auth.json 的
+            # OPENAI_API_KEY，environment 取 Codex 实际会读到的那份（.env 覆盖进程环境，
+            # 与 _read_env_key 的优先级保持一致），避免显示的 key 和 Codex 用的不是同一个。
+            snapshot["authKeyPreview"] = (
+                self.read_api_key()
+                if snapshot["authSource"] == "auth_json"
+                else self._read_env_key(snapshot["envKey"])
+                if snapshot["authSource"] == "environment"
+                else ""
+            )
             if snapshot["authSource"] == "auth_json":
                 snapshot["authReady"] = bool(
                     snapshot["hasKey"] or snapshot["hasChatgptAuth"]
@@ -311,7 +346,11 @@ class CodexConfigStore:
             return ""
         with open(self.auth_path, "r", encoding="utf-8-sig") as handle:
             auth = json.load(handle)
-        return str(auth.get("OPENAI_API_KEY", "")) if isinstance(auth, dict) else ""
+        if not isinstance(auth, dict):
+            return ""
+        # ChatGPT 会话下 OPENAI_API_KEY 是 JSON null，str(None) 会得到 "None"
+        # 这个假 key，界面回显必须先归零。
+        return str(auth.get("OPENAI_API_KEY") or "")
 
     def read_provider_api_key(self) -> str:
         """读取当前 provider 实际使用的 key，供模型探测复用。"""
@@ -352,14 +391,15 @@ class CodexConfigStore:
         Codex 启动时用 dotenvy 把 ``$CODEX_HOME/.env`` 的键 ``set_var`` 到自己的
         进程环境（见上游 ``arg0::load_dotenv``），因此同名变量 **.env 覆盖** Process
         环境；这里必须按同样优先级取值，否则界面显示的 key 和 Codex 实际用到的
-        可能不是同一个。
+        可能不是同一个。进程环境里没有时再回读 Windows 用户环境变量：ConfigPilot
+        上次写入的 key 落在 HKCU，只在新会话里才对当前进程可见。
         """
         if not name:
             return ""
         value = self.read_dotenv_key(name)
         if value:
             return value
-        return os.environ.get(name, "")
+        return os.environ.get(name, "") or read_persisted_user_environment(name)
 
     def read_auth_status(self) -> dict:
         status = {"hasKey": False, "authMode": "", "hasChatgptAuth": False}

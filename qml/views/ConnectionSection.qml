@@ -15,21 +15,27 @@ Fluent.Expander {
     property bool envKeyPresent: false
     property bool authReady: true
     property bool configBusy: false
+    // 当前生效的 API key 明文（后端 authKeyPreview），直接回显在输入框里，
+    // 不再用「已设置/未设置」把真实值藏起来。
+    property string keyValue: ""
     readonly property string keyDraft: keyInput.text
 
     signal baseUrlEdited(string value)
     signal providerEdited(string value)
     signal wireApiEdited(string value)
-    signal saveKeyRequested(string value)
     signal importAuthJsonRequested(string value)
     signal repairRelayAuthRequested(string value)
     signal sandboxStopgapRequested()
+    signal keyEdited(string value)
 
+    // 让页面能把密钥框内容复位成刚应用过的值（应用后草稿与后端一致）。
+    function setKeyText(value) {
+        keyInput.text = value
+    }
+
+    // 失焦/回车只做规范化，不写盘：密钥统一由「应用更改」随草稿一起提交。
     function commitKey() {
-        var value = keyInput.text.trim()
-        if (value.length === 0) return
-        root.saveKeyRequested(value)
-        keyInput.text = ""
+        keyInput.text = keyInput.text.trim()
     }
 
     // 失焦/回车即把地址补成实际会写入 config.toml 的形式（末尾缺 /v1 时补 /v1）。
@@ -251,34 +257,37 @@ Fluent.Expander {
                 width: cardColumn.innerWidth
                 label: "API 密钥"
                 hint: root.authSource === "environment"
-                      ? "当前使用 env_key · " + (root.envKey || "未指定")
-                      : "输入完成后自动保存；留空不会改动现有 auth.json"
+                      ? (root.envKeyPresent
+                         ? "当前使用环境变量 " + (root.envKey || "未指定")
+                           + "（下方显示其真实值，随「应用更改」写入）"
+                         : "环境变量 " + (root.envKey || "未指定")
+                           + " 当前没有值；填入密钥后随「应用更改」写入")
+                      : "显示当前生效的密钥；修改后随「应用更改」一起写入"
 
-                RowLayout {
+                Fluent.LineEdit {
+                    id: keyInput
+                    objectName: "codexApiKeyEdit"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.s
-
-                    Fluent.LineEdit {
-                        id: keyInput
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        inputType: Fluent.Enums.input.type_normal
-                        enabled: !root.configBusy
-                        placeholderText: "粘贴 API key"
-                        onAccepted: root.commitKey()
-                        onEditingFinished: root.commitKey()
-                    }
-                    Fluent.Button {
-                        Layout.minimumWidth: 112
-                        Layout.preferredWidth: 112
-                        Layout.maximumWidth: 112
-                        style: Fluent.Enums.button.style_default
-                        icon: Fluent.Enums.icon.save
-                        text: "保存密钥"
-                        enabled: !root.configBusy
-                                 && keyInput.text.trim().length > 0
-                        onClicked: root.commitKey()
+                    // 明文显示：密钥就是给人自己核对用的，不在这里做遮罩。
+                    inputType: Fluent.Enums.input.type_normal
+                    enabled: !root.configBusy
+                    placeholderText: "粘贴 API key"
+                    Component.onCompleted: Qt.callLater(function() {
+                        text = root.keyValue
+                    })
+                    onAccepted: root.commitKey()
+                    onEditingFinished: root.commitKey()
+                    onTextChanged: root.keyEdited(text)
+                    Connections {
+                        target: root
+                        function onKeyValueChanged() {
+                            // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
+                            if (!keyInput.activeFocus
+                                    && keyInput.text !== root.keyValue) {
+                                keyInput.text = root.keyValue
+                            }
+                        }
                     }
                 }
             }

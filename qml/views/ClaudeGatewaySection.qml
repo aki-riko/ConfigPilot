@@ -147,18 +147,19 @@ Fluent.Expander {
                     Layout.preferredWidth: gatewayGrid.equalItemWidth
                     Layout.maximumWidth: gatewayGrid.equalItemWidth
                     label: "API 密钥"
-                    hint: root.hasApiKey ? "留空将保留当前密钥" : "仅写入本机 Claude 配置"
+                    hint: root.hasApiKey
+                          ? "显示当前已保存的密钥，修改后随「应用更改」写入"
+                          : "仅写入本机 Claude 配置；填写后随「应用更改」写入"
 
                     Fluent.LineEdit {
                         id: apiKeyEdit
                         objectName: "claudeApiKeyEdit"
                         Layout.fillWidth: true
                         Layout.preferredHeight: root.controlHeight
+                        // 明文显示：密钥就是给人自己核对用的，不在这里做遮罩。
                         inputType: Fluent.Enums.input.type_normal
                         enabled: !root.clearApiKeyValue
-                        placeholderText: root.hasApiKey
-                                         ? "已保存；留空保持不变"
-                                         : "粘贴第三方 API key"
+                        placeholderText: "粘贴第三方 API key"
                         Component.onCompleted: Qt.callLater(function() {
                             text = root.apiKeyValue
                         })
@@ -168,7 +169,9 @@ Fluent.Expander {
                         Connections {
                             target: root
                             function onApiKeyValueChanged() {
-                                if (apiKeyEdit.text !== root.apiKeyValue) {
+                                // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
+                                if (!apiKeyEdit.activeFocus
+                                        && apiKeyEdit.text !== root.apiKeyValue) {
                                     apiKeyEdit.text = root.apiKeyValue
                                 }
                             }

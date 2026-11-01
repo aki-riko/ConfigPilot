@@ -209,9 +209,17 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("function commitKey()", connection)
         self.assertIn("onAccepted: root.commitKey()", connection)
         self.assertIn("onEditingFinished: root.commitKey()", connection)
-        self.assertIn("输入完成后自动保存", connection)
+        # 密钥明文回显并随「应用更改」提交：输入框不再用占位符藏真实值，
+        # 也不再有一条失焦即写 auth.json 的旁路。
+        self.assertIn("property string keyValue", connection)
+        self.assertIn("text = root.keyValue", connection)
+        self.assertNotIn("type_password", connection)
+        self.assertNotIn("保存密钥", connection)
+        self.assertNotIn("saveKeyRequested", connection)
+        self.assertIn('objectName: "codexApiKeyEdit"', connection)
         self.assertIn("connectionSection.keyDraft.trim()", view)
-        self.assertIn("CodexConfig.setKey(key)", view)
+        self.assertIn('"key": key', view)
+        self.assertIn("CodexConfig.authKeyPreview", view)
 
     def test_all_pages_use_constrained_content_and_compact_actions(self):
         codex = self.read("qml/views/CodexView.qml")

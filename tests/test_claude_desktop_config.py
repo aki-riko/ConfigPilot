@@ -57,7 +57,8 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
 
-    def test_reload_reads_active_profile_without_exposing_api_key(self):
+    def test_reload_reads_active_profile_and_previews_api_key(self):
+        """密钥不再被隐藏：快照要提供明文 apiKeyPreview 供界面回显。"""
         module = self.load_module()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -104,9 +105,9 @@ class ClaudeDesktopConfigTests(unittest.TestCase):
             self.assertEqual(config.modelDiscoveryState, "auto")
             self.assertEqual(config.modelPrefer1mContextState, "auto")
             self.assertTrue(config.hasApiKey)
+            self.assertEqual(config.apiKeyPreview, "secret-value")
             self.assertEqual(config.headerCount, 1)
             self.assertEqual(config.profileName, "ConfigPilot")
-            self.assertNotIn("secret-value", vars(config).values())
 
     def test_reload_ignores_unrelated_active_profile(self):
         module = self.load_module()

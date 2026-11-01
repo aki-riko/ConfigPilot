@@ -45,7 +45,7 @@ Item {
             || fModelsJson !== (ClaudeDesktopConfig.modelsJson || "[]")
             || fModelDiscoveryState !== (ClaudeDesktopConfig.modelDiscoveryState || "auto")
             || fModelPrefer1mContextState !== (ClaudeDesktopConfig.modelPrefer1mContextState || "auto")
-            || fApiKey.trim().length > 0
+            || fApiKey !== (ClaudeDesktopConfig.apiKeyPreview || "")
             || fHeaders.trim().length > 0
             || fClearApiKey
             || fClearHeaders
@@ -59,7 +59,7 @@ Item {
                                 && ClaudeDesktopConfig.modelDiscoveryState) || "auto"
         fModelPrefer1mContextState = (ClaudeDesktopConfig
                                       && ClaudeDesktopConfig.modelPrefer1mContextState) || "auto"
-        fApiKey = ""
+        fApiKey = (ClaudeDesktopConfig && ClaudeDesktopConfig.apiKeyPreview) || ""
         fHeaders = ""
         fClearApiKey = false
         fClearHeaders = false

@@ -109,7 +109,11 @@ class ClaudeDesktopUiTests(unittest.TestCase):
         self.assertNotIn("自动补全 /v1", gateway)
         self.assertIn('title: "网关连接"', gateway)
         self.assertIn("inputType: Fluent.Enums.input.type_normal", gateway)
-        self.assertIn("留空保持不变", gateway)
+        # 密钥明文回显：占位符不再承担「已保存/留空保持不变」的隐藏职责。
+        self.assertIn("text = root.apiKeyValue", gateway)
+        self.assertNotIn("已保存；留空保持不变", gateway)
+        self.assertNotIn("type_password", gateway)
+        self.assertIn("ClaudeDesktopConfig.apiKeyPreview", page)
         self.assertIn('objectName: "claudeAuthSchemeBox"', gateway)
         self.assertIn("Layout.preferredHeight: root.controlHeight", gateway)
         self.assertIn('objectName: "claudeClearKeyToggle"', gateway)

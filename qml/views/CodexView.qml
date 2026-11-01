@@ -38,6 +38,8 @@ Item {
     readonly property int profilesRevision: CodexConfig
                                             ? CodexConfig.profilesRevision
                                             : 0
+    // 密钥框里现有内容（可能与后端回显的 key 不同，改动即算草稿）。
+    property string keyDraft: ""
     readonly property var currentContextPreset: {
         var revision = profilesRevision
         return CodexConfig ? CodexConfig.stableContextPreset() : ({})
@@ -63,6 +65,7 @@ Item {
             || fContextWindow !== (CodexConfig.modelContextWindow || "")
             || fAutoCompactLimit !== (CodexConfig.modelAutoCompactTokenLimit || "")
             || fToolOutputLimit !== (CodexConfig.toolOutputTokenLimit || "")
+            || keyDraft !== (CodexConfig.authKeyPreview || "").trim()
     }
 
     function parsePositive(value) {
@@ -160,13 +163,19 @@ Item {
         fContextWindow = (CodexConfig && CodexConfig.modelContextWindow) || ""
         fAutoCompactLimit = (CodexConfig && CodexConfig.modelAutoCompactTokenLimit) || ""
         fToolOutputLimit = (CodexConfig && CodexConfig.toolOutputTokenLimit) || ""
+        // 同步时把密钥草稿对齐到后端回显值：否则刚打开页面就显示「待应用」。
+        keyDraft = (CodexConfig && CodexConfig.authKeyPreview) || ""
     }
 
     function applyDraft() {
         if (!CodexConfig) return
         commitTypedModel(fModel)
-        var key = connectionSection ? connectionSection.keyDraft.trim() : ""
-        if (key.length > 0) CodexConfig.setKey(key)
+        // 密钥框回显的是「当前生效的那把 key」，只有真的被改过才随本次应用写入，
+        // 否则每次点「应用更改」都会把环境变量认证硬改成 auth.json。
+        var preview = (CodexConfig.authKeyPreview || "").trim()
+        var draft = connectionSection ? connectionSection.keyDraft.trim() : ""
+        var key = draft !== preview ? draft : ""
+        root.keyDraft = draft
         var authSource = key.length > 0
                          ? "auth_json"
                          : (fRequiresAuth
@@ -181,6 +190,7 @@ Item {
             "requiresAuth": fRequiresAuth,
             "authSource": authSource,
             "envKey": CodexConfig.envKey,
+            "key": key,
             "reasoningEffort": fReasoningEffort,
             "disableStorage": fDisableStorage,
             "modelContextWindow": fContextWindow,
@@ -355,6 +365,7 @@ Item {
                 envKey: CodexConfig ? CodexConfig.envKey : ""
                 envKeyPresent: CodexConfig ? CodexConfig.envKeyPresent : false
                 authReady: CodexConfig ? CodexConfig.authReady : true
+                keyValue: CodexConfig ? CodexConfig.authKeyPreview : ""
                 configBusy: root.configBusy
                 onBaseUrlEdited: function(value) { root.fBaseUrl = value }
                 onProviderEdited: function(value) { root.fProvider = value }
@@ -365,9 +376,6 @@ Item {
                                     ? CodexConfig.wireApiValueFor(value)
                                     : value
                 }
-                onSaveKeyRequested: function(value) {
-                    if (CodexConfig) CodexConfig.setKey(value)
-                }
                 onImportAuthJsonRequested: function(value) {
                     if (CodexConfig) CodexConfig.importAuthJson(value)
                 }
@@ -375,6 +383,7 @@ Item {
                     if (CodexConfig) CodexConfig.repairRelayAuth(value)
                 }
                 onSandboxStopgapRequested: sandboxStopgapDialog.open()
+                onKeyEdited: function(value) { root.keyDraft = value }
             }
 
             ModelSection {

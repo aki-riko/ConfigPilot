@@ -30,13 +30,16 @@ Fluent.Expander {
     // 而这三个操作都是低频的「一次性套用」，放到标题栏不额外占内容高度。
     // 菜单项只列当前可用的预设（不存在的预设直接不出现），
     // 因为 PrismQML 内置下拉菜单不读 itemEnabled，做不了单项置灰。
+    //
+    // 图标要能区分「收小 / 放大」：两个预设原本都是勾号，菜单里看着一模一样，
+    // 分不出套用哪个。改用 resize_small / resize_large 一眼看出量级方向。
     readonly property var presetActions: {
         var items = []
         if (root.currentPreset.contextWindow > 0) {
-            items.push({ "text": "套用稳定上下文", "icon": Fluent.Enums.icon.checkmark })
+            items.push({ "text": "套用稳定上下文", "icon": Fluent.Enums.icon.resize_small })
         }
         if (root.millionPreset.contextWindow > 0) {
-            items.push({ "text": "套用百万上下文", "icon": Fluent.Enums.icon.checkmark })
+            items.push({ "text": "套用百万上下文", "icon": Fluent.Enums.icon.resize_large })
         }
         if (items.length > 0) items.push("-")
         items.push({ "text": "清空自定义值", "icon": Fluent.Enums.icon.icon_delete })

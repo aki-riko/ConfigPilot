@@ -399,6 +399,27 @@ class SectionLayoutTests(unittest.TestCase):
             "预设齐全时菜单项不对",
         )
 
+        # 每个菜单项的图标必须能区分用途：两个预设曾经都是勾号，菜单里长得
+        # 一模一样，用户分不出套用哪个。要求三项图标互不相同，且真的解析出
+        # 了图标路径（空字符串等于没图标）。
+        icons = self._menu_icon_paths(button)
+        self.assertEqual(len(icons), 4, "菜单项数量与图标数量不一致")
+        for index, path in enumerate(icons):
+            if texts[index] == "-":
+                continue
+            self.assertTrue(
+                path, f"菜单项「{texts[index]}」没有图标"
+            )
+        preset_icons = {icons[0], icons[1]}
+        self.assertEqual(
+            len(preset_icons), 2,
+            "两个预设的图标必须不同，否则菜单里分不出套用哪个",
+        )
+        self.assertNotIn(
+            icons[2], preset_icons,
+            "「清空自定义值」的图标不能和预设项重复",
+        )
+
         # 百万预设不可用时，该项必须整条消失（内置菜单不支持单项置灰）。
         root.setProperty("millionPreset", {})
         settle(300)
@@ -430,6 +451,24 @@ class SectionLayoutTests(unittest.TestCase):
         for item in converted or []:
             texts.append(item.get("text") if isinstance(item, dict) else str(item))
         return texts
+
+    @staticmethod
+    def _menu_icon_paths(button):
+        """取每个菜单项的图标资源路径（解析后），分隔线为空字符串。"""
+        items = button.property("menuItems")
+        converted = items.toVariant() if hasattr(items, "toVariant") else items
+        paths = []
+        for item in converted or []:
+            if not isinstance(item, dict):
+                paths.append("")
+                continue
+            text = item.get("text")
+            if text == "-":
+                paths.append("")
+                continue
+            icon = item.get("icon") or ""
+            paths.append(str(icon))
+        return paths
 
     @staticmethod
     def _is_descendant_of(item, ancestor):

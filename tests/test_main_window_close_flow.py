@@ -13,6 +13,7 @@
 import importlib
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem
 
-from tests.qt_test_utils import APP, wait_for_idle
+from tests.qt_test_utils import APP, wait_for_idle, wait_until
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +114,37 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         button.clicked.emit()
         self._pump(40)
 
+    # ==================== 关闭动画 ====================
+    # 关闭动作会先播约 0.5s 的引擎收紧动画，动画结束才 hide()/真正关窗。
+    # 以前这里点完立刻断言 visible=False 就能过，正因为当时根本没走引擎的
+    # 「已接受关闭」链路、动画从未启动 —— 那种「立刻消失」本身就是 bug。
+    # 现在必须等动画收尾，并且顺手断言动画确实播过，防止退回无动画状态。
+
+    def _close_transition(self, window):
+        return self._find(window, "windowClosePageTransition")
+
+    def _wait_close_finished(self, window, timeout=5.0):
+        wait_until(
+            lambda: not bool(window.property("visible")),
+            timeout=timeout,
+            message="关闭动画播完后窗口仍未隐藏",
+        )
+
+    def _assert_close_animation_played(self, window):
+        """确认这次关闭真的播放了引擎动画，而不是直接 hide() 一闪没。"""
+        transition = self._close_transition(window)
+        self.assertIsNotNone(
+            transition, "找不到引擎的关闭过渡对象，动画链路没接上")
+        # 动画结束后 collapsing 仍为真（收起状态），这是「播过动画」的落点证据。
+        self.assertTrue(
+            bool(transition.property("collapsing")),
+            "关闭时没有播放引擎动画：collapsing 从未置真，"
+            "说明又绕开了 _startAcceptedClose()",
+        )
+        self.assertAlmostEqual(
+            float(transition.property("progress")), 0.0, places=3,
+            msg="关闭动画没有收到终点：progress 停在中途")
+
     def test_close_asks_instead_of_hiding_to_tray(self):
         window = self._load()
         dialog = self._find(window, "closeChoiceDialog")
@@ -148,12 +180,14 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         self._pump(30)
 
         self._click(window, "closeChoiceTrayButton")
+        self._wait_close_finished(window)
 
         self.assertEqual(str(dialog.property("choice")), "tray")
         self.assertFalse(bool(window.property("visible")),
                          "选「最小化到托盘」后窗口应该隐藏")
         self.assertFalse(bool(window.property("quitApproved")),
                          "隐藏到托盘不该被当成退出")
+        self._assert_close_animation_played(window)
 
     def test_cancel_keeps_window_untouched(self):
         window = self._load()
@@ -201,10 +235,12 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         dialog = self._find(window, "closeChoiceDialog")
         self.assertFalse(bool(dialog.property("isOpen")),
                          "已记住托盘，不该再弹三选一")
+        self._wait_close_finished(window)
         self.assertFalse(bool(window.property("visible")),
                          "记住托盘后窗口应直接隐藏")
         self.assertFalse(bool(window.property("quitApproved")),
                          "隐藏到托盘不是退出")
+        self._assert_close_animation_played(window)
 
     def test_remembered_quit_quits_without_asking(self):
         """记住「退出程序」后，点 ✕ 直接放行退出、不弹窗。"""
@@ -233,10 +269,12 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         self.assertTrue(bool(dialog.property("rememberChoice")))
 
         self._click(window, "closeChoiceTrayButton")
+        self._wait_close_finished(window)
 
         self.assertEqual(store.closeBehavior, "tray",
                          "勾选后必须把选择写进配置")
         self.assertFalse(bool(window.property("visible")))
+        self._assert_close_animation_played(window)
 
     def test_cancel_does_not_persist_even_when_checked(self):
         """勾着「记住」点取消：什么都不记，下次仍然询问。"""
@@ -264,10 +302,12 @@ class MainWindowCloseFlowTests(unittest.TestCase):
             "checked", True)
         self._pump(10)
         self._click(window, "closeChoiceTrayButton")
+        self._wait_close_finished(window)
 
         # 关键：动作照常完成（隐藏），没有因为缺 store 中断
         self.assertFalse(bool(window.property("visible")),
                          "缺 store 时勾选记住，托盘动作仍须生效")
+        self._assert_close_animation_played(window)
 
 
 class _FakeStore(QObject):

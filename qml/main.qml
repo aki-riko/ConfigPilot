@@ -101,11 +101,25 @@ QtObject {
             }
 
             // ==================== 关闭主窗口：先问，不静默缩托盘 ====================
-            // WindowsCore 在 closeRequested() 前把 closeRequestAccepted 复位为 true，
-            // 这里置 false 就让它走 _cancelCloseRequest()：窗口原样留着，什么都不发生。
-            // 真正的退出由对话框的 quitRequested 触发；quitApproved 用来放行退出时
-            // 系统补发的第二次关闭请求（否则 Qt.quit() 之后窗口还会再问一遍）。
+            // 关窗必须走引擎的「已接受关闭」链路才有关闭动画：
+            // WindowsCore.requestClose() 会先置 closeRequestAccepted=true、把
+            // closeRequestHideOnly 复位成 false，再发 closeRequested() 让这里决定；
+            // 只要这里不把 closeRequestAccepted 改回 false，引擎就会调
+            // _startAcceptedClose() → closeTransition.collapse() 播圆形收紧动画，
+            // 动画播完才 hide()（hideOnly）或真正 close()（退出）。
+            // 以前这里在拦截关窗后直接 hide()/Qt.quit()，等于永远绕开
+            // _startAcceptedClose()，所以关闭时一点动画都没有。别再直接调
+            // hide()/Qt.quit()：那样动画不会播。
+            //
+            // quitApproved 用来放行退出时系统补发的第二次关闭请求（否则 Qt.quit()
+            // 之后窗口还会再问一遍）。closeRequestAccepted 保持 true 就是「这一次
+            // 交给引擎带动画地走完」。
             property bool quitApproved: false
+            // 一次性决定通道：用户在弹窗里点完，进入 beginAnimatedClose() 时先写上
+            // "tray"/"quit"，requestClose() 同步发出 closeRequested() 期间被这里读走，
+            // 函数返回后立刻清空。用「同步消费」而不是常驻标志，避免下一次点 ✕ 被
+            // 上一次的决定误伤。
+            property string closeDecision: ""
 
             // 已记住的关闭方式（"ask"/"tray"/"quit"）。由 CloseBehaviorStore 提供；
             // 它在 Python 侧没注册时按 "ask" 处理，行为与重做前一致。
@@ -122,26 +136,56 @@ QtObject {
                 if (behavior !== "") closeBehaviorStore.setBehavior(behavior)
             }
 
+            // 让引擎带着关闭动画走完一次关闭。
+            // action="tray" → 收紧动画结束后 hide()；"quit" → 动画结束后真正关窗退出。
+            function beginAnimatedClose(action) {
+                closeDecision = action
+                // requestClose() 内部是同步的：它会立刻发 closeRequested()，由下面
+                // 的 onCloseRequested 读走 closeDecision 并设置 hideOnly / quitApproved。
+                appWindow.requestClose()
+                closeDecision = ""
+            }
+
             onCloseRequested: {
+                // 用户刚在弹窗里做出的决定（同步消费）。
+                if (appWindow.closeDecision === "tray") {
+                    closeRequestHideOnly = true
+                    closeRequestAccepted = true
+                    return
+                }
+                if (appWindow.closeDecision === "quit") {
+                    appWindow.quitApproved = true
+                    closeRequestAccepted = true
+                    return
+                }
+
+                // 退出已获批准：放行这次（系统补发的）关闭请求。
                 if (appWindow.quitApproved) {
                     closeRequestAccepted = true
                     return
                 }
-                closeRequestAccepted = false
 
-                // 勾过「记住我的选择」就照做，不再弹窗。
+                // 勾过「记住我的选择」就照做，不再弹窗，但仍走动画。
                 if (appWindow.closeBehavior === "tray") {
-                    closeChoiceDialog.choice = "tray"
-                    appWindow.hide()
+                    closeRequestHideOnly = true
+                    closeRequestAccepted = true
                     return
                 }
                 if (appWindow.closeBehavior === "quit") {
                     appWindow.quitApproved = true
-                    Qt.quit()
+                    closeRequestAccepted = true
                     return
                 }
 
+                // 每次询问：挡下这次关闭，把窗口原样留着并弹三选一。
+                closeRequestAccepted = false
                 if (!closeChoiceDialog.isOpen) closeChoiceDialog.open()
+            }
+
+            // 退出这条路要等动画播完、窗口真的关掉之后再退进程。
+            // 隐藏式关闭不会走到这里（它只 hide()，不调 close()）。
+            onNativeCloseAccepted: {
+                if (appWindow.quitApproved) Qt.callLater(Qt.quit)
             }
 
             CloseChoiceDialog {
@@ -157,14 +201,15 @@ QtObject {
 
                 onQuitRequested: {
                     appWindow.rememberCloseChoice()
-                    appWindow.quitApproved = true
-                    Qt.quit()
+                    // 先把记住的选择落盘，再交给引擎带动画地关窗退出。
+                    appWindow.beginAnimatedClose("quit")
                 }
                 // 缩到托盘只是隐藏窗口：桌宠由 PetManager 跟着主窗口一起隐藏，
                 // 托盘菜单「显示主界面」再把它叫回来。
+                // 仍然先播关闭动画（hideOnly），动画结束才真正 hide()。
                 onTrayRequested: {
                     appWindow.rememberCloseChoice()
-                    appWindow.hide()
+                    appWindow.beginAnimatedClose("tray")
                 }
             }
         }

@@ -18,12 +18,37 @@ Fluent.Drawer {
 
     property bool configBusy: false
     property bool hasRestorableChanges: false
+    // 启动即展开：外抽屉要求宿主窗口已就绪，因此等窗口可见后再开一次。
+    // 只自动展开一次，用户手动收起后不再弹回来。
+    property bool autoOpened: false
 
     signal repairRelayAuthRequested()
     signal sandboxStopgapRequested()
     signal restoreInitialRequested()
     signal repairSubagentDefaultsRequested()
     signal reloadRequested()
+
+    function openOnceReady() {
+        if (autoOpened) return
+        var host = root.Window.window
+        if (!host || !host.contentItem) return
+        autoOpened = true
+        root.open()
+    }
+
+    Component.onCompleted: Qt.callLater(openOnceReady)
+
+    // 宿主窗口首帧可见后再补一次：外抽屉要跟随宿主 HWND，太早开会拿不到宿主。
+    Timer {
+        id: hostReadyTimer
+        interval: 120
+        repeat: true
+        running: !root.autoOpened
+        onTriggered: {
+            root.openOnceReady()
+            if (root.autoOpened) stop()
+        }
+    }
 
     // 注意：Drawer 的 contentItem 已经 anchors.fill + margins(spacing.xl)，
     // 内容必须填满它（anchors.fill），不能再自己按 drawerWidth 定宽——那样会

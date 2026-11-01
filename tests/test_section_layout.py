@@ -169,6 +169,32 @@ class SectionLayoutTests(unittest.TestCase):
         self.assertGreater(root.width(), 0, "抽屉宽度塌陷")
         self.assertGreater(root.height(), 0, "抽屉高度塌陷")
 
+    def test_toolbox_auto_opens_on_startup(self):
+        """工具箱启动即展开，且只自动展开一次（用户收起后不弹回）。"""
+        root, window = self._create("ToolboxDrawer.qml")
+
+        def wait_opened(expected, timeout=3.0):
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if bool(root.property("opened")) is expected:
+                    settle(60)
+                    return True
+                APP.processEvents()
+                time.sleep(0.005)
+            return bool(root.property("opened")) is expected
+
+        # 直接看最终结果 opened，而不是中间标志 autoOpened：只看标志会在
+        # “标记了但没真打开”时假通过。
+        self.assertTrue(wait_opened(True), "工具箱应在启动后自动展开")
+
+        # 用户手动收起后，不能被自动展开逻辑再弹回来。
+        root.close()
+        self.assertTrue(wait_opened(False), "手动收起后应保持关闭")
+        settle(400)
+        self.assertFalse(
+            root.property("opened"), "手动收起后不应被自动展开逻辑弹回"
+        )
+
     def test_toolbox_content_fits_inside_drawer_padding(self):
         """内容必须交给 Drawer 的 contentItem 管理宽度。
 

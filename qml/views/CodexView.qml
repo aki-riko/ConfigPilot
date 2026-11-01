@@ -511,9 +511,11 @@ Item {
                 Layout.maximumWidth: 112
                 style: Fluent.Enums.button.style_default
                 icon: Fluent.Enums.icon.wrench
-                text: "工具箱"
+                // 工具箱启动即展开，这里只提供手动收起/再打开。
+                text: codexToolbox.opened ? "收起工具箱" : "工具箱"
                 enabled: !root.configBusy
-                onClicked: codexToolbox.open()
+                onClicked: codexToolbox.opened ? codexToolbox.close()
+                                               : codexToolbox.open()
             }
 
             Fluent.Button {

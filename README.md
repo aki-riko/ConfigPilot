@@ -23,7 +23,7 @@ ConfigPilot 是一个用 [PrismQML](https://pypi.org/project/prismqml/) 构建�
   - `disable_response_storage` —— 禁用响应存储
 - **上下文预设**：保留所有受支持模型的稳定值 `258400 / 245000 / 6000`，并可一键套用百万上下文 `1048576 / 943718 / 6000`
 - **响应式界面**：连接、模型、上下文和兼容性分区展示，窄窗口自动切换为单列
-- **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）
+- **获取模型**：请求中转的 `/v1/models`，结果填入 model 下拉（后台线程，不卡界面）；失败时按上游 HTTP 状态码给出可操作提示，例如 401 → 「API Key 无效、已过期或未填写，请检查「API 密钥」后重试」并附上中转站原话；地址填成站点主页时会指出「返回的是网页而不是 JSON」
 - **API key**：写入 `~/.codex/auth.json`；「修复中转站 401」把 key 落到 Codex 真正会读的位置——Windows 写 `HKCU\Environment` 并广播 `WM_SETTINGCHANGE`，macOS/Linux 写 `$CODEX_HOME/.env`（权限 `0600`，Codex 启动时用 dotenvy 加载），不再出现「配置写好了但 Codex 报缺少环境变量」
 - **ChatGPT JSON 导入**：粘贴 Codex `auth.json`、codex2api 扁平 JSON 或 `accounts[].credentials` 单账号 JSON；完整凭据直接保存，仅有 `refresh_token` 时通过官方 OAuth 补齐
 - **安全**：每次写入前自动备份 `config.toml.bak` / `auth.json.bak`，保留 `notify` 等其它原有配置不动
@@ -160,6 +160,7 @@ configpilot/
 ├── pet_main.py              独立桌宠入口(不打开主窗口)
 ├── backend/
 │   ├── codex_config.py      配置读写 + 获取模型(后台线程)
+│   ├── upstream_errors.py   上游 HTTP 错误码 → 中文可操作提示
 │   ├── claude_desktop_config.py  Developer Mode + 第三方推理配置
 │   ├── model_profiles.py    模型规则加载与校验
 │   ├── newapi_pet.py        余额桌宠控制器(轮询 new-api 只读接口)

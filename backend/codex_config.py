@@ -28,6 +28,7 @@ from backend.codex_oauth import (
 )
 from backend.endpoint_urls import normalize_v1_base_url
 from backend.model_profiles import ModelProfiles
+from backend.upstream_errors import UpstreamRequestError, explain_failure
 from backend.wire_api import (
     canonical_value as canonical_wire_api,
     display_label as wire_api_label,
@@ -808,8 +809,12 @@ class CodexConfig(QObject):
         import urllib.error
 
         self._set_models_loading(False)
-        if isinstance(exc, urllib.error.HTTPError):
-            message = f"HTTP {exc.code}: {exc.reason}"
+        if isinstance(exc, UpstreamRequestError):
+            # fetch_models_result 已按状态码翻译过（含上游原话），直接用。
+            message = str(exc)
+        elif isinstance(exc, urllib.error.HTTPError):
+            # 兜底：仍在别处抛出的原始 HTTPError 也要给可操作提示。
+            message = explain_failure(exc.code, getattr(exc, "reason", ""))
         else:
             message = str(exc)
         self.notify.emit(3, "获取失败", message)

@@ -932,6 +932,10 @@ class NewApiPet(QObject):
             return f"{message}（站点未提供 new-api 查询接口，可能不是 new-api 站点）"
         if status == 403:
             return f"{message}（被拒绝：可能是密钥无效，或被站点前置防护拦截）"
+        if status == 401:
+            return f"{message}（API Key 无效或已失效，请到桌宠设置里更新密钥）"
+        if status == 402:
+            return f"{message}（账户额度不足，请到站点充值后重试）"
         if status is None:
             return f"{message}（请求未发出或未收到 HTTP 响应）"
         return message

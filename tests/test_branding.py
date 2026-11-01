@@ -199,7 +199,7 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('objectName: "authJsonImportButton"', connection)
         self.assertIn('objectName: "repairRelayAuthButton"', connection)
         self.assertIn("enabled: !root.configBusy", connection)
-        self.assertIn("inputType: Fluent.Enums.input.type_normal", connection)
+        self.assertIn("Fluent.Enums.input.type_normal", connection)
         self.assertIn("importAuthJson", view)
         self.assertIn("repairRelayAuth", view)
         self.assertIn('text: "套用稳定上下文"', context)
@@ -209,11 +209,16 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("function commitKey()", connection)
         self.assertIn("onAccepted: root.commitKey()", connection)
         self.assertIn("onEditingFinished: root.commitKey()", connection)
-        # 密钥明文回显并随「应用更改」提交：输入框不再用占位符藏真实值，
-        # 也不再有一条失焦即写 auth.json 的旁路。
+        # 密钥默认遮罩、由眼睛按钮显式切换明文；输入框不再用占位符藏真实值，
+        # 也没有失焦即写 auth.json 的旁路。
         self.assertIn("property string keyValue", connection)
+        self.assertIn("property bool keyRevealed", connection)
+        self.assertIn("Fluent.Enums.input.type_password", connection)
+        self.assertIn("Fluent.Enums.input.type_normal", connection)
+        self.assertIn('objectName: "codexKeyRevealButton"', connection)
+        self.assertIn("Enums.icon.eye_off", connection)
+        self.assertIn("Enums.icon.eye", connection)
         self.assertIn("text = root.keyValue", connection)
-        self.assertNotIn("type_password", connection)
         self.assertNotIn("保存密钥", connection)
         self.assertNotIn("saveKeyRequested", connection)
         self.assertIn('objectName: "codexApiKeyEdit"', connection)

@@ -30,6 +30,14 @@ Fluent.Drawer {
     // 启动即展开：外抽屉要求宿主窗口已就绪，因此等窗口可见后再开一次。
     // 只自动展开一次，用户手动收起后不再弹回来。
     property bool autoOpened: false
+    // 所属页面是否处于活动状态。工具箱是本页的一部分：外抽屉是宿主窗口外侧的
+    // 独立 HWND，切页不会带着它走，所以页面失活时必须自己收起，否则用户在
+    // Claude / 设置页会看到一个只属于 Codex 的工具箱挂在窗口外面。
+    // 默认 true 保持单独实例化（测试/预览）时不依赖宿主页面的行为。
+    property bool pageActive: true
+    // 离开本页时是否处于展开态：回来时按这个恢复，既不吞掉用户的展开状态，
+    // 也不会让用户手动收起过的工具箱自己弹回来。
+    property bool reopenAfterPageReturn: false
 
     signal repairRelayAuthRequested()
     signal sandboxStopgapRequested()
@@ -78,10 +86,35 @@ Fluent.Drawer {
 
     function openOnceReady() {
         if (autoOpened) return
+        if (!root.pageActive) return
         var host = root.Window.window
         if (!host || !host.contentItem) return
         autoOpened = true
         root.open()
+    }
+
+    // 页面失活（切到 Claude / 设置页）：立刻收起外抽屉，并记住「离开时是展开的」。
+    function closeForInactivePage() {
+        if (!root.opened) return
+        root.reopenAfterPageReturn = true
+        root.close()
+    }
+
+    function restoreForActivePage() {
+        if (!root.reopenAfterPageReturn) return
+        root.reopenAfterPageReturn = false
+        if (root.opened) return
+        root.open()
+    }
+
+    onPageActiveChanged: {
+        if (!root.pageActive) {
+            closeForInactivePage()
+            return
+        }
+        // 首次进入本页时 autoOpened 还没置真（启动即在 Codex 页，那个分支
+        // 由 openOnceReady 负责），这里只管「离开再回来」的恢复。
+        if (root.autoOpened) restoreForActivePage()
     }
 
     Component.onCompleted: {
@@ -102,7 +135,7 @@ Fluent.Drawer {
         id: hostReadyTimer
         interval: 120
         repeat: true
-        running: !root.autoOpened
+        running: !root.autoOpened && root.pageActive
         onTriggered: {
             root.openOnceReady()
             if (root.autoOpened) stop()

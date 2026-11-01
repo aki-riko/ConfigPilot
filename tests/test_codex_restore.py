@@ -235,7 +235,13 @@ class CodexConfigRestoreUiTests(unittest.TestCase):
         view = (ROOT / "qml" / "views" / "CodexView.qml").read_text(
             encoding="utf-8"
         )
-        self.assertIn('objectName: "restoreInitialButton"', view)
+        # 「恢复初始设置」已收进工具箱外抽屉，入口由抽屉转发，危险操作仍走确认框。
+        toolbox = (ROOT / "qml" / "views" / "ToolboxDrawer.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('objectName: "codexToolboxButton"', view)
+        self.assertIn("signal restoreInitialRequested()", toolbox)
+        self.assertIn("onRestoreInitialRequested", view)
         self.assertIn("CodexConfig.hasRestorableChanges", view)
         self.assertIn("Fluent.ConfirmDialog", view)
         self.assertIn("CodexConfig.restoreInitialSettings()", view)

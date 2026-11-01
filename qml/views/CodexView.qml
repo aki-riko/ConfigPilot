@@ -233,6 +233,23 @@ Item {
         }
     }
 
+    // 维护类操作全部收进外抽屉，避免六个按钮横铺在页面上。
+    ToolboxDrawer {
+        id: codexToolbox
+        configBusy: root.configBusy
+        hasRestorableChanges: CodexConfig ? CodexConfig.hasRestorableChanges : false
+        onRepairRelayAuthRequested: {
+            var key = connectionSection ? connectionSection.keyDraft.trim() : ""
+            if (CodexConfig) CodexConfig.repairRelayAuth(key)
+        }
+        onSandboxStopgapRequested: sandboxStopgapDialog.open()
+        onRestoreInitialRequested: restoreInitialDialog.open()
+        onRepairSubagentDefaultsRequested: {
+            if (CodexConfig) CodexConfig.repairSubagentDefaults()
+        }
+        onReloadRequested: if (CodexConfig) CodexConfig.reload()
+    }
+
     Fluent.ConfirmDialog {
         id: restoreInitialDialog
         objectName: "restoreInitialDialog"
@@ -488,40 +505,15 @@ Item {
             }
 
             Fluent.Button {
-                objectName: "restoreInitialButton"
-                Layout.minimumWidth: 136
-                Layout.preferredWidth: 136
-                Layout.maximumWidth: 136
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.arrow_reset
-                text: "恢复初始设置"
-                enabled: !root.configBusy
-                         && CodexConfig
-                         && CodexConfig.hasRestorableChanges
-                onClicked: restoreInitialDialog.open()
-            }
-
-            Fluent.Button {
-                objectName: "repairSubagentDefaultsButton"
+                objectName: "codexToolboxButton"
                 Layout.minimumWidth: 112
                 Layout.preferredWidth: 112
                 Layout.maximumWidth: 112
                 style: Fluent.Enums.button.style_default
                 icon: Fluent.Enums.icon.wrench
-                text: "修复降智"
-                enabled: !root.configBusy && CodexConfig
-                onClicked: CodexConfig.repairSubagentDefaults()
-            }
-
-            Fluent.Button {
-                Layout.minimumWidth: 104
-                Layout.preferredWidth: 104
-                Layout.maximumWidth: 104
-                style: Fluent.Enums.button.style_default
-                icon: Fluent.Enums.icon.arrow_sync
-                text: "重新读取"
+                text: "工具箱"
                 enabled: !root.configBusy
-                onClicked: if (CodexConfig) CodexConfig.reload()
+                onClicked: codexToolbox.open()
             }
 
             Fluent.Button {

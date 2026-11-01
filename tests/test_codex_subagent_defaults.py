@@ -79,10 +79,15 @@ class SubagentDefaultsTests(unittest.TestCase):
 class SubagentDefaultsUiTests(unittest.TestCase):
     def test_codex_page_exposes_named_repair_button_and_backend_slot(self):
         view = (ROOT / "qml" / "views" / "CodexView.qml").read_text(encoding="utf-8")
+        toolbox = (ROOT / "qml" / "views" / "ToolboxDrawer.qml").read_text(
+            encoding="utf-8"
+        )
         config = (ROOT / "backend" / "codex_config.py").read_text(encoding="utf-8")
         store = (ROOT / "backend" / "codex_config_store.py").read_text(encoding="utf-8")
-        self.assertIn('objectName: "repairSubagentDefaultsButton"', view)
-        self.assertIn('text: "修复降智"', view)
+        # 「修复降智」已收进工具箱外抽屉，入口由抽屉转发到页面。
+        self.assertIn("修复降智", toolbox)
+        self.assertIn("signal repairSubagentDefaultsRequested()", toolbox)
+        self.assertIn("onRepairSubagentDefaultsRequested", view)
         self.assertIn("CodexConfig.repairSubagentDefaults()", view)
         self.assertIn("def repairSubagentDefaults(self)", config)
         self.assertIn("self._store.apply_subagent_defaults", config)

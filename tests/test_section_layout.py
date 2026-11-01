@@ -151,9 +151,23 @@ class SectionLayoutTests(unittest.TestCase):
         self._find(root, "baseUrlEdit", "ConnectionSection.qml")
         self._find(root, "providerEdit", "ConnectionSection.qml")
         self._find(root, "wireApiComboBox", "ConnectionSection.qml")
-        self._find(root, "repairRelayAuthButton", "ConnectionSection.qml")
-        self._find(root, "sandboxStopgapButton", "ConnectionSection.qml")
+        self._find(root, "codexCredentialTabs", "ConnectionSection.qml")
+        self._find(root, "codexApiKeyEdit", "ConnectionSection.qml")
         self._find(root, "authJsonInput", "ConnectionSection.qml")
+        # 维护按钮已移进外抽屉，改由 test_toolbox_drawer_fits 覆盖。
+
+    def test_toolbox_drawer_content_is_not_clipped(self):
+        """抽屉是覆盖式 OverlayDialogCore（没有 contentArea/implicitHeight），
+        因此校验真实面板尺寸与模式，而不是套用 Expander 的高度断言。"""
+        root, window = self._create("ToolboxDrawer.qml")
+        self.assertGreater(root.property("drawerWidth"), 0, "抽屉宽度未设置")
+        self.assertGreater(root.property("drawerHeight"), 0, "抽屉高度未设置")
+        self.assertEqual(
+            root.property("mode"), 1, "工具抽屉必须用外抽屉（mode_outside）"
+        )
+        # 覆盖层填满宿主窗口，面板几何必须非零，否则内容会被裁成 0。
+        self.assertGreater(root.width(), 0, "抽屉宽度塌陷")
+        self.assertGreater(root.height(), 0, "抽屉高度塌陷")
 
     def test_model_section_content_is_not_clipped(self):
         root, _ = self._create("ModelSection.qml")

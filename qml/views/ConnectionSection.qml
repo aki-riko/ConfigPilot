@@ -252,149 +252,113 @@ Fluent.Expander {
                 width: cardColumn.innerWidth
             }
 
-            // ---------- 凭据 ----------
-            FormField {
+            // ---------- 凭据：API 密钥 / ChatGPT JSON 用分段控件切换 ----------
+            Item {
                 width: cardColumn.innerWidth
-                label: "API 密钥"
-                hint: root.authSource === "environment"
-                      ? (root.envKeyPresent
-                         ? "当前使用环境变量 " + (root.envKey || "未指定")
-                         : "环境变量 " + (root.envKey || "未指定")
-                           + " 当前没有值；填入密钥后随「应用更改」写入")
-                      : "修改后随「应用更改」一起写入"
+                implicitHeight: credentialColumn.implicitHeight
+                height: implicitHeight
 
-                // 遮罩与眼睛切换全部交给 PrismQML 的 LineEdit：
-                // type_password 会内置眼睛按钮并自动切换 showPassword，
-                // 不需要在外部再叠一个显隐按钮（那样会出现两个眼睛）。
-                Fluent.LineEdit {
-                    id: keyInput
-                    objectName: "codexApiKeyEdit"
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    inputType: Fluent.Enums.input.type_password
-                    enabled: !root.configBusy
-                    placeholderText: "粘贴 API key"
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.keyValue
-                    })
-                    onAccepted: root.commitKey()
-                    onEditingFinished: root.commitKey()
-                    onTextChanged: root.keyEdited(text)
-                    Connections {
-                        target: root
-                        function onKeyValueChanged() {
-                            // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
-                            if (!keyInput.activeFocus
-                                    && keyInput.text !== root.keyValue) {
-                                keyInput.text = root.keyValue
+                Column {
+                    id: credentialColumn
+                    width: parent.width
+                    spacing: Fluent.Enums.spacing.m
+
+                    // 两种凭据来源互斥，用分段控件而不是上下堆叠，避免卡片过长。
+                    // 分段控件只管"看哪一页"，两页草稿各自保留。
+                    Fluent.SegmentedControl {
+                        id: credentialTabs
+                        objectName: "codexCredentialTabs"
+                        items: [
+                            { "key": "apiKey", "text": "API 密钥" },
+                            { "key": "authJson", "text": "ChatGPT JSON" }
+                        ]
+                        currentIndex: 0
+                    }
+
+                    FormField {
+                        width: credentialColumn.width
+                        visible: credentialTabs.currentIndex === 0
+                        label: "API 密钥"
+                        hint: root.authSource === "environment"
+                              ? (root.envKeyPresent
+                                 ? "当前使用环境变量 " + (root.envKey || "未指定")
+                                 : "环境变量 " + (root.envKey || "未指定")
+                                   + " 当前没有值；填入密钥后随「应用更改」写入")
+                              : "修改后随「应用更改」一起写入"
+
+                        // 遮罩与眼睛切换全部交给 PrismQML 的 LineEdit：
+                        // type_password 会内置眼睛按钮并自动切换 showPassword，
+                        // 不需要在外部再叠一个显隐按钮（那样会出现两个眼睛）。
+                        Fluent.LineEdit {
+                            id: keyInput
+                            objectName: "codexApiKeyEdit"
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+                            inputType: Fluent.Enums.input.type_password
+                            enabled: !root.configBusy
+                            placeholderText: "粘贴 API key"
+                            Component.onCompleted: Qt.callLater(function() {
+                                text = root.keyValue
+                            })
+                            onAccepted: root.commitKey()
+                            onEditingFinished: root.commitKey()
+                            onTextChanged: root.keyEdited(text)
+                            Connections {
+                                target: root
+                                function onKeyValueChanged() {
+                                    // 只在用户没在编辑时回填，避免把正在输入的草稿冲掉。
+                                    if (!keyInput.activeFocus
+                                            && keyInput.text !== root.keyValue) {
+                                        keyInput.text = root.keyValue
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    FormField {
+                        width: credentialColumn.width
+                        visible: credentialTabs.currentIndex === 1
+                        label: "ChatGPT JSON 导入"
+                        hint: "粘贴 Codex auth.json 或 codex2api 兼容 JSON；"
+                              + "仅有 refresh_token 时自动换取完整凭据。"
+
+                        Fluent.TextEdit {
+                            id: authJsonInput
+                            objectName: "authJsonInput"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 132
+                            enabled: !root.configBusy
+                            placeholderText: "{\n  \"refresh_token\": \"...\"\n}"
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 0
+
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                implicitHeight: 1
+                            }
+
+                            Fluent.Button {
+                                objectName: "authJsonImportButton"
+                                Layout.minimumWidth: 180
+                                Layout.preferredWidth: 180
+                                Layout.maximumWidth: 180
+                                style: Fluent.Enums.button.style_default
+                                icon: Fluent.Enums.icon.arrow_import
+                                text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
+                                enabled: !root.configBusy
+                                         && authJsonInput.text.trim().length > 0
+                                onClicked: root.commitAuthJson()
                             }
                         }
                     }
                 }
             }
 
-            // ---------- 维护操作：说明在左、按钮统一宽度并右对齐 ----------
-            RowLayout {
-                width: cardColumn.innerWidth
-                spacing: Fluent.Enums.spacing.m
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    Layout.alignment: Qt.AlignVCenter
-                    text: "使用当前输入的密钥修复中转站认证"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    elide: Text.ElideRight
-                }
-
-                Fluent.Button {
-                    objectName: "repairRelayAuthButton"
-                    Layout.minimumWidth: 156
-                    Layout.preferredWidth: 156
-                    Layout.maximumWidth: 156
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.wrench
-                    text: root.configBusy
-                          ? "处理中..."
-                          : "修复中转站 401"
-                    enabled: !root.configBusy
-                    onClicked: root.repairRelayAuthRequested(keyInput.text.trim())
-                }
-            }
-
-            RowLayout {
-                width: cardColumn.innerWidth
-                spacing: Fluent.Enums.spacing.m
-
-                Text {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    Layout.alignment: Qt.AlignVCenter
-                    text: "Codex 反复弹出「无法检查 Windows 设置」时写入非沙盒档止血"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.family: Fluent.Enums.fontFamily
-                    elide: Text.ElideRight
-                }
-
-                Fluent.Button {
-                    objectName: "sandboxStopgapButton"
-                    Layout.minimumWidth: 156
-                    Layout.preferredWidth: 156
-                    Layout.maximumWidth: 156
-                    style: Fluent.Enums.button.style_default
-                    icon: Fluent.Enums.icon.wrench
-                    text: root.configBusy ? "处理中..." : "沙盒止血（临时）"
-                    enabled: !root.configBusy
-                    onClicked: root.sandboxStopgapRequested()
-                }
-            }
-
-            Fluent.Separator {
-                width: cardColumn.innerWidth
-            }
-
-            FormField {
-                width: cardColumn.innerWidth
-                label: "ChatGPT JSON 导入"
-                hint: "粘贴 Codex auth.json 或 codex2api 兼容 JSON；"
-                      + "仅有 refresh_token 时自动换取完整凭据。"
-
-                Fluent.TextEdit {
-                    id: authJsonInput
-                    objectName: "authJsonInput"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 132
-                    enabled: !root.configBusy
-                    placeholderText: "{\n  \"refresh_token\": \"...\"\n}"
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        implicitHeight: 1
-                    }
-
-                    Fluent.Button {
-                        objectName: "authJsonImportButton"
-                        Layout.minimumWidth: 180
-                        Layout.preferredWidth: 180
-                        Layout.maximumWidth: 180
-                        style: Fluent.Enums.button.style_default
-                        icon: Fluent.Enums.icon.arrow_import
-                        text: root.configBusy ? "导入中..." : "导入并登录 ChatGPT"
-                        enabled: !root.configBusy
-                                 && authJsonInput.text.trim().length > 0
-                        onClicked: root.commitAuthJson()
-                    }
-                }
-            }
         }
     }
 }

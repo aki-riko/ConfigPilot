@@ -192,11 +192,14 @@ class SandboxStopgapUiTests(unittest.TestCase):
         return (ROOT / relative_path).read_text(encoding="utf-8")
 
     def test_connection_card_exposes_stopgap_action(self):
+        """沙盒止血已移入工具箱外抽屉，连接卡片不再直接放按钮。"""
+        toolbox = self.read("qml/views/ToolboxDrawer.qml")
         connection = self.read("qml/views/ConnectionSection.qml")
 
-        self.assertIn("signal sandboxStopgapRequested()", connection)
-        self.assertIn('objectName: "sandboxStopgapButton"', connection)
-        self.assertIn("onClicked: root.sandboxStopgapRequested()", connection)
+        self.assertIn("signal sandboxStopgapRequested()", toolbox)
+        self.assertIn("onTriggered: root.sandboxStopgapRequested()", toolbox)
+        self.assertIn("沙盒止血", toolbox)
+        self.assertNotIn('objectName: "sandboxStopgapButton"', connection)
 
     def test_codex_page_wires_dialog_to_backend_slot(self):
         view = self.read("qml/views/CodexView.qml")

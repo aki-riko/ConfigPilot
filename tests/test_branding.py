@@ -197,7 +197,14 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("未包含 /v1 时自动补全", connection)
         self.assertIn('objectName: "authJsonInput"', connection)
         self.assertIn('objectName: "authJsonImportButton"', connection)
-        self.assertIn('objectName: "repairRelayAuthButton"', connection)
+        # 凭据两种来源改成分段控件切换，不再上下堆叠。
+        self.assertIn('objectName: "codexCredentialTabs"', connection)
+        self.assertIn("Fluent.SegmentedControl", connection)
+        self.assertIn("credentialTabs.currentIndex === 0", connection)
+        self.assertIn("credentialTabs.currentIndex === 1", connection)
+        # 「修复中转站 401」这类维护操作已移进工具箱外抽屉。
+        self.assertNotIn('objectName: "repairRelayAuthButton"', connection)
+        self.assertIn("signal repairRelayAuthRequested", connection)
         self.assertIn("enabled: !root.configBusy", connection)
         self.assertIn("Fluent.Enums.input.type_password", connection)
         self.assertIn("importAuthJson", view)
@@ -229,6 +236,7 @@ class BrandingTests(unittest.TestCase):
         claude = self.read("qml/views/ClaudeDesktopView.qml")
         about = self.read("qml/views/AboutView.qml")
         connection = self.read("qml/views/ConnectionSection.qml")
+        toolbox = self.read("qml/views/ToolboxDrawer.qml")
         model = self.read("qml/views/ModelSection.qml")
         context = self.read("qml/views/ContextSection.qml")
         status = self.read("qml/views/ClaudeStatusSection.qml")
@@ -246,7 +254,8 @@ class BrandingTests(unittest.TestCase):
         for content, width in (
             (codex, "Layout.maximumWidth: 128"),
             (claude, "Layout.maximumWidth: 220"),
-            (connection, "Layout.maximumWidth: 156"),
+            # 维护按钮已收进工具箱抽屉，固定宽度约束随之落在抽屉里。
+            (toolbox, "Layout.maximumWidth: 88"),
             (model, "Layout.maximumWidth: 112"),
             (context, "Layout.maximumWidth: 152"),
             (status, "Layout.maximumWidth: 220"),
@@ -275,10 +284,17 @@ class BrandingTests(unittest.TestCase):
         self.assertIn('icon: Fluent.Enums.icon.save', codex)
         self.assertIn('icon: Fluent.Enums.icon.arrow_import', connection)
         self.assertIn('icon: Fluent.Enums.icon.copy', status)
-        self.assertNotIn(
-            'objectName: "repairRelayAuthButton"\n                width: parent.width',
-            connection,
-        )
+        # 维护操作已全部移进外抽屉：页面上不再横铺这些按钮。
+        for gone in (
+            "repairRelayAuthButton",
+            "sandboxStopgapButton",
+            "restoreInitialButton",
+            "repairSubagentDefaultsButton",
+        ):
+            self.assertNotIn(f'objectName: "{gone}"', codex)
+            self.assertNotIn(f'objectName: "{gone}"', connection)
+        self.assertIn('objectName: "codexToolboxButton"', codex)
+        self.assertIn("codexToolbox.open()", codex)
 
     def test_latest_prismqml_engine_is_pinned(self):
         requirements = self.read("requirements.txt")

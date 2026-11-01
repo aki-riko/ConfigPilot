@@ -26,6 +26,19 @@ Item {
         typeof AppHomepage !== "undefined" ? AppHomepage : ""
     readonly property url prismQmlHomepage:
         typeof PrismQMLHomepage !== "undefined" ? PrismQMLHomepage : ""
+    // 关闭按钮行为偏好：ask=每次询问 / tray=最小化到托盘 / quit=退出程序。
+    // 由 backend/close_behavior.py 持久化；未注册时按「每次询问」显示。
+    readonly property var closeBehaviorStore:
+        typeof CloseBehavior !== "undefined" ? CloseBehavior : null
+    readonly property string closeBehavior:
+        closeBehaviorStore ? closeBehaviorStore.closeBehavior : "ask"
+    readonly property int closeBehaviorIndex: {
+        switch (closeBehavior) {
+            case "tray": return 1
+            case "quit": return 2
+            default: return 0
+        }
+    }
 
     // 帮助页复用引擎 updater，由 PrismQML AutoUpdater 负责反馈、下载与安装。
     Component {
@@ -183,6 +196,27 @@ Item {
                         onSwitchToggled: function(isChecked) {
                             if (root.configManager) {
                                 root.configManager.setMicaEnabled(isChecked)
+                            }
+                        }
+                    }
+
+                    Fluent.SettingsCard {
+                        objectName: "closeBehaviorSettingsCard"
+
+                        readonly property var behaviorValues: ["ask", "tray", "quit"]
+
+                        width: parent ? parent.width : 0
+                        title: "关闭按钮行为"
+                        content: "点窗口 ✕ 时如何处理；选「每次询问」可恢复弹窗确认"
+                        icon: Fluent.Enums.icon.dismiss
+                        type: Fluent.Enums.settingCard.type_combobox
+                        model: ["每次询问", "最小化到托盘", "退出程序"]
+                        currentIndex: root.closeBehaviorIndex
+                        onIndexSelected: function(index) {
+                            if (root.closeBehaviorStore && index >= 0
+                                    && index < behaviorValues.length) {
+                                root.closeBehaviorStore.setBehavior(
+                                    behaviorValues[index])
                             }
                         }
                     }

@@ -107,12 +107,40 @@ QtObject {
             // 系统补发的第二次关闭请求（否则 Qt.quit() 之后窗口还会再问一遍）。
             property bool quitApproved: false
 
+            // 已记住的关闭方式（"ask"/"tray"/"quit"）。由 CloseBehaviorStore 提供；
+            // 它在 Python 侧没注册时按 "ask" 处理，行为与重做前一致。
+            readonly property var closeBehaviorStore:
+                typeof CloseBehavior !== "undefined" ? CloseBehavior : null
+            readonly property string closeBehavior:
+                closeBehaviorStore ? closeBehaviorStore.closeBehavior : "ask"
+
+            // 把「勾选记住」的选择落盘。没注册 store 时静默跳过，
+            // 不能让未注册的场景在点退出时抛 ReferenceError。
+            function rememberCloseChoice() {
+                if (!closeBehaviorStore) return
+                var behavior = closeChoiceDialog.rememberedBehavior
+                if (behavior !== "") closeBehaviorStore.setBehavior(behavior)
+            }
+
             onCloseRequested: {
                 if (appWindow.quitApproved) {
                     closeRequestAccepted = true
                     return
                 }
                 closeRequestAccepted = false
+
+                // 勾过「记住我的选择」就照做，不再弹窗。
+                if (appWindow.closeBehavior === "tray") {
+                    closeChoiceDialog.choice = "tray"
+                    appWindow.hide()
+                    return
+                }
+                if (appWindow.closeBehavior === "quit") {
+                    appWindow.quitApproved = true
+                    Qt.quit()
+                    return
+                }
+
                 if (!closeChoiceDialog.isOpen) closeChoiceDialog.open()
             }
 
@@ -128,12 +156,16 @@ QtObject {
                 parent: appWindow.contentItem
 
                 onQuitRequested: {
+                    appWindow.rememberCloseChoice()
                     appWindow.quitApproved = true
                     Qt.quit()
                 }
                 // 缩到托盘只是隐藏窗口：桌宠由 PetManager 跟着主窗口一起隐藏，
                 // 托盘菜单「显示主界面」再把它叫回来。
-                onTrayRequested: appWindow.hide()
+                onTrayRequested: {
+                    appWindow.rememberCloseChoice()
+                    appWindow.hide()
+                }
             }
         }
     }

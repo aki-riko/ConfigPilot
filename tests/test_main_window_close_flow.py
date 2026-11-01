@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 import prismqml
-from PySide6.QtCore import QObject, QUrl
+from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem
@@ -40,7 +40,7 @@ class MainWindowCloseFlowTests(unittest.TestCase):
             None,
         )
 
-    def _load(self):
+    def _load(self, store=None, close_behavior=None):
         engine = QQmlApplicationEngine()
         engine.addImportPath(os.path.dirname(prismqml.__file__))
         from prismqml import register_types
@@ -81,6 +81,14 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         ctx.setContextProperty("AppYear", "2026")
         ctx.setContextProperty("AppLogo", "")
         ctx.setContextProperty("FluentIconsDir", "")
+
+        # 关闭行为偏好：默认不注册（QML 侧按 "ask" 处理，等价于重做前）；
+        # 需要时注入假 store 或在构造时给定档位。
+        if store is None and close_behavior is not None:
+            store = _FakeStore(close_behavior)
+        if store is not None:
+            ctx.setContextProperty("CloseBehavior", store)
+            self._kept.append(store)
 
         engine.load(QUrl.fromLocalFile(str(MAIN_QML)))
         self._pump(20)
@@ -174,6 +182,119 @@ class MainWindowCloseFlowTests(unittest.TestCase):
         self._pump(30)
         self.assertFalse(bool(dialog.property("isOpen")),
                          "退出已获批准，关闭请求不该再问一遍")
+
+    # ==================== 记住选择（不再弹窗） ====================
+
+    def test_no_store_registered_keeps_asking(self):
+        """没注册 CloseBehavior 时按 ask 处理：行为与重做前一致。"""
+        window = self._load()
+        self.assertEqual(str(window.property("closeBehavior")), "ask")
+
+    def test_remembered_tray_hides_without_asking(self):
+        """记住「最小化到托盘」后，点 ✕ 直接隐藏、不弹窗。"""
+        window = self._load(close_behavior="tray")
+        self.assertEqual(str(window.property("closeBehavior")), "tray")
+
+        window.close()
+        self._pump(30)
+
+        dialog = self._find(window, "closeChoiceDialog")
+        self.assertFalse(bool(dialog.property("isOpen")),
+                         "已记住托盘，不该再弹三选一")
+        self.assertFalse(bool(window.property("visible")),
+                         "记住托盘后窗口应直接隐藏")
+        self.assertFalse(bool(window.property("quitApproved")),
+                         "隐藏到托盘不是退出")
+
+    def test_remembered_quit_quits_without_asking(self):
+        """记住「退出程序」后，点 ✕ 直接放行退出、不弹窗。"""
+        window = self._load(close_behavior="quit")
+        window.close()
+        self._pump(30)
+
+        dialog = self._find(window, "closeChoiceDialog")
+        self.assertFalse(bool(dialog.property("isOpen")),
+                         "已记住退出，不该再弹三选一")
+        self.assertTrue(bool(window.property("quitApproved")),
+                        "记住退出后必须放行关闭请求")
+
+    def test_checking_remember_persists_choice(self):
+        """勾上「记住我的选择」再选托盘：写进 store，下次不再问。"""
+        store = _FakeStore()
+        window = self._load(store=store)
+        window.close()
+        self._pump(30)
+
+        dialog = self._find(window, "closeChoiceDialog")
+        checkbox = self._find(window, "closeChoiceRememberCheckBox")
+        self.assertIsNotNone(checkbox)
+        checkbox.setProperty("checked", True)
+        self._pump(10)
+        self.assertTrue(bool(dialog.property("rememberChoice")))
+
+        self._click(window, "closeChoiceTrayButton")
+
+        self.assertEqual(store.closeBehavior, "tray",
+                         "勾选后必须把选择写进配置")
+        self.assertFalse(bool(window.property("visible")))
+
+    def test_cancel_does_not_persist_even_when_checked(self):
+        """勾着「记住」点取消：什么都不记，下次仍然询问。"""
+        store = _FakeStore()
+        window = self._load(store=store)
+        window.close()
+        self._pump(30)
+
+        self._find(window, "closeChoiceRememberCheckBox").setProperty(
+            "checked", True)
+        self._pump(10)
+        self._click(window, "closeChoiceCancelButton")
+
+        self.assertEqual(store.closeBehavior, "ask",
+                         "取消不该写进任何记住的选择")
+        self.assertTrue(bool(window.property("visible")))
+
+    def test_checking_remember_without_store_does_not_crash(self):
+        """没注册 CloseBehavior 时勾选并选托盘：不能抛 ReferenceError。"""
+        window = self._load()
+        window.close()
+        self._pump(30)
+
+        self._find(window, "closeChoiceRememberCheckBox").setProperty(
+            "checked", True)
+        self._pump(10)
+        self._click(window, "closeChoiceTrayButton")
+
+        # 关键：动作照常完成（隐藏），没有因为缺 store 中断
+        self.assertFalse(bool(window.property("visible")),
+                         "缺 store 时勾选记住，托盘动作仍须生效")
+
+
+class _FakeStore(QObject):
+    """与 backend.close_behavior.CloseBehaviorStore 同契约的测试替身。"""
+
+    behaviorChanged = Signal()
+
+    def __init__(self, behavior="ask"):
+        super().__init__()
+        self._behavior = behavior
+        self.writes = []
+
+    def _get(self):
+        return self._behavior
+
+    closeBehavior = Property(str, _get, notify=behaviorChanged)
+
+    @Slot(str)
+    def setBehavior(self, behavior):  # noqa: N802 - 与 QML 契约一致
+        behavior = str(behavior)
+        if not behavior:
+            behavior = "ask"
+        self.writes.append(behavior)
+        if behavior == self._behavior:
+            return
+        self._behavior = behavior
+        self.behaviorChanged.emit()
 
 
 if __name__ == "__main__":

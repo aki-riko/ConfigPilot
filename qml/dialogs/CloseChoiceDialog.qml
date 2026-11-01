@@ -30,6 +30,14 @@ Fluent.DialogBoxCore {
     signal quitRequested()
     signal trayRequested()
 
+    // 勾选「记住我的选择」时为真。真正落盘由 main.qml 通过
+    // CloseBehaviorStore 完成（对话框本身不碰持久化，保持只发信号的约定）。
+    property bool rememberChoice: false
+    // 这次需要被记住的档位（"tray"/"quit"）；取消或没勾选时为空。
+    readonly property string rememberedBehavior:
+        root.rememberChoice && (choice === "tray" || choice === "quit")
+        ? choice : ""
+
     // 对话框正文宽度：Body 左右各 24px 边距，整体约 568px。
     // 旧版正文只有 464 - 24*2 = 416px，还要再让出右侧「取消」按钮的位置，
     // 副标题正好卡在「操/作。」之间折断。520 是让那行副标题单行放下的下限。
@@ -245,6 +253,27 @@ Fluent.DialogBoxCore {
                 root.choice = "quit"
                 root.accept()
             }
+        }
+
+        // ==================== 记住选择 ====================
+        // 勾上后把这次的选择写进关闭行为配置，下次点 ✕ 直接照做、不再弹窗。
+        // 「取消」不算一种选择：勾着取消仍然什么都不记，避免把自己锁成「问也不问」。
+        Fluent.CheckBox {
+            objectName: "closeChoiceRememberCheckBox"
+            Layout.fillWidth: true
+            Layout.topMargin: Fluent.Enums.spacing.xxs
+            text: "记住我的选择，下次不再询问"
+            checked: root.rememberChoice
+            onCheckedChanged: root.rememberChoice = checked
+        }
+
+        Fluent.Label {
+            Layout.fillWidth: true
+            text: "之后可在「设置 → 基础设置 → 关闭按钮行为」改回来。"
+            type: Fluent.Enums.label.type_caption
+            customTextColor: root.effectiveSkinContext.textColor.tertiary
+            visible: root.rememberChoice
+            wrapMode: Text.WordWrap
         }
     }
 

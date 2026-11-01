@@ -121,6 +121,15 @@ def main() -> int:
     engine.rootContext().setContextProperty("CodexConfig", codex)
     engine.rootContext().setContextProperty("ClaudeDesktopConfig", claude_desktop)
 
+    # 关闭主窗口的行为偏好:点 ✕ 弹三选一时可勾选「记住我的选择」,
+    # 记住后下次直接按记住的方式执行(托盘 / 退出),设置页可改回「每次询问」。
+    from backend.close_behavior import CloseBehaviorStore
+
+    close_behavior = CloseBehaviorStore()
+    engine.rootContext().setContextProperty("CloseBehavior", close_behavior)
+    # 与托盘同理:QObject 没有其它引用,被 GC 掉配置就丢了。
+    engine._close_behavior_keepalive = close_behavior
+
     qml_main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "main.qml")
     engine.load(QUrl.fromLocalFile(qml_main))
 

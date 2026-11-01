@@ -65,7 +65,7 @@ class ClaudeDesktopUiTests(unittest.TestCase):
 
         self.assertIn("columns: width < 700 ? 1 : 2", status)
         self.assertIn("id: statusGrid", status)
-        # 三个状态项单列纵向排列，不再等分三列、也不居中。
+        # 三个状态项横向并排、按宽度折列，不再竖着堆三份。
         self.assertNotIn("uniformCellWidths", status)
         self.assertNotIn("equalItemWidth", status)
         self.assertNotIn("Qt.AlignHCenter", status)

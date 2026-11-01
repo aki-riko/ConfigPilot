@@ -145,119 +145,143 @@ Fluent.Expander {
                 }
             }
 
-            // 状态卡片也单列纵向排列：标题在上、控件在下，与其它字段同一套行序。
-            // 之前三个状态并排三列，标题居中、宽度等分，窄窗口下会挤成一团。
+            // 三个状态项并排一行：以前每项「标题一行 + 控件一行」上下堆叠三份，
+            // 白占两行高度。每项内部仍是「标题在上、控件在下」，但横向排开。
+            // 用 RowLayout 而不是 Flow：Flow 是 positioner，不读子项的 Layout.*，
+            // 写了 preferredWidth 也不生效，子项会按 implicitWidth 各自乱排。
             ColumnLayout {
                 id: statusGrid
+                objectName: "statusGrid"
+                // 父级是普通 Column（不是 Layout），Layout.fillWidth 在这里不生效，
+                // 必须显式绑定宽度，与其它兄弟项一致。
+                width: cardColumn.innerWidth
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
                 spacing: Fluent.Enums.spacing.m
 
-                ColumnLayout {
+                // 三个状态项并排：宽窗口一列三格，窄窗口自动折成 2 列/1 列。
+                // 用 GridLayout 而不是 RowLayout/Flow —— RowLayout 不会折行，
+                // 窄窗口会把第三项挤出右边界；Flow 是 positioner，不读子项
+                // Layout.*，preferredWidth 写了也不生效。
+                //
+                // minimumWidth 是折列真正生效的关键：只凭宽度写死 columns 时，
+                // GridLayout 会把放不下的格子硬压窄（实测 760px 下第三格只剩
+                // 48px，Badge 直接被压扁），而不是折行。
+                GridLayout {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.xxs
+                    columns: width >= 700 ? 3 : (width >= 460 ? 2 : 1)
+                    columnSpacing: Fluent.Enums.spacing.xl
+                    rowSpacing: Fluent.Enums.spacing.m
 
-                    Text {
-                        text: "开发者模式"
-                        color: Fluent.Enums.textColor.tertiary
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.family: Fluent.Enums.fontFamily
-                    }
-                    Fluent.Toggle {
-                        id: developerModeToggle
-                        objectName: "claudeDeveloperModeToggle"
-                        controlType: Fluent.Enums.toggle.control_switch
-                        type: Fluent.Enums.toggle.type_default
-                        enabled: !root.configBusy
-                        text: root.developerModeEnabled ? "已启用" : "未启用"
-
-                        function syncChecked() {
-                            if (checked !== root.developerModeEnabled) {
-                                checked = root.developerModeEnabled
-                            }
-                        }
-
-                        Component.onCompleted: Qt.callLater(syncChecked)
-                        onToggled: function(checkedValue) {
-                            root.developerModeToggled(checkedValue)
-                            Qt.callLater(syncChecked)
-                        }
-                        Connections {
-                            target: root
-                            function onDeveloperModeEnabledChanged() {
-                                developerModeToggle.syncChecked()
-                            }
-                        }
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.xxs
-
-                    Text {
-                        text: "推理网关"
-                        color: Fluent.Enums.textColor.tertiary
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.family: Fluent.Enums.fontFamily
-                    }
-                    Fluent.Toggle {
-                        id: gatewayToggle
-                        objectName: "claudeGatewayToggle"
-                        enabled: !root.configBusy
-                                 && (root.thirdPartyEnabled || root.gatewayCanEnable)
-                        controlType: Fluent.Enums.toggle.control_switch
-                        type: Fluent.Enums.toggle.type_default
-                        text: root.thirdPartyEnabled ? "已应用" : "未启用"
-
-                        function syncChecked() {
-                            if (checked !== root.thirdPartyEnabled) {
-                                checked = root.thirdPartyEnabled
-                            }
-                        }
-
-                        Component.onCompleted: Qt.callLater(syncChecked)
-                        onToggled: function(checkedValue) {
-                            root.gatewayToggled(checkedValue)
-                            Qt.callLater(syncChecked)
-                        }
-                        Connections {
-                            target: root
-                            function onThirdPartyEnabledChanged() {
-                                gatewayToggle.syncChecked()
-                            }
-                        }
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.xxs
-
-                    Text {
-                        text: "配置档案"
-                        color: Fluent.Enums.textColor.tertiary
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.family: Fluent.Enums.fontFamily
-                    }
-                    Fluent.Badge {
-                        text: root.profileName.length > 0 ? root.profileName : "未创建"
-                        level: root.profileName.length > 0
-                               ? Fluent.Enums.statusLevel.info
-                               : Fluent.Enums.statusLevel.attention
-                    }
-                    Text {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        visible: root.activeProfileName.length > 0
-                                 && root.activeProfileName !== "ConfigPilot"
-                        text: "当前 Claude 档案：" + root.activeProfileName + "（只读）"
-                        color: Fluent.Enums.textColor.tertiary
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.family: Fluent.Enums.fontFamily
-                        elide: Text.ElideRight
+                        Layout.minimumWidth: 150
+                        spacing: Fluent.Enums.spacing.xxs
+
+                        Text {
+                            text: "开发者模式"
+                            color: Fluent.Enums.textColor.tertiary
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            font.family: Fluent.Enums.fontFamily
+                        }
+                        Fluent.Toggle {
+                            id: developerModeToggle
+                            objectName: "claudeDeveloperModeToggle"
+                            Layout.fillWidth: true
+                            controlType: Fluent.Enums.toggle.control_switch
+                            type: Fluent.Enums.toggle.type_default
+                            enabled: !root.configBusy
+                            text: root.developerModeEnabled ? "已启用" : "未启用"
+
+                            function syncChecked() {
+                                if (checked !== root.developerModeEnabled) {
+                                    checked = root.developerModeEnabled
+                                }
+                            }
+
+                            Component.onCompleted: Qt.callLater(syncChecked)
+                            onToggled: function(checkedValue) {
+                                root.developerModeToggled(checkedValue)
+                                Qt.callLater(syncChecked)
+                            }
+                            Connections {
+                                target: root
+                                function onDeveloperModeEnabledChanged() {
+                                    developerModeToggle.syncChecked()
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 150
+                        spacing: Fluent.Enums.spacing.xxs
+
+                        Text {
+                            text: "推理网关"
+                            color: Fluent.Enums.textColor.tertiary
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            font.family: Fluent.Enums.fontFamily
+                        }
+                        Fluent.Toggle {
+                            id: gatewayToggle
+                            objectName: "claudeGatewayToggle"
+                            Layout.fillWidth: true
+                            enabled: !root.configBusy
+                                     && (root.thirdPartyEnabled || root.gatewayCanEnable)
+                            controlType: Fluent.Enums.toggle.control_switch
+                            type: Fluent.Enums.toggle.type_default
+                            text: root.thirdPartyEnabled ? "已应用" : "未启用"
+
+                            function syncChecked() {
+                                if (checked !== root.thirdPartyEnabled) {
+                                    checked = root.thirdPartyEnabled
+                                }
+                            }
+
+                            Component.onCompleted: Qt.callLater(syncChecked)
+                            onToggled: function(checkedValue) {
+                                root.gatewayToggled(checkedValue)
+                                Qt.callLater(syncChecked)
+                            }
+                            Connections {
+                                target: root
+                                function onThirdPartyEnabledChanged() {
+                                    gatewayToggle.syncChecked()
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 150
+                        spacing: Fluent.Enums.spacing.xxs
+
+                        Text {
+                            text: "配置档案"
+                            color: Fluent.Enums.textColor.tertiary
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            font.family: Fluent.Enums.fontFamily
+                        }
+                        Fluent.Badge {
+                            text: root.profileName.length > 0 ? root.profileName : "未创建"
+                            level: root.profileName.length > 0
+                                   ? Fluent.Enums.statusLevel.info
+                                   : Fluent.Enums.statusLevel.attention
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.activeProfileName.length > 0
+                                     && root.activeProfileName !== "ConfigPilot"
+                            text: "当前 Claude 档案：" + root.activeProfileName + "（只读）"
+                            color: Fluent.Enums.textColor.tertiary
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            font.family: Fluent.Enums.fontFamily
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }

@@ -248,18 +248,20 @@ class SectionLayoutTests(unittest.TestCase):
         self._assert_content_fits(root, "ModelSection.qml")
         self._find(root, "modelEdit", "ModelSection.qml")
 
-    def test_model_fields_stack_vertically_with_full_width(self):
-        """字段按「标题 → 说明 → 控件」单列纵向堆叠，每个字段占满整行宽度。
+    def test_model_fields_are_inline_label_left_control_right(self):
+        """字段按「左侧标题+说明 / 右侧控件」内联排布，每个字段占满整行宽度。
 
-        防回流：曾经并排两列，带说明的字段比兄弟高一截，GridLayout 会把矮的
-        那个垂直居中，两边控件顶部错开；说明文字也曾排在控件下方。
+        防回流历史：更早是并排两列（带说明的字段比兄弟高一截，GridLayout 会把
+        矮的那个垂直居中，两边控件顶部错开）；后来改成「标题 → 说明 → 控件」
+        三行纵向堆叠，单字段固定吃掉 50~66px，一屏放不下几个字段。现在的约定
+        是标签内联：字段仍各占一整行，但内部左右两栏，单字段高度收敛到控件高度。
         """
         root, _ = self._create("ModelSection.qml")
         container = root.findChild(QQuickItem, "modelGrid")
         self.assertIsNotNone(container, "找不到 modelGrid")
         self.assertIsNone(
             container.property("columns"),
-            "modelGrid 不应再是 GridLayout（单列纵向堆叠即可）",
+            "modelGrid 不应再是 GridLayout（字段各占一行，左右分栏在字段内部）",
         )
 
         fields = [
@@ -269,36 +271,50 @@ class SectionLayoutTests(unittest.TestCase):
 
         previous_bottom = None
         for field in fields:
+            label = field.property("label")
             self.assertAlmostEqual(
                 field.width(),
                 container.width(),
                 2.0,
-                f"{field.property('label')} 应占满整行宽度",
+                f"{label} 应占满整行宽度",
             )
-            column = field.childItems()[0]
-            parts = column.childItems()
-            self.assertEqual(
-                len(parts), 3, f"{field.property('label')} 应恰好三行：标题/说明/控件"
+            row = field.childItems()[0]
+            parts = row.childItems()
+            self.assertEqual(len(parts), 2, f"{label} 应恰好两栏：左侧标签 / 右侧控件")
+            label_column, host = parts
+
+            # 标签在左、控件在右，且两栏顶部对齐（控件不能被垂直居中挤下去）。
+            self.assertLess(
+                label_column.x() + label_column.width(),
+                host.x() + 0.5,
+                f"{label} 的标签列必须在控件左侧",
             )
-            title_row, caption, host = parts
-            # 没有说明文字时该行折叠为 0 高并收在顶部，此时只校验控件在标题下。
+            self.assertAlmostEqual(
+                label_column.y(),
+                host.y(),
+                2.0,
+                f"{label} 的标签列与控件必须顶部对齐",
+            )
+
+            # 标签列内部仍是「标题行 → 说明行」，控件宿主不得小于控件本体高度。
+            title_row, caption = label_column.childItems()
             if caption.isVisible() and caption.height() > 0:
                 self.assertLess(
                     title_row.y() + title_row.height(),
                     caption.y() + 0.5,
-                    "说明文字必须排在标题下方",
+                    f"{label} 的说明文字必须排在标题下方",
                 )
-                self.assertLess(
-                    caption.y() + caption.height(),
-                    host.y() + 0.5,
-                    "控件必须排在说明文字下方",
-                )
-            else:
-                self.assertLess(
-                    title_row.y() + title_row.height(),
-                    host.y() + 0.5,
-                    "控件必须排在标题下方",
-                )
+            self.assertGreater(
+                host.width(),
+                label_column.width(),
+                f"{label} 的控件区应比标签列宽（标签不抢占控件空间）",
+            )
+            self.assertGreater(
+                host.height(),
+                20,
+                f"{label} 的控件宿主高度塌陷",
+            )
+
             if previous_bottom is not None:
                 self.assertGreaterEqual(
                     field.y() + 0.5,
@@ -308,11 +324,13 @@ class SectionLayoutTests(unittest.TestCase):
             previous_bottom = field.y() + field.height()
 
         # 思考等级也必须并进同一套 FormField 尺寸，不能自己封顶一个窄下拉。
+        # 标签内联后控件区不再等于整行宽度，而是与其它字段的控件区一致。
         effort = root.findChild(QQuickItem, "effortBox")
         self.assertIsNotNone(effort, "找不到思考等级下拉")
+        other_host = fields[0].childItems()[0].childItems()[1]
         self.assertAlmostEqual(
-            effort.width(), container.width(), 2.0,
-            "思考等级下拉应与其它字段等宽（不再写死 280 封顶）",
+            effort.width(), other_host.width(), 2,
+            "思考等级下拉应与其它字段的控件区等宽（不再写死 280 封顶）",
         )
 
     def test_form_fields_share_one_column_across_sections(self):
@@ -352,6 +370,69 @@ class SectionLayoutTests(unittest.TestCase):
         self._assert_content_fits(root, "ClaudeGatewaySection.qml")
         self._find(root, "claudeEndpointEdit", "ClaudeGatewaySection.qml")
         self._find(root, "claudeApiKeyEdit", "ClaudeGatewaySection.qml")
+
+    def test_claude_status_items_never_overflow_the_available_width(self):
+        """三个状态项并排后，任何宽度下都不得把第三项挤出右边界或压成 0 宽。
+
+        防回流：曾用 RowLayout 横排，窄窗口不折行，实测 760px 下三个子项
+        需要 632px 而只分到 508px，第三项直接被裁掉；改用 Flow 也不行——
+        Flow 是 positioner，不读子项的 Layout.preferredWidth，会按
+        implicitWidth 各自乱排。必须是按宽度折列的 GridLayout。
+
+        注意：只断言「不溢出」不够——把 GridLayout 写死 3 列时，格子会被
+        压窄但不会越界，断言照样通过。所以这里同时要求窄窗口必须折行
+        （出现第二行），这才是折列真正生效的证据。
+        """
+        for width in (1100, 900, 760):
+            root, _ = self._create(
+                "ClaudeStatusSection.qml", width=width, height=1200
+            )
+            status_grid = root.findChild(QQuickItem, "statusGrid")
+            self.assertIsNotNone(status_grid, "找不到 statusGrid")
+            # statusGrid 是外层 ColumnLayout，真正排三个状态格的是它里面的
+            # GridLayout（childItems 第一个）。
+            cells_parent = status_grid.childItems()[0]
+            cells = cells_parent.childItems()
+            self.assertEqual(len(cells), 3, f"{width}px 下状态格数量异常")
+
+            widest_right = 0.0
+            available = cells_parent.width()
+            for cell in cells:
+                for item in cell.childItems():
+                    widest_right = max(widest_right, item.x() + item.width())
+            self.assertLessEqual(
+                widest_right,
+                available + 1.0,
+                f"{width}px 下状态项溢出：最右 {widest_right:.1f} > 可用 {available:.1f}",
+            )
+            self.assertGreater(
+                available, 100, f"{width}px 下状态区宽度塌陷"
+            )
+            # 每个格子都得有可用宽度：被压成几十像素等于用不了。
+            thinnest = min(cell.width() for cell in cells)
+            self.assertGreater(
+                thinnest,
+                120,
+                f"{width}px 下最窄状态格只有 {thinnest:.1f}px，内容会被压扁",
+            )
+            for name in ("claudeDeveloperModeToggle", "claudeGatewayToggle"):
+                toggle = root.findChild(QQuickItem, name)
+                self.assertIsNotNone(toggle, f"找不到 {name}")
+                self.assertGreater(
+                    toggle.width(), 100, f"{width}px 下 {name} 宽度塌陷"
+                )
+
+        # 窄窗口必须真的折行：宽窗口一行放得下三格，760px 不该还挤成一行。
+        narrow, _ = self._create(
+            "ClaudeStatusSection.qml", width=760, height=1200
+        )
+        narrow_grid = narrow.findChild(QQuickItem, "statusGrid")
+        narrow_cells = narrow_grid.childItems()[0].childItems()
+        row_positions = {round(cell.y()) for cell in narrow_cells}
+        self.assertGreater(
+            len(row_positions), 1,
+            "760px 下三个状态项仍挤在一行，折列没有生效",
+        )
 
 
 if __name__ == "__main__":

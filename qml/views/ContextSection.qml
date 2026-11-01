@@ -93,38 +93,40 @@ Fluent.Expander {
                 }
             }
 
-            Column {
+            // 占比这块也是「标签在左、控件在右」：以前标题一行、进度条一行，
+            // 白白占掉两行高度；进度条本身只有几个像素高，跟标题同一行更紧凑。
+            RowLayout {
                 width: cardColumn.innerWidth
-                spacing: Fluent.Enums.spacing.s
+                spacing: Fluent.Enums.spacing.l
 
-                RowLayout {
-                    width: parent.width
-                    spacing: Fluent.Enums.spacing.s
-
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 0
-                        text: "自动压缩阈值占上下文窗口"
-                        color: Fluent.Enums.textColor.secondary
-                        font.pixelSize: Fluent.Enums.typography.body
-                        font.bold: true
-                        font.family: Fluent.Enums.fontFamily
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        id: compactRatioValue
-                        text: root.compactRatioText
-                        color: Fluent.Enums.textColor.primary
-                        font.pixelSize: Fluent.Enums.typography.body
-                        font.bold: true
-                        font.family: Fluent.Enums.fontFamily
-                    }
+                Text {
+                    Layout.preferredWidth: 280
+                    Layout.maximumWidth: 280
+                    text: "自动压缩阈值占上下文窗口"
+                    color: Fluent.Enums.textColor.secondary
+                    font.pixelSize: Fluent.Enums.typography.body
+                    font.bold: true
+                    font.family: Fluent.Enums.fontFamily
+                    elide: Text.ElideRight
                 }
+
                 Fluent.ProgressBar {
-                    width: parent.width
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignVCenter
                     from: 0
                     to: 1
                     value: root.compactRatio
+                }
+
+                Text {
+                    id: compactRatioValue
+                    Layout.alignment: Qt.AlignVCenter
+                    text: root.compactRatioText
+                    color: Fluent.Enums.textColor.primary
+                    font.pixelSize: Fluent.Enums.typography.body
+                    font.bold: true
+                    font.family: Fluent.Enums.fontFamily
                 }
             }
 

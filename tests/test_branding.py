@@ -494,20 +494,27 @@ raise SystemExit(app.exec())
                 f"{relative_path} 仍保留旧的双层键名标签",
             )
 
-    def test_form_field_orders_title_caption_then_control(self):
-        """FormField 内部行序固定为「标题 → 说明 → 控件」。
+    def test_form_field_puts_label_left_and_control_right(self):
+        """FormField 内部固定「左侧标签列 → 右侧控件」，标签列内是标题在上、说明在下。
 
-        说明行挪到控件后面时，同排字段高度不一，GridLayout 会把矮的那个
-        垂直居中，控件顶部就错开了；这里用源码顺序防回流。
+        历史：说明行曾排在控件后面（同排字段高度不一导致错位）；随后又改成
+        「标题 → 说明 → 控件」三行纵向堆叠，单字段固定吃掉 50~66px。现在的
+        约定是标签内联——左右两栏，标签列里仍是标题在上、说明在下。
         """
         form_field = self.read("qml/views/FormField.qml")
+        row = form_field.index("id: fieldRow")
+        label_column = form_field.index("id: fieldLabelColumn")
         title_row = form_field.index("id: labelRow")
         caption = form_field.index("id: hintText")
-        host = form_field.index("id: fieldHost")
+        host = form_field.index("objectName: \"fieldHost\"")
+        self.assertLess(row, label_column, "控件行必须在标签列之外（左右两栏）")
+        self.assertLess(label_column, title_row, "标题行必须在标签列内")
         self.assertLess(title_row, caption, "标题行必须在说明文字之上")
         self.assertLess(caption, host, "说明文字必须在控件宿主之上")
+        self.assertLess(label_column, host, "标签列必须在控件左侧")
         # 常量上限而不是引用自身宽度：引用会触发 Qt Quick Layouts 递归重排。
         self.assertIn("Layout.alignment: Qt.AlignTop", form_field)
+        self.assertIn("Layout.maximumWidth: 280", form_field)
 
     def test_application_update_flow_uses_prismqml_engine(self):
         main_py = self.read("main.py")

@@ -25,18 +25,13 @@ Fluent.Drawer {
     signal repairSubagentDefaultsRequested()
     signal reloadRequested()
 
-    Item {
-        id: panel
-        width: root.drawerWidth
-        implicitHeight: contentColumn.implicitHeight + 2 * Fluent.Enums.spacing.l
-
-        ColumnLayout {
-            id: contentColumn
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.margins: Fluent.Enums.spacing.l
-            spacing: Fluent.Enums.spacing.m
+    // 注意：Drawer 的 contentItem 已经 anchors.fill + margins(spacing.xl)，
+    // 内容必须填满它（anchors.fill），不能再自己按 drawerWidth 定宽——那样会
+    // 多算一份边距，把右侧的「执行」按钮挤出面板边界。
+    ColumnLayout {
+        id: contentColumn
+        anchors.fill: parent
+        spacing: Fluent.Enums.spacing.m
 
             Text {
                 Layout.fillWidth: true
@@ -109,7 +104,6 @@ Fluent.Drawer {
             }
 
             Item { Layout.fillHeight: true }
-        }
     }
 
     // 抽屉内单条操作：左侧标题+说明，右侧按钮。整体可点，也保留独立按钮语义。

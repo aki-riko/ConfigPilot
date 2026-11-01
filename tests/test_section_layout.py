@@ -169,6 +169,54 @@ class SectionLayoutTests(unittest.TestCase):
         self.assertGreater(root.width(), 0, "抽屉宽度塌陷")
         self.assertGreater(root.height(), 0, "抽屉高度塌陷")
 
+    def test_toolbox_content_fits_inside_drawer_padding(self):
+        """内容必须交给 Drawer 的 contentItem 管理宽度。
+
+        防回流：曾在外层再套一个 `width: root.drawerWidth` 的 Item，导致内容区
+        被多减一次边距、右侧「执行」按钮被裁出面板。
+
+        这里用结构约束而不是运行时测量：外抽屉的内容运行在独立窗口里，
+        挂在普通窗口下实例化时量不到真实面板宽度，运行时断言会假通过。
+        """
+        source = (VIEWS_DIR / "ToolboxDrawer.qml").read_text(encoding="utf-8")
+
+        # 根内容必须 anchors.fill: parent（填满 Drawer 已带边距的 contentItem）。
+        self.assertIn("anchors.fill: parent", source)
+        # 不得再按 drawerWidth 给内容定宽——那正是裁掉右边按钮的写法。
+        self.assertNotIn(
+            "width: root.drawerWidth",
+            source,
+            "ToolboxDrawer 的内容不应再按 drawerWidth 定宽（会多算一次边距）",
+        )
+
+    def test_address_fields_live_on_the_api_key_tab(self):
+        """API 地址/提供商/协议属于「API 密钥」那一页，不能留在分段控件外面。"""
+        root, _ = self._create("ConnectionSection.qml")
+        tabs = root.findChild(QQuickItem, "codexCredentialTabs")
+        self.assertIsNotNone(tabs, "缺少分段控件")
+
+        for name in ("baseUrlEdit", "providerEdit", "wireApiComboBox"):
+            item = root.findChild(QQuickItem, name)
+            self.assertIsNotNone(item, f"缺少 {name}")
+            self.assertTrue(
+                item.isVisible(),
+                f"{name} 在默认的 API 密钥页应当可见",
+            )
+
+        # 切到 JSON 页后，连接信息整块让位。
+        tabs.setProperty("currentIndex", 1)
+        settle(300)
+        for name in ("baseUrlEdit", "providerEdit", "wireApiComboBox"):
+            item = root.findChild(QQuickItem, name)
+            self.assertFalse(
+                item.isVisible(),
+                f"{name} 在 ChatGPT JSON 页不应出现",
+            )
+        self.assertTrue(
+            root.findChild(QQuickItem, "authJsonInput").isVisible(),
+            "JSON 页应显示导入框",
+        )
+
     def test_model_section_content_is_not_clipped(self):
         root, _ = self._create("ModelSection.qml")
         self._assert_content_fits(root, "ModelSection.qml")

@@ -100,159 +100,10 @@ Fluent.Expander {
                 0, width - leftPadding - rightPadding
             )
 
-            // ---------- 地址与协议 ----------
-            FormField {
-                width: cardColumn.innerWidth
-                label: "API 地址"
-                keyName: "base_url"
-                hint: "未包含 /v1 时自动补全（失焦或回车即回填）"
-
-                Fluent.LineEdit {
-                    id: baseUrlEdit
-                    objectName: "baseUrlEdit"
-                    Layout.fillWidth: true
-                    placeholderText: "https://api.example.com/v1"
-                    Component.onCompleted: Qt.callLater(function() {
-                        text = root.baseUrlValue
-                    })
-                    onTextChanged: {
-                        if (text !== root.baseUrlValue) root.baseUrlEdited(text)
-                    }
-                    onEditingFinished: root.commitBaseUrl()
-                    Connections {
-                        target: root
-                        function onBaseUrlValueChanged() {
-                            if (baseUrlEdit.text !== root.baseUrlValue) {
-                                baseUrlEdit.text = root.baseUrlValue
-                            }
-                        }
-                    }
-                }
-            }
-
-            GridLayout {
-                id: connectionGrid
-                objectName: "connectionGrid"
-                width: cardColumn.innerWidth
-                columns: width < 620 ? 1 : 2
-                uniformCellWidths: columns === 2
-                columnSpacing: Fluent.Enums.spacing.l
-                rowSpacing: Fluent.Enums.spacing.l
-                readonly property real equalItemWidth: columns === 2
-                                                       ? Math.max(
-                                                             0,
-                                                             (width - columnSpacing) / 2
-                                                         )
-                                                       : width
-
-                FormField {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    Layout.preferredWidth: connectionGrid.equalItemWidth
-                    Layout.maximumWidth: connectionGrid.equalItemWidth
-                    label: "提供商标识"
-                    keyName: "provider"
-
-                    Fluent.LineEdit {
-                        id: providerEdit
-                        objectName: "providerEdit"
-                        Layout.fillWidth: true
-                        placeholderText: "relay"
-                        Component.onCompleted: Qt.callLater(function() {
-                            text = root.providerValue
-                        })
-                        onTextChanged: {
-                            if (text !== root.providerValue) root.providerEdited(text)
-                        }
-                        Connections {
-                            target: root
-                            function onProviderValueChanged() {
-                                if (providerEdit.text !== root.providerValue) {
-                                    providerEdit.text = root.providerValue
-                                }
-                            }
-                        }
-                    }
-                }
-
-                FormField {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    Layout.preferredWidth: connectionGrid.equalItemWidth
-                    Layout.maximumWidth: connectionGrid.equalItemWidth
-                    label: "通信协议"
-                    keyName: "wire_api"
-
-                    Fluent.ComboBoxDefault {
-                        id: wireApiBox
-                        objectName: "wireApiComboBox"
-                        Layout.fillWidth: true
-                        property var protocolOptions: []
-
-                        // 候选与显示名都来自后端 CodexConfig.wireApiOptions()：
-                        // 界面只出现协议名，写入 config.toml 的 wire_api 标识由后端
-                        // 映射（backend/wire_api.py）。配置里若留着认不出的历史值，
-                        // 后端原样透传，这里也照原样多列一项，避免被静默改写。
-                        function reloadOptions() {
-                            var source = CodexConfig
-                                         ? CodexConfig.wireApiOptions() : []
-                            var options = []
-                            for (var i = 0; i < source.length; i++) {
-                                options.push({
-                                    "value": source[i].value,
-                                    "text": source[i].text
-                                })
-                            }
-                            var current = root.wireApiValue
-                            var known = false
-                            for (var j = 0; j < options.length; j++) {
-                                if (options[j].value === current) known = true
-                            }
-                            if (!known && current.length > 0) {
-                                options.push({
-                                    "value": current,
-                                    "text": CodexConfig
-                                            ? CodexConfig.wireApiLabel(current)
-                                            : current
-                                })
-                            }
-                            protocolOptions = options
-                            wireApiBox.syncCurrentIndex()
-                        }
-
-                        function syncCurrentIndex() {
-                            var found = 0
-                            for (var i = 0; i < protocolOptions.length; i++) {
-                                if (protocolOptions[i].value === root.wireApiValue) {
-                                    found = i
-                                }
-                            }
-                            if (currentIndex !== found) currentIndex = found
-                        }
-
-                        model: protocolOptions
-                        Component.onCompleted: Qt.callLater(reloadOptions)
-                        onActivated: function(index) {
-                            if (index >= 0 && index < protocolOptions.length) {
-                                // 回传显示名，由 CodexView 交给后端映射成标识
-                                root.wireApiEdited(protocolOptions[index].text)
-                            }
-                        }
-                        Connections {
-                            target: root
-                            function onWireApiValueChanged() {
-                                wireApiBox.reloadOptions()
-                            }
-                        }
-                    }
-                }
-            }
-
-            Fluent.Separator {
-                width: cardColumn.innerWidth
-            }
 
             // ---------- 凭据：API 密钥 / ChatGPT JSON 用分段控件切换 ----------
+            // 「API 地址 / 提供商标识 / 通信协议」属于 API 密钥这一套连接信息，
+            // 跟着分段走：选 API 密钥时才出现，选 ChatGPT JSON 时整块让位。
             Item {
                 width: cardColumn.innerWidth
                 implicitHeight: credentialColumn.implicitHeight
@@ -261,7 +112,7 @@ Fluent.Expander {
                 Column {
                     id: credentialColumn
                     width: parent.width
-                    spacing: Fluent.Enums.spacing.m
+                    spacing: Fluent.Enums.spacing.l
 
                     // 两种凭据来源互斥，用分段控件而不是上下堆叠，避免卡片过长。
                     // 分段控件只管"看哪一页"，两页草稿各自保留。
@@ -273,6 +124,160 @@ Fluent.Expander {
                             { "key": "authJson", "text": "ChatGPT JSON" }
                         ]
                         currentIndex: 0
+                    }
+
+                    // ---------- 连接信息：归属 API 密钥这一页 ----------
+                    Column {
+                        width: parent.width
+                        visible: credentialTabs.currentIndex === 0
+                        spacing: Fluent.Enums.spacing.l
+
+                        FormField {
+                            width: parent.width
+                            label: "API 地址"
+                            keyName: "base_url"
+                            hint: "未包含 /v1 时自动补全（失焦或回车即回填）"
+
+                            Fluent.LineEdit {
+                                id: baseUrlEdit
+                                objectName: "baseUrlEdit"
+                                Layout.fillWidth: true
+                                placeholderText: "https://api.example.com/v1"
+                                Component.onCompleted: Qt.callLater(function() {
+                                    text = root.baseUrlValue
+                                })
+                                onTextChanged: {
+                                    if (text !== root.baseUrlValue) root.baseUrlEdited(text)
+                                }
+                                onEditingFinished: root.commitBaseUrl()
+                                Connections {
+                                    target: root
+                                    function onBaseUrlValueChanged() {
+                                        if (baseUrlEdit.text !== root.baseUrlValue) {
+                                            baseUrlEdit.text = root.baseUrlValue
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        GridLayout {
+                            id: connectionGrid
+                            objectName: "connectionGrid"
+                            width: parent.width
+                            columns: width < 620 ? 1 : 2
+                            uniformCellWidths: columns === 2
+                            columnSpacing: Fluent.Enums.spacing.l
+                            rowSpacing: Fluent.Enums.spacing.l
+                            readonly property real equalItemWidth: columns === 2
+                                                                   ? Math.max(
+                                                                         0,
+                                                                         (width - columnSpacing) / 2
+                                                                     )
+                                                                   : width
+
+                            FormField {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: connectionGrid.equalItemWidth
+                                Layout.maximumWidth: connectionGrid.equalItemWidth
+                                label: "提供商标识"
+                                keyName: "provider"
+
+                                Fluent.LineEdit {
+                                    id: providerEdit
+                                    objectName: "providerEdit"
+                                    Layout.fillWidth: true
+                                    placeholderText: "relay"
+                                    Component.onCompleted: Qt.callLater(function() {
+                                        text = root.providerValue
+                                    })
+                                    onTextChanged: {
+                                        if (text !== root.providerValue) root.providerEdited(text)
+                                    }
+                                    Connections {
+                                        target: root
+                                        function onProviderValueChanged() {
+                                            if (providerEdit.text !== root.providerValue) {
+                                                providerEdit.text = root.providerValue
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            FormField {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.preferredWidth: connectionGrid.equalItemWidth
+                                Layout.maximumWidth: connectionGrid.equalItemWidth
+                                label: "通信协议"
+                                keyName: "wire_api"
+
+                                Fluent.ComboBoxDefault {
+                                    id: wireApiBox
+                                    objectName: "wireApiComboBox"
+                                    Layout.fillWidth: true
+                                    property var protocolOptions: []
+
+                                    // 候选与显示名都来自后端 CodexConfig.wireApiOptions()：
+                                    // 界面只出现协议名，写入 config.toml 的 wire_api 标识由后端
+                                    // 映射（backend/wire_api.py）。配置里若留着认不出的历史值，
+                                    // 后端原样透传，这里也照原样多列一项，避免被静默改写。
+                                    function reloadOptions() {
+                                        var source = CodexConfig
+                                                     ? CodexConfig.wireApiOptions() : []
+                                        var options = []
+                                        for (var i = 0; i < source.length; i++) {
+                                            options.push({
+                                                "value": source[i].value,
+                                                "text": source[i].text
+                                            })
+                                        }
+                                        var current = root.wireApiValue
+                                        var known = false
+                                        for (var j = 0; j < options.length; j++) {
+                                            if (options[j].value === current) known = true
+                                        }
+                                        if (!known && current.length > 0) {
+                                            options.push({
+                                                "value": current,
+                                                "text": CodexConfig
+                                                        ? CodexConfig.wireApiLabel(current)
+                                                        : current
+                                            })
+                                        }
+                                        protocolOptions = options
+                                        wireApiBox.syncCurrentIndex()
+                                    }
+
+                                    function syncCurrentIndex() {
+                                        var found = 0
+                                        for (var i = 0; i < protocolOptions.length; i++) {
+                                            if (protocolOptions[i].value === root.wireApiValue) {
+                                                found = i
+                                            }
+                                        }
+                                        if (currentIndex !== found) currentIndex = found
+                                    }
+
+                                    model: protocolOptions
+                                    Component.onCompleted: Qt.callLater(reloadOptions)
+                                    onActivated: function(index) {
+                                        if (index >= 0 && index < protocolOptions.length) {
+                                            // 回传显示名，由 CodexView 交给后端映射成标识
+                                            root.wireApiEdited(protocolOptions[index].text)
+                                        }
+                                    }
+                                    Connections {
+                                        target: root
+                                        function onWireApiValueChanged() {
+                                            wireApiBox.reloadOptions()
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     FormField {

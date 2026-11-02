@@ -10,6 +10,15 @@ on:
         description: "应用版本号 (写入 bundle / dmg 文件名)"
         required: false
         default: "1.0.35"
+      target:
+        description: "构建目标平台"
+        required: false
+        type: choice
+        default: all
+        options:
+          - all
+          - macos
+          - windows
 
 # 让 Attach to release 步骤能创建 Release(默认 GITHUB_TOKEN 只读)
 permissions:
@@ -18,6 +27,14 @@ permissions:
 jobs:
   build-macos:
     name: Build macOS ${{ matrix.label }}
+    # macOS 产物本机无法构建（需要 Nuitka + hdiutil），只能靠这里出。
+    # tag 推送时照常构建；手动触发时可用 target=macos 只补 dmg，避开
+    # Windows 任务重新上传未签名的 Setup.exe 覆盖已签名产物。
+    if: >-
+      github.ref_type == 'tag'
+      || github.event.inputs.target == 'macos'
+      || github.event.inputs.target == 'all'
+      || github.event.inputs.target == ''
     strategy:
       fail-fast: false
       matrix:
@@ -76,6 +93,14 @@ jobs:
 
   build-windows:
     name: Build Windows
+    # Windows 产物走本地签名发版（Certum 云端 HSM + TOTP，无法在 CI 签名）。
+    # 手动触发时默认跳过，仅 target=windows/all 才跑；否则 CI 会用未签名的
+    # Setup.exe 覆盖已签名的同名产物。
+    if: >-
+      github.ref_type == 'tag'
+      || github.event.inputs.target == 'windows'
+      || github.event.inputs.target == 'all'
+      || github.event.inputs.target == ''
     runs-on: windows-latest
     steps:
       - name: Checkout

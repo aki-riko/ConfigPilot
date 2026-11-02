@@ -97,9 +97,11 @@ def check_signing_ready() -> Path:
     print(f"[check] SimplySign: 运行中（{running} 个进程）")
 
     thumbprint = signing.DEFAULT_THUMBPRINT
-    # 只输出一行日期，避免拼接字符串在部分 PowerShell 代码页下报解析错误。
+    # 注意：`powershell` 是 Windows PowerShell 5.1，其 Get-ChildItem 不支持
+    # -CodeSigningCert 参数（那是 PowerShell 7 才有的）。这里改用显式 OID 过滤，
+    # 5.1 与 7 都能跑。只输出一行日期，避免字符串拼接在部分代码页下解析失败。
     cert_script = (
-        f"$c = Get-ChildItem Cert:\\CurrentUser\\My -CodeSigningCert | "
+        f"$c = Get-ChildItem Cert:\\CurrentUser\\My | "
         f"Where-Object {{ $_.Thumbprint -eq '{thumbprint}' }}; "
         "if ($c) { $c[0].NotAfter.ToString('yyyy-MM-dd') }"
     )

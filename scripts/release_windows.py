@@ -83,11 +83,9 @@ def check_signing_ready() -> Path:
     signtool = signing.find_signtool()
     print(f"[check] signtool  : {signtool}")
 
-    process = subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         "(Get-Process -Name '*SimplySign*' -ErrorAction SilentlyContinue | "
-         "Measure-Object).Count"],
-        capture_output=True, text=True,
+    process = signing._powershell(
+        "(Get-Process -Name '*SimplySign*' -ErrorAction SilentlyContinue | "
+        "Measure-Object).Count"
     )
     running = (process.stdout or "").strip()
     if running in ("", "0"):
@@ -97,21 +95,16 @@ def check_signing_ready() -> Path:
     print(f"[check] SimplySign: 运行中（{running} 个进程）")
 
     thumbprint = signing.DEFAULT_THUMBPRINT
-    # 两个坑：
-    #   1. `powershell` 是 Windows PowerShell 5.1，`-CodeSigningCert` 是 7.x 参数。
-    #   2. Python 子进程里 5.1 默认没加载 Cert: 驱动器（需 Import-Module PKI），
-    #      直接 Get-ChildItem Cert:\... 会报 drive 不存在。
-    # 因此改用 .NET 的 X509Store，5.1/7 都稳定可用。输出只有一行日期。
+    # 用 .NET 的 X509Store 而不是 Cert: 驱动器：Windows PowerShell 5.1 在本机
+    # 的 Microsoft.PowerShell.Security / PKI 模块加载失败，Cert: 驱动器不存在；
+    # X509Store 属于 BCL，两种 PowerShell 都稳定可用。输出只有一行日期。
     cert_script = (
         "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store"
         "('My','CurrentUser'); $s.Open('ReadOnly'); "
         f"$c = $s.Certificates | Where-Object {{ $_.Thumbprint -eq '{thumbprint}' }}; "
         "if ($c) { $c[0].NotAfter.ToString('yyyy-MM-dd') }; $s.Close()"
     )
-    cert = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", cert_script],
-        capture_output=True, text=True,
-    )
+    cert = signing._powershell(cert_script)
     found = ""
     for line in (cert.stdout or "").splitlines():
         text = line.strip()

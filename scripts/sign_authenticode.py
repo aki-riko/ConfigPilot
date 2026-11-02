@@ -153,16 +153,27 @@ def verify_file(signtool: Path, target: Path) -> None:
 
 
 def _powershell(script: str) -> subprocess.CompletedProcess:
-    """在 Windows PowerShell 5.1 下执行脚本。
+    """执行 PowerShell 脚本，优先 pwsh(7.x)，回退 Windows PowerShell 5.1。
 
-    5.1 默认不加载 PKI 模块（Cert: 驱动器与 Get-AuthenticodeSignature 都依赖它），
-    而 Python 子进程不会继承交互式会话的模块状态。这里显式导入。
+    为什么优先 pwsh：实测 Windows PowerShell 5.1 的 Microsoft.PowerShell.Security
+    模块在本机加载失败，`Get-AuthenticodeSignature` 会返回空对象（Status 为空、
+    SignerCertificate 为 null），导致已签名的文件被误判成未签名。pwsh 7.6 正常。
+    5.1 仅作兜底，并在结果异常时给出可诊断的提示。
     """
-    return _run([
-        "powershell", "-NoProfile", "-Command",
-        "Import-Module Microsoft.PowerShell.Security -ErrorAction SilentlyContinue; "
-        + script,
-    ])
+    last: subprocess.CompletedProcess | None = None
+    for shell in ("pwsh", "powershell"):
+        try:
+            result = _run([
+                shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script,
+            ])
+        except FileNotFoundError:
+            continue
+        last = result
+        if result.returncode == 0 and (result.stdout or "").strip():
+            return result
+    if last is None:
+        raise SigningError("找不到可用的 PowerShell（pwsh / powershell 均不可用）")
+    return last
 
 
 def _read_signature_state(target: Path) -> tuple[str, bool]:

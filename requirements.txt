@@ -20,5 +20,11 @@
 #     文本区不再伸到清除按钮下方
 #   - Drawer(mode_outside) 外侧阴影重做：像带对齐宿主 DWM、接缝处对称淡出、
 #     面板跨接缝方向跟随原生 HWND；_outsideShadowSpread 计入 offset
-prismqml==0.7.1.14
+# 0.7.1.15(2026-11-02 升级)的修复，本项目工具箱直接受益：
+#   - Drawer 内侧模式此前把挂载点硬编码成 Window.contentItem，无视基类
+#     OverlayDialogCore 公开的 overlayTarget；页面级内抽屉会被静默升级成
+#     整窗遮罩。修复后优先 overlayTarget，未设置才回退窗口内容项(向后兼容)。
+#   - 同类修复：ColorPickerDialog 重写 open() 时补回基类契约(皮肤作用域捕获、
+#     _fillOverlayHost、_prepareOpen)；ColorPicker 调色板对话框不再硬编码窗口级。
+prismqml==0.7.1.15
 PySide6>=6.9.0

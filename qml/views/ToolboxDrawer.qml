@@ -2,19 +2,30 @@ import QtQuick
 import QtQuick.Layouts
 import PrismQML as Fluent
 
-// 工具箱：把维护类操作收进一个外抽屉（mode_outside，从宿主窗口外侧滑出），
+// 工具箱：把维护类操作收进一个内抽屉（mode_inside，在 Codex 页面内部滑出），
 // 不再让六个按钮横铺在设置页里。抽屉内容全是"低频、有副作用"的操作，
 // 因此每项都带一句说明，避免误点。
+//
+// 用内抽屉而不是外抽屉：外抽屉是贴着宿主窗口外侧的独立 HWND，切页不会带着它走，
+// 必须额外写一套「页面失活就收起」的补丁；而内抽屉天然跟随本页，遮罩也只盖住
+// 本页范围，不会压暗整窗。
 Fluent.Drawer {
     id: root
 
     objectName: "codexToolboxDrawer"
-    // 外抽屉：贴着主窗口外侧滑出，不遮住页面内容。
-    mode: Fluent.Enums.drawer.mode_outside
+    // 内抽屉：在页面内部滑出，遮罩只覆盖本页。
+    mode: Fluent.Enums.drawer.mode_inside
     position: Fluent.Enums.position.right
     drawerWidth: 360
+    // 内抽屉的横向模式高度跟随父级（整页高），drawerHeight 不参与布局。
     drawerHeight: 420
     animationDuration: Fluent.Enums.duration.medium
+    // 覆盖宿主即本页容器：抽屉挂在本页里、遮罩也只盖本页。
+    // 必须显式传入而不是依赖 parent —— Drawer 打开时会把自身重挂到覆盖宿主，
+    // parent 会变，靠它取宿主会拿到重挂之后的自己。
+    // PrismQML 0.7.1.15 起 Drawer 才真正尊重 overlayTarget（此前硬编码窗口内容项）。
+    property Item overlayHost: null
+    overlayTarget: overlayHost
 
     property bool configBusy: false
     property bool hasRestorableChanges: false
@@ -27,13 +38,13 @@ Fluent.Drawer {
     property string subagentReasoningEffort: ""
     // 下拉框当前选中的模型；空值表示还没选，此时「执行」保持禁用。
     property string selectedSubagentModel: ""
-    // 启动即展开：外抽屉要求宿主窗口已就绪，因此等窗口可见后再开一次。
+    // 启动即展开：抽屉要等页面容器量好尺寸后再开一次。
     // 只自动展开一次，用户手动收起后不再弹回来。
     property bool autoOpened: false
-    // 所属页面是否处于活动状态。工具箱是本页的一部分：外抽屉是宿主窗口外侧的
-    // 独立 HWND，切页不会带着它走，所以页面失活时必须自己收起，否则用户在
-    // Claude / 设置页会看到一个只属于 Codex 的工具箱挂在窗口外面。
-    // 默认 true 保持单独实例化（测试/预览）时不依赖宿主页面的行为。
+    // 所属页面是否处于活动状态。工具箱是本页的一部分，切到 Claude / 设置页时
+    // 本页整体隐藏，抽屉随之不可见；这里仍保留显式收起，避免内抽屉在页面
+    // 重新可见时残留展开态或遮罩。默认 true 保持单独实例化（测试/预览）时
+    // 不依赖宿主页面的行为。
     property bool pageActive: true
     // 离开本页时是否处于展开态：回来时按这个恢复，既不吞掉用户的展开状态，
     // 也不会让用户手动收起过的工具箱自己弹回来。
@@ -87,13 +98,14 @@ Fluent.Drawer {
     function openOnceReady() {
         if (autoOpened) return
         if (!root.pageActive) return
-        var host = root.Window.window
-        if (!host || !host.contentItem) return
+        // 内抽屉只需要覆盖宿主（本页容器）已就绪，不再依赖宿主窗口的 HWND。
+        if (!root.overlayHost) return
         autoOpened = true
         root.open()
     }
 
-    // 页面失活（切到 Claude / 设置页）：立刻收起外抽屉，并记住「离开时是展开的」。
+    // 页面失活（切到 Claude / 设置页）：收起抽屉，并记住「离开时是展开的」。
+    // 内抽屉虽然会随本页隐藏，但仍显式收起，避免重新回到本页时残留遮罩。
     function closeForInactivePage() {
         if (!root.opened) return
         root.reopenAfterPageReturn = true
@@ -130,7 +142,7 @@ Fluent.Drawer {
     }
     onSubagentModelChanged: preselectCurrentModel()
 
-    // 宿主窗口首帧可见后再补一次：外抽屉要跟随宿主 HWND，太早开会拿不到宿主。
+    // 覆盖宿主就绪后再补一次：页面容器要先完成布局，太早开会拿不到尺寸。
     Timer {
         id: hostReadyTimer
         interval: 120

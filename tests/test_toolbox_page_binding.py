@@ -1,12 +1,16 @@
 # coding: utf-8
-"""工具箱只在 Codex 页出现（真行为门禁）。
+"""工具箱只跟随 Codex 页显隐（真行为门禁）。
 
-背景（真实 BUG）：工具箱是外抽屉（mode_outside），宿主窗口之外另开一个 HWND。
-页面栈切页只把页面 Item 的 visible 置假，外抽屉的独立窗口不受影响，于是切到
-Claude / 设置页后，Codex 的维护工具箱仍然挂在主窗口外面。
+历史背景（真实 BUG）：工具箱曾是外抽屉（mode_outside），宿主窗口之外另开一个
+HWND。页面栈切页只把页面 Item 的 visible 置假，外抽屉的独立窗口不受影响，
+于是切到 Claude / 设置页后，Codex 的维护工具箱仍然挂在主窗口外面。
 
-这里不放源码字符串断言：把 ToolboxDrawer 真实例化进一个真实窗口，用外抽屉
-真实的 open/close 走完整个链路，再核对 opened 状态。
+现在工具箱是内抽屉（mode_inside），挂在 Codex 页容器内部，天然跟随本页显隐；
+但「页面失活就收起、回到本页再恢复」的行为仍保留，避免残留展开态或遮罩。
+这些用例继续锁住该行为，防止被改回“自己测自己”的空壳。
+
+这里不放源码字符串断言：把 ToolboxDrawer 真实例化进一个真实窗口的页面容器，
+用真实的 open/close 走完整个链路，再核对 opened 状态。
 """
 
 import os
@@ -63,18 +67,28 @@ class ToolboxPageBindingTests(unittest.TestCase):
             "ToolboxDrawer.qml 加载失败: "
             + "; ".join(e.toString() for e in component.errors()),
         )
-        root = component.create()
-        self.assertIsNotNone(root)
 
         window = QQuickWindow()
         window.resize(width, height)
-        root.setParentItem(window.contentItem())
+
+        # 内抽屉的真实用法：抽屉的覆盖宿主是一个页面级容器，而不是窗口内容项。
+        # 这里照搬 CodexView 的接线（overlayHost: 页面 Item），否则抽屉没有宿主、
+        # 不会自动展开，测的就不是真实链路。
+        page = QQuickItem(window.contentItem())
+        page.setWidth(width)
+        page.setHeight(height)
+        window.contentItem().setProperty("pageHost", page)
+
+        root = component.create()
+        self.assertIsNotNone(root)
+        root.setParentItem(page)
+        root.setProperty("overlayHost", page)
         root.setProperty("width", width)
         root.setProperty("height", height)
         root.setProperty("pageActive", page_active)
         window.show()
         settle()
-        self._kept.extend([engine, component, root, window])
+        self._kept.extend([engine, component, root, window, page])
         return root, window
 
     def test_drawer_closes_when_page_goes_inactive(self):

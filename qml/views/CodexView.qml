@@ -9,8 +9,8 @@ Item {
     objectName: "codexView"
 
     // 本页是否处于活动状态：工具箱是本页的一部分，必须跟着本页显隐。
-    // 外抽屉是宿主窗口外侧的独立 HWND，切页不会把它带走，不跟随就会在
-    // Claude/设置页外面留一个只属于 Codex 的维护工具箱。
+    // 内抽屉虽然会随本页一起隐藏，但仍用它驱动显式收起，避免回到本页时
+    // 残留展开态或遮罩。
     // 从 visible 派生而不是等页面栈写 pageActive：前者由 StackedWidget 的
     // `visible: index === _displayIndex` 直接驱动，0.5/0.7 两代引擎都成立；
     // 后者是 0.7 才有的可选契约（StackedPageActivityController 写入只读属性
@@ -242,10 +242,12 @@ Item {
         }
     }
 
-    // 维护类操作全部收进外抽屉，避免六个按钮横铺在页面上。
-    // pageActive 让抽屉只在本页可见时展开，切到 Claude/设置页会自动收起。
+    // 维护类操作全部收进内抽屉，避免六个按钮横铺在页面上。
+    // overlayHost 明确指向本页容器：抽屉在本页内部滑出，遮罩只覆盖本页，
+    // 不再升到窗口级把整窗压暗。pageActive 让抽屉只在本页可见时展开。
     ToolboxDrawer {
         id: codexToolbox
+        overlayHost: root
         pageActive: root.pageActive
         configBusy: root.configBusy
         hasRestorableChanges: CodexConfig ? CodexConfig.hasRestorableChanges : false

@@ -87,7 +87,8 @@ class SectionLayoutTests(unittest.TestCase):
     def setUp(self):
         self._kept = []
 
-    def _create(self, relative_path, *, width=1100, height=1400, properties=None):
+    def _create(self, relative_path, *, width=1100, height=1400, properties=None,
+                with_overlay_host=False):
         engine = QQmlEngine()
         engine.addImportPath(os.path.dirname(prismqml.__file__))
         engine.addImportPath(str(VIEWS_DIR))
@@ -113,13 +114,25 @@ class SectionLayoutTests(unittest.TestCase):
         window = QQuickWindow()
         window.resize(width, height)
         root.setParentItem(window.contentItem())
+        # 内抽屉需要显式的覆盖宿主（页面级容器）。真实调用方（CodexView）就是这么
+        # 接的；不传就退回窗口内容项，测到的不是内抽屉的真实链路。
+        page_host = None
+        if with_overlay_host:
+            page_host = QQuickItem(window.contentItem())
+            page_host.setWidth(width)
+            page_host.setHeight(height)
+            root.setParentItem(page_host)
+            root.setProperty("overlayHost", page_host)
         root.setProperty("width", width)
         root.setProperty("expanded", True)
         for name, value in (properties or {}).items():
             root.setProperty(name, value)
         window.show()
         settle()
-        self._kept.extend([engine, stub, stub_object, component, root, window])
+        kept = [engine, stub, stub_object, component, root, window]
+        if page_host is not None:
+            kept.append(page_host)
+        self._kept.extend(kept)
         return root, window
 
     def _assert_content_fits(self, root, relative_path):
@@ -159,11 +172,14 @@ class SectionLayoutTests(unittest.TestCase):
     def test_toolbox_drawer_content_is_not_clipped(self):
         """抽屉是覆盖式 OverlayDialogCore（没有 contentArea/implicitHeight），
         因此校验真实面板尺寸与模式，而不是套用 Expander 的高度断言。"""
-        root, window = self._create("ToolboxDrawer.qml")
+        root, window = self._create("ToolboxDrawer.qml", with_overlay_host=True)
         self.assertGreater(root.property("drawerWidth"), 0, "抽屉宽度未设置")
         self.assertGreater(root.property("drawerHeight"), 0, "抽屉高度未设置")
+        # 内抽屉（mode_inside = 0）：在本页容器内滑出，遮罩只覆盖本页。
+        # 防回流：曾用外抽屉（mode_outside = 1），它是宿主窗口外的独立 HWND，
+        # 切页不会跟随，必须额外写「页面失活就收起」的补丁才能不残留。
         self.assertEqual(
-            root.property("mode"), 1, "工具抽屉必须用外抽屉（mode_outside）"
+            root.property("mode"), 0, "工具抽屉必须用内抽屉（mode_inside）"
         )
         # 覆盖层填满宿主窗口，面板几何必须非零，否则内容会被裁成 0。
         self.assertGreater(root.width(), 0, "抽屉宽度塌陷")
@@ -171,7 +187,7 @@ class SectionLayoutTests(unittest.TestCase):
 
     def test_toolbox_auto_opens_on_startup(self):
         """工具箱启动即展开，且只自动展开一次（用户收起后不弹回）。"""
-        root, window = self._create("ToolboxDrawer.qml")
+        root, window = self._create("ToolboxDrawer.qml", with_overlay_host=True)
 
         def wait_opened(expected, timeout=3.0):
             deadline = time.monotonic() + timeout
@@ -201,8 +217,9 @@ class SectionLayoutTests(unittest.TestCase):
         防回流：曾在外层再套一个 `width: root.drawerWidth` 的 Item，导致内容区
         被多减一次边距、右侧「执行」按钮被裁出面板。
 
-        这里用结构约束而不是运行时测量：外抽屉的内容运行在独立窗口里，
-        挂在普通窗口下实例化时量不到真实面板宽度，运行时断言会假通过。
+        这里用结构约束而不是运行时测量：面板宽度由 Drawer 内部按 drawerWidth
+        与父级几何共同决定，挂在测试窗口下实例化时未必等于真实运行宽度，
+        运行时断言容易假通过。
         """
         source = (VIEWS_DIR / "ToolboxDrawer.qml").read_text(encoding="utf-8")
 

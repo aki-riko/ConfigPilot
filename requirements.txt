@@ -26,5 +26,11 @@
 #     整窗遮罩。修复后优先 overlayTarget，未设置才回退窗口内容项(向后兼容)。
 #   - 同类修复：ColorPickerDialog 重写 open() 时补回基类契约(皮肤作用域捕获、
 #     _fillOverlayHost、_prepareOpen)；ColorPicker 调色板对话框不再硬编码窗口级。
-prismqml==0.7.1.15
+# 0.7.1.16(2026-11-02 升级)的修复：
+#   - SettingsCore 在主线程把 Qt 值对象拍平成纯 JSON 数据再交给后台写盘线程。
+#     此前 _isolate() 对无法 deepcopy 的值(QPixmap / QObject 子类)返回原对象
+#     引用，后台线程 json.dump 读它时若主线程正在 GC，两者并发访问同一 Qt 对象
+#     会触发访问冲突(段错误)。配置写盘涉及每个切主题/皮肤的调用，本项目同样走
+#     这条路径，因此升级受益。
+prismqml==0.7.1.16
 PySide6>=6.9.0

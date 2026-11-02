@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 import prismqml
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QUrl
 from PySide6.QtQml import QQmlComponent, QQmlEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 
@@ -25,6 +25,23 @@ if str(ROOT) not in sys.path:
 VIEWS_DIR = ROOT / "qml" / "views"
 
 from tests.qt_test_utils import APP  # noqa: E402
+
+
+# 读取真实 zIndex 层级，供底部栏层级门禁使用。
+_ZINDEX_SCENE = """
+import QtQuick
+import PrismQML as Fluent
+
+QtObject {
+    readonly property var layers: ({
+        "background": Fluent.Enums.zIndex.background,
+        "content": Fluent.Enums.zIndex.content,
+        "controls": Fluent.Enums.zIndex.controls,
+        "modal": Fluent.Enums.zIndex.modal,
+        "overlay": Fluent.Enums.zIndex.overlay
+    })
+}
+"""
 
 
 # Section 实例化时只读取这些后端属性/方法；给最小替身即可，不发网络请求。
@@ -231,6 +248,118 @@ class SectionLayoutTests(unittest.TestCase):
             source,
             "ToolboxDrawer 的内容不应再按 drawerWidth 定宽（会多算一次边距）",
         )
+
+    def test_action_bars_stay_below_the_overlay_layer(self):
+        """底部操作栏必须低于覆盖层，抽屉/遮罩打开时整页一起变暗。
+
+        真实缺陷：两个页面的底部栏都写死 `z: 10`，而 PrismQML 的覆盖层用
+        zIndex.modal(=6)。结果工具箱内抽屉打开后，页面内容变暗、底部栏却照常
+        明亮地浮在遮罩之上，出现明显割裂。
+
+        这里实例化真实页面并读取底部栏的实际 z 值，而不是只校验枚举关系——
+        后者抓不到「页面退回写死 10」这类回退。
+        """
+        engine = QQmlEngine()
+        engine.addImportPath(os.path.dirname(prismqml.__file__))
+        engine.addImportPath(str(VIEWS_DIR))
+        stub_comp = QQmlComponent(engine)
+        stub_comp.setData(STUB.encode("utf-8"), QUrl("inline:/stub.qml"))
+        while not stub_comp.isReady():
+            APP.processEvents()
+        stub = stub_comp.create()
+        self.assertIsNotNone(stub)
+        engine.rootContext().setContextProperty("CodexConfig", stub)
+
+        modal_z = self._overlay_layer_z()
+        self.assertGreater(modal_z, 1, "覆盖层必须高于内容层")
+
+        try:
+            for view_name, bar_name in (
+                ("CodexView.qml", "codexActionBar"),
+                ("ClaudeDesktopView.qml", "claudeActionBar"),
+            ):
+                component = QQmlComponent(
+                    engine, QUrl.fromLocalFile(str(VIEWS_DIR / view_name))
+                )
+                self.assertFalse(
+                    component.isError(),
+                    f"{view_name} 加载失败: "
+                    + "; ".join(e.toString() for e in component.errors()),
+                )
+                root = component.create()
+                self.assertIsNotNone(root)
+                window = QQuickWindow()
+                window.resize(1000, 760)
+                root.setParentItem(window.contentItem())
+                root.setProperty("width", 1000)
+                root.setProperty("height", 760)
+                window.show()
+                settle(120)
+                try:
+                    bar = root.findChild(QQuickItem, bar_name)
+                    self.assertIsNotNone(
+                        bar, f"{view_name} 里找不到底部栏 {bar_name}"
+                    )
+                    self.assertLess(
+                        bar.z(),
+                        modal_z,
+                        f"{view_name} 的底部栏 z={bar.z()} 不低于覆盖层 "
+                        f"z={modal_z}，抽屉打开时会浮在遮罩之上",
+                    )
+                    self.assertGreater(
+                        bar.z(),
+                        1,
+                        f"{view_name} 的底部栏 z={bar.z()} 过低，会被内容盖住",
+                    )
+                finally:
+                    window.close()
+                    window.deleteLater()
+                    component.deleteLater()
+                    QCoreApplication.sendPostedEvents(
+                        None, QEvent.Type.DeferredDelete
+                    )
+                    APP.processEvents()
+        finally:
+            stub.deleteLater()
+            stub_comp.deleteLater()
+            engine.deleteLater()
+            APP.processEvents()
+
+    def _overlay_layer_z(self):
+        """读取 PrismQML 覆盖层(modal)的真实 z 值。"""
+        engine = QQmlEngine()
+        engine.addImportPath(os.path.dirname(prismqml.__file__))
+        try:
+            comp = QQmlComponent(engine)
+            comp.setData(
+                _ZINDEX_SCENE.encode("utf-8"),
+                QUrl("inline:/zindex-scene.qml"),
+            )
+            while comp.status() == QQmlComponent.Status.Loading:
+                APP.processEvents()
+            self.assertFalse(
+                comp.isError(),
+                "层级场景加载失败: "
+                + "; ".join(e.toString() for e in comp.errors()),
+            )
+            obj = comp.create()
+            self.assertIsNotNone(obj)
+            try:
+                layers = obj.property("layers")
+                resolved = (
+                    layers.toVariant() if hasattr(layers, "toVariant") else layers
+                )
+                return resolved["modal"]
+            finally:
+                obj.deleteLater()
+                comp.deleteLater()
+                QCoreApplication.sendPostedEvents(
+                    None, QEvent.Type.DeferredDelete
+                )
+                APP.processEvents()
+        finally:
+            engine.deleteLater()
+            APP.processEvents()
 
     def test_address_fields_live_on_the_api_key_tab(self):
         """API 地址/提供商/协议属于「API 密钥」那一页，不能留在分段控件外面。"""

@@ -282,6 +282,7 @@ Item {
 
     Rectangle {
         id: actionBar
+        objectName: "claudeActionBar"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -289,7 +290,10 @@ Item {
         color: Fluent.Enums.stateColor.controlBg
         border.width: Fluent.Enums.border.thin
         border.color: Fluent.Enums.stateColor.borderLight
-        z: 10
+        // 与 Codex 页一致：底部栏属于页面控件层(controls=3)，必须低于覆盖层
+        // (modal=6)。原先写死 10，会让底部栏浮在遮罩与抽屉之上，出现「页面变暗、
+        // 底部栏却照常明亮」的割裂。
+        z: Fluent.Enums.zIndex.controls
 
         RowLayout {
             anchors.fill: parent

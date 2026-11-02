@@ -501,6 +501,7 @@ Item {
 
     Rectangle {
         id: actionBar
+        objectName: "codexActionBar"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -508,7 +509,11 @@ Item {
         color: Fluent.Enums.stateColor.controlBg
         border.width: Fluent.Enums.border.thin
         border.color: Fluent.Enums.stateColor.borderLight
-        z: 10
+        // 必须低于覆盖层：工具箱内抽屉按 zIndex.modal(6) 盖住整页，底部栏若写死
+        // 更大的值（原为 10，恰好等于 inputInteraction）就会浮在抽屉与遮罩之上，
+        // 出现「页面变暗、底部栏却照常明亮」的割裂。用 controls(3) 表达「页面控件层」，
+        // 既不硬编码，也低于 modal。
+        z: Fluent.Enums.zIndex.controls
 
         RowLayout {
             anchors.fill: parent

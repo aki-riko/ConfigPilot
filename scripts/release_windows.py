@@ -97,10 +97,11 @@ def check_signing_ready() -> Path:
     print(f"[check] SimplySign: 运行中（{running} 个进程）")
 
     thumbprint = signing.DEFAULT_THUMBPRINT
+    # 只输出一行日期，避免拼接字符串在部分 PowerShell 代码页下报解析错误。
     cert_script = (
         f"$c = Get-ChildItem Cert:\\CurrentUser\\My -CodeSigningCert | "
         f"Where-Object {{ $_.Thumbprint -eq '{thumbprint}' }}; "
-        "if ($c) { 'Found=' + $c.NotAfter.ToString('yyyy-MM-dd') } else { 'Found=' }"
+        "if ($c) { $c[0].NotAfter.ToString('yyyy-MM-dd') }"
     )
     cert = subprocess.run(
         ["powershell", "-NoProfile", "-Command", cert_script],
@@ -108,8 +109,11 @@ def check_signing_ready() -> Path:
     )
     found = ""
     for line in (cert.stdout or "").splitlines():
-        if line.strip().startswith("Found="):
-            found = line.split("=", 1)[1].strip()
+        text = line.strip()
+        # 形如 2027-10-20
+        if len(text) >= 8 and text[:4].isdigit() and text[4] == "-":
+            found = text
+            break
     if not found:
         raise ReleaseError(
             f"证书库里找不到指纹为 {thumbprint} 的代码签名证书。"

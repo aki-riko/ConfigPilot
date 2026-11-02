@@ -153,38 +153,39 @@ def verify_file(signtool: Path, target: Path) -> None:
 
 
 def _read_signature_state(target: Path) -> tuple[str, bool]:
-    """返回 (Status, 是否有时间戳证书)。"""
+    """返回 (Status, 是否有时间戳证书)。
+
+    只输出两个由换行分隔的简单值，不在 PowerShell 里做字符串拼接——
+    拼接写法在部分代码页下会被解析器判为语法错误。
+    """
     escaped = str(target).replace("'", "''")
     script = (
         f"$s = Get-AuthenticodeSignature '{escaped}'; "
-        "'Status=' + $s.Status; "
-        "'HasTimestamp=' + $(if ($null -eq $s.TimeStamperCertificate)"
-        " { 'False' } else { 'True' })"
+        "$s.Status.ToString(); "
+        "if ($null -eq $s.TimeStamperCertificate) { 'False' } else { 'True' }"
     )
     result = _run(["powershell", "-NoProfile", "-Command", script])
     if result.returncode != 0:
         raise SigningError(
             f"读取签名状态失败: {target}\n{result.stdout}\n{result.stderr}"
         )
-    status = ""
-    has_timestamp = False
-    for line in (result.stdout or "").splitlines():
-        line = line.strip()
-        if line.startswith("Status="):
-            status = line.split("=", 1)[1].strip()
-        elif line.startswith("HasTimestamp="):
-            has_timestamp = line.split("=", 1)[1].strip() == "True"
+    lines = [ln.strip() for ln in (result.stdout or "").splitlines() if ln.strip()]
+    status = lines[0] if lines else ""
+    has_timestamp = len(lines) > 1 and lines[1] == "True"
     return status, has_timestamp
 
 
 def describe_signature(target: Path) -> str:
-    """返回可读的签名摘要，用于发版记录与人工核对。"""
+    """返回可读的签名摘要，用于发版记录与人工核对。
+
+    每项单独输出一行，不在 PowerShell 内拼接字符串（见 _read_signature_state）。
+    """
     escaped = str(target).replace("'", "''")
     script = (
         f"$s = Get-AuthenticodeSignature '{escaped}'; "
-        "'Status=' + $s.Status; "
-        "'Subject=' + $s.SignerCertificate.Subject; "
-        "'Timestamp=' + $s.TimeStamperCertificate.Subject"
+        "'Status: ' + $s.Status.ToString(); "
+        "$s.SignerCertificate.Subject; "
+        "$s.TimeStamperCertificate.Subject"
     )
     result = _run(["powershell", "-NoProfile", "-Command", script])
     return result.stdout.strip() if result.returncode == 0 else "(读取签名信息失败)"

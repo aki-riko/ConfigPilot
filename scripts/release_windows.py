@@ -97,13 +97,16 @@ def check_signing_ready() -> Path:
     print(f"[check] SimplySign: 运行中（{running} 个进程）")
 
     thumbprint = signing.DEFAULT_THUMBPRINT
-    # 注意：`powershell` 是 Windows PowerShell 5.1，其 Get-ChildItem 不支持
-    # -CodeSigningCert 参数（那是 PowerShell 7 才有的）。这里改用显式 OID 过滤，
-    # 5.1 与 7 都能跑。只输出一行日期，避免字符串拼接在部分代码页下解析失败。
+    # 两个坑：
+    #   1. `powershell` 是 Windows PowerShell 5.1，`-CodeSigningCert` 是 7.x 参数。
+    #   2. Python 子进程里 5.1 默认没加载 Cert: 驱动器（需 Import-Module PKI），
+    #      直接 Get-ChildItem Cert:\... 会报 drive 不存在。
+    # 因此改用 .NET 的 X509Store，5.1/7 都稳定可用。输出只有一行日期。
     cert_script = (
-        f"$c = Get-ChildItem Cert:\\CurrentUser\\My | "
-        f"Where-Object {{ $_.Thumbprint -eq '{thumbprint}' }}; "
-        "if ($c) { $c[0].NotAfter.ToString('yyyy-MM-dd') }"
+        "$s = New-Object System.Security.Cryptography.X509Certificates.X509Store"
+        "('My','CurrentUser'); $s.Open('ReadOnly'); "
+        f"$c = $s.Certificates | Where-Object {{ $_.Thumbprint -eq '{thumbprint}' }}; "
+        "if ($c) { $c[0].NotAfter.ToString('yyyy-MM-dd') }; $s.Close()"
     )
     cert = subprocess.run(
         ["powershell", "-NoProfile", "-Command", cert_script],

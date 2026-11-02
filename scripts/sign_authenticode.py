@@ -152,6 +152,19 @@ def verify_file(signtool: Path, target: Path) -> None:
         )
 
 
+def _powershell(script: str) -> subprocess.CompletedProcess:
+    """在 Windows PowerShell 5.1 下执行脚本。
+
+    5.1 默认不加载 PKI 模块（Cert: 驱动器与 Get-AuthenticodeSignature 都依赖它），
+    而 Python 子进程不会继承交互式会话的模块状态。这里显式导入。
+    """
+    return _run([
+        "powershell", "-NoProfile", "-Command",
+        "Import-Module Microsoft.PowerShell.Security -ErrorAction SilentlyContinue; "
+        + script,
+    ])
+
+
 def _read_signature_state(target: Path) -> tuple[str, bool]:
     """返回 (Status, 是否有时间戳证书)。
 
@@ -164,7 +177,7 @@ def _read_signature_state(target: Path) -> tuple[str, bool]:
         "$s.Status.ToString(); "
         "if ($null -eq $s.TimeStamperCertificate) { 'False' } else { 'True' }"
     )
-    result = _run(["powershell", "-NoProfile", "-Command", script])
+    result = _powershell(script)
     if result.returncode != 0:
         raise SigningError(
             f"读取签名状态失败: {target}\n{result.stdout}\n{result.stderr}"
@@ -187,7 +200,7 @@ def describe_signature(target: Path) -> str:
         "$s.SignerCertificate.Subject; "
         "$s.TimeStamperCertificate.Subject"
     )
-    result = _run(["powershell", "-NoProfile", "-Command", script])
+    result = _powershell(script)
     return result.stdout.strip() if result.returncode == 0 else "(读取签名信息失败)"
 
 

@@ -92,33 +92,42 @@ class ToolboxPageBindingTests(unittest.TestCase):
         return root, window
 
     def test_drawer_closes_when_page_goes_inactive(self):
-        """离开 Codex 页必须收起：否则那只属于 Codex 的抽屉会留在别的页外面。"""
+        """离开 Codex 页必须收起：否则抽屉的遮罩会留在别的页面上。"""
         root, _ = self._create()
-        self.assertTrue(wait_opened(root, True), "Codex 页上工具箱应自动展开")
+        # 默认关闭，先由用户手动打开。
+        root.open()
+        self.assertTrue(wait_opened(root, True), "手动打开后工具箱应展开")
 
         root.setProperty("pageActive", False)
         self.assertTrue(
             wait_opened(root, False),
-            "页面失活后工具箱必须收起，不能在 Claude/设置页外面继续显示",
+            "页面失活后工具箱必须收起，不能在其他页面上继续显示",
         )
 
-    def test_drawer_returns_when_page_comes_back(self):
-        """回到 Codex 页要恢复展开，但只恢复“离开时本来就展开”的那次。"""
+    def test_drawer_stays_closed_when_page_comes_back(self):
+        """切页回来保持收起：不再恢复「离开前的展开态」。
+
+        旧行为是离开前展开、回来自动恢复；现在抽屉默认关闭，切页只是收起，
+        回来也不主动展开，避免用户切一次页就被挡住配置内容。
+        """
         root, _ = self._create()
+        root.open()
         self.assertTrue(wait_opened(root, True))
 
         root.setProperty("pageActive", False)
         self.assertTrue(wait_opened(root, False))
 
         root.setProperty("pageActive", True)
-        self.assertTrue(
-            wait_opened(root, True),
-            "回到 Codex 页时，离开前展开的工具箱应当恢复展开",
+        settle(400)
+        self.assertFalse(
+            bool(root.property("opened")),
+            "回到 Codex 页时不应自动恢复展开，工具箱应保持收起",
         )
 
     def test_manually_closed_drawer_never_pops_back_after_page_return(self):
         """用户手动收起过，就不能借“切页回来”把抽屉弹回来。"""
         root, _ = self._create()
+        root.open()
         self.assertTrue(wait_opened(root, True))
 
         root.close()
@@ -134,7 +143,7 @@ class ToolboxPageBindingTests(unittest.TestCase):
         )
 
     def test_inactive_page_never_auto_opens(self):
-        """页面从一创建就是失活态时，自动展开逻辑不许抢跑开抽屉。"""
+        """页面从一创建就是失活态时，不许抢跑打开抽屉。"""
         root, _ = self._create(page_active=False)
         settle(500)
         self.assertFalse(
@@ -143,9 +152,10 @@ class ToolboxPageBindingTests(unittest.TestCase):
         )
 
         root.setProperty("pageActive", True)
-        self.assertTrue(
-            wait_opened(root, True),
-            "首次进入 Codex 页时工具箱应当自动展开",
+        settle(400)
+        self.assertFalse(
+            bool(root.property("opened")),
+            "首次进入 Codex 页也不应自动展开，工具箱默认收起",
         )
 
 
@@ -243,7 +253,14 @@ QtObject {
         """页面可见性一变，抽屉必须跟着变——这一条才真正覆盖接线。"""
         root, window = self._create()
         drawer = self._drawer(root)
-        self.assertTrue(wait_opened(drawer, True), "Codex 页上工具箱应自动展开")
+
+        # 默认关闭：先确认没有自动弹出，再由用户手动打开。
+        settle(400)
+        self.assertFalse(
+            bool(drawer.property("opened")), "工具箱默认不应自动展开"
+        )
+        drawer.open()
+        self.assertTrue(wait_opened(drawer, True), "手动打开后应展开")
 
         # 页面栈切走时就是把页面 Item 的 visible 置假。
         root.setProperty("visible", False)
@@ -253,9 +270,10 @@ QtObject {
         )
 
         root.setProperty("visible", True)
-        self.assertTrue(
-            wait_opened(drawer, True),
-            "回到 Codex 页后，离开前展开的工具箱应恢复展开",
+        settle(400)
+        self.assertFalse(
+            bool(drawer.property("opened")),
+            "回到 Codex 页也不应自动恢复展开，工具箱应保持收起",
         )
 
 
@@ -267,8 +285,24 @@ class ToolboxPageWiringTests(unittest.TestCase):
         toolbox = self.read("qml/views/ToolboxDrawer.qml")
         self.assertIn("property bool pageActive: true", toolbox)
         self.assertIn("function closeForInactivePage()", toolbox)
-        self.assertIn("function restoreForActivePage()", toolbox)
         self.assertIn("onPageActiveChanged", toolbox)
+
+    def test_toolbox_has_no_auto_open_machinery(self):
+        """工具箱默认关闭：不得残留任何自动展开机制。
+
+        防回流：曾用 autoOpened 标志 + hostReadyTimer 轮询在启动时自动展开，
+        再用 reopenAfterPageReturn 在切页返回时恢复展开。这些都会让整页在用户
+        没要求的情况下被抽屉与遮罩挡住。
+        """
+        toolbox = self.read("qml/views/ToolboxDrawer.qml")
+        for gone in (
+            "autoOpened",
+            "openOnceReady",
+            "hostReadyTimer",
+            "reopenAfterPageReturn",
+            "restoreForActivePage",
+        ):
+            self.assertNotIn(gone, toolbox, f"工具箱不应再有自动展开代码：{gone}")
 
 
 if __name__ == "__main__":

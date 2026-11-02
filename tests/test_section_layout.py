@@ -202,8 +202,13 @@ class SectionLayoutTests(unittest.TestCase):
         self.assertGreater(root.width(), 0, "抽屉宽度塌陷")
         self.assertGreater(root.height(), 0, "抽屉高度塌陷")
 
-    def test_toolbox_auto_opens_on_startup(self):
-        """工具箱启动即展开，且只自动展开一次（用户收起后不弹回）。"""
+    def test_toolbox_stays_closed_by_default(self):
+        """工具箱默认收起，须由用户点按钮才展开。
+
+        旧行为是启动即自动展开；内抽屉会把整页压暗、挡住配置内容，而工具箱
+        全是低频副作用的维护操作，不该一进页面就抢占视图。这里锁住「默认关闭」，
+        并确认用户主动打开后仍能正常展开、收起。
+        """
         root, window = self._create("ToolboxDrawer.qml", with_overlay_host=True)
 
         def wait_opened(expected, timeout=3.0):
@@ -216,16 +221,22 @@ class SectionLayoutTests(unittest.TestCase):
                 time.sleep(0.005)
             return bool(root.property("opened")) is expected
 
-        # 直接看最终结果 opened，而不是中间标志 autoOpened：只看标志会在
-        # “标记了但没真打开”时假通过。
-        self.assertTrue(wait_opened(True), "工具箱应在启动后自动展开")
+        # 创建后静置足够长时间，必须一直是收起态。
+        settle(800)
+        self.assertFalse(
+            root.property("opened"), "工具箱默认不应自动展开"
+        )
 
-        # 用户手动收起后，不能被自动展开逻辑再弹回来。
+        # 用户主动打开仍然有效（按钮走的就是 open()）。
+        root.open()
+        self.assertTrue(wait_opened(True), "用户点开时工具箱应正常展开")
+
+        # 手动收起后不得被任何自动逻辑弹回。
         root.close()
         self.assertTrue(wait_opened(False), "手动收起后应保持关闭")
-        settle(400)
+        settle(600)
         self.assertFalse(
-            root.property("opened"), "手动收起后不应被自动展开逻辑弹回"
+            root.property("opened"), "收起后不应被自动展开逻辑弹回"
         )
 
     def test_toolbox_content_fits_inside_drawer_padding(self):
